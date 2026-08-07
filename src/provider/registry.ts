@@ -1,8 +1,10 @@
 import type { Provider } from "./types.ts";
 import { cloudflareProvider } from "../providers/cloudflare/adapter.ts";
+import { githubProvider } from "../providers/github/adapter.ts";
 
 const providers: Record<string, Provider> = {
   cloudflare: cloudflareProvider,
+  github: githubProvider,
 };
 
 export function getProvider(id: string): Provider | undefined {
@@ -11,4 +13,9 @@ export function getProvider(id: string): Provider | undefined {
 
 export function listProviders(): Provider[] {
   return Object.values(providers);
+}
+
+/** Supported provider ids for user-facing messages. */
+export function supportedProviderIds(): string[] {
+  return Object.keys(providers);
 }

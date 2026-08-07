@@ -18,19 +18,22 @@ Usage:
 
 Commands:
   init                         Initialize local Combie state
-  connect <provider>           Connect a provider (cloudflare)
+  connect <provider>           Connect a provider (cloudflare, github)
   sync [provider]              Discover and store resources
   providers                    List configured providers
   resources                    List discovered resources
   help                         Show this help
 
 Connect options:
-  --token <token>              API token (avoid in shared shells; prefer --use-env)
-  --use-env                    Use CLOUDFLARE_API_TOKEN from the environment
+  --token <token>              API token (avoid in shared shells; prefer --use-env / --use-gh)
+  --use-env                    Use provider token from the environment
+                               cloudflare: CLOUDFLARE_API_TOKEN
+                               github: GITHUB_TOKEN or GH_TOKEN
+  --use-gh                     GitHub only: reuse authenticated GitHub CLI (\`gh auth token\`)
 
 Resources options:
   --provider <id>              Filter by provider
-  --kind <kind>                Filter by kind (worker, database, kv_namespace, zone)
+  --kind <kind>                Filter by kind (worker, database, kv_namespace, zone, repository)
 
 Global:
   --dir <path>                 Combie state directory (default: ./.combie)
@@ -39,6 +42,7 @@ Global:
 Examples:
   combie init
   combie connect cloudflare --use-env
+  combie connect github --use-gh
   combie sync
   combie providers
   combie resources
@@ -111,16 +115,20 @@ async function main(argv: string[]): Promise<number> {
       case "connect": {
         const providerId = positionals[0];
         if (!providerId) {
-          console.error("Usage: combie connect <provider>\nExample: combie connect cloudflare");
+          console.error(
+            "Usage: combie connect <provider>\nExample: combie connect cloudflare\n         combie connect github --use-gh",
+          );
           return 1;
         }
         const token = typeof flags.token === "string" ? flags.token : undefined;
         const useEnvToken = flags["use-env"] === true;
+        const useGh = flags["use-gh"] === true;
         const result = await connectProvider({
           baseDir,
           providerId,
           token,
           useEnvToken,
+          useGh,
         });
         console.log(result.message);
         return 0;
@@ -132,7 +140,7 @@ async function main(argv: string[]): Promise<number> {
           providerId,
         });
         console.log(result.message);
-        return 0;
+        return result.ok ? 0 : 1;
       }
       case "providers": {
         const { providers } = listProviders(baseDir);

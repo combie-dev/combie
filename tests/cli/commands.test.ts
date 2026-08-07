@@ -84,17 +84,28 @@ describe("CLI commands", () => {
   test("connect rejects unknown provider", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const result = await capture(() =>
-      main(["connect", "github", "--dir", dir]),
+      main(["connect", "not-a-provider", "--dir", dir]),
     );
     expect(result.code).not.toBe(0);
     expect(result.stderr.toLowerCase()).toContain("unknown");
   });
 
-  test("help prints usage", async () => {
+  test("connect github without auth option fails with guidance", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() =>
+      main(["connect", "github", "--dir", dir]),
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr.toLowerCase()).toMatch(/token|use-gh|use-env/);
+  });
+
+  test("help prints usage including github", async () => {
     const result = await capture(() => main(["help"]));
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("combie init");
     expect(result.stdout).toContain("connect");
+    expect(result.stdout).toContain("github");
+    expect(result.stdout).toContain("--use-gh");
   });
 
   test("providers and resources empty states after init", async () => {

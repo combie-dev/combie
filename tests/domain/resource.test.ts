@@ -19,6 +19,15 @@ describe("resourceId", () => {
     expect(resourceId("cloudflare", "zone", "zone-9")).toBe(
       "cloudflare:zone:zone-9",
     );
+    expect(resourceId("github", "repository", "1001")).toBe(
+      "github:repository:1001",
+    );
+  });
+
+  test("cross-provider identity does not collide on shared raw ids", () => {
+    const cf = resourceId("cloudflare", "worker", "1001");
+    const gh = resourceId("github", "repository", "1001");
+    expect(cf).not.toBe(gh);
   });
 
   test("is stable across repeated calls", () => {

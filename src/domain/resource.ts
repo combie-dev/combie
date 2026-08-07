@@ -1,4 +1,9 @@
-export type ResourceKind = "worker" | "database" | "kv_namespace" | "zone";
+export type ResourceKind =
+  | "worker"
+  | "database"
+  | "kv_namespace"
+  | "zone"
+  | "repository";
 
 export interface Resource {
   id: string;

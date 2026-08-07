@@ -2,6 +2,9 @@
  * User-facing application errors with actionable messages.
  * Never include secrets in messages.
  */
+
+import { supportedProviderIds } from "../provider/registry.ts";
+
 export class CombieError extends Error {
   readonly code: string;
   readonly exitCode: number;
@@ -29,9 +32,10 @@ export function providerNotConnected(provider: string): CombieError {
 }
 
 export function unknownProvider(provider: string): CombieError {
+  const supported = supportedProviderIds().join(", ");
   return new CombieError(
     "UNKNOWN_PROVIDER",
-    `Unknown provider: ${provider}.\nSupported providers: cloudflare`,
+    `Unknown provider: ${provider}.\nSupported providers: ${supported}`,
   );
 }
 

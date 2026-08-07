@@ -60,7 +60,7 @@ export function formatRelativeTime(iso: string | null | undefined, now = Date.no
 
 export function formatProvidersTable(providers: ProviderRecord[], now = Date.now()): string {
   if (providers.length === 0) {
-    return "No providers connected.\nRun: combie connect cloudflare";
+    return "No providers connected.\nRun: combie connect cloudflare\nor: combie connect github";
   }
   const rows = providers.map((p) => ({
     provider: p.name,

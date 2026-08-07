@@ -102,14 +102,16 @@ describe("app vertical slice", () => {
     expect(credRaw).toContain(secret);
 
     const sync1 = await syncProviders({ baseDir: dir });
+    expect(sync1.ok).toBe(true);
     expect(sync1.results[0]!.total).toBe(6);
-    expect(sync1.message).toContain("Workers");
+    expect(sync1.message).toContain("Worker");
     expect(sync1.message).toContain("D1");
     expect(sync1.message).toContain("KV");
     expect(sync1.message).toContain("zone");
     expect(sync1.message).not.toContain(secret);
 
     const sync2 = await syncProviders({ baseDir: dir });
+    expect(sync2.ok).toBe(true);
     expect(sync2.results[0]!.total).toBe(6);
 
     const { resources } = listResources({ baseDir: dir });
