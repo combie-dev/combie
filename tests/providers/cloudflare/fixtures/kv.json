@@ -1,0 +1,16 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": "kv-ns-aaa",
+      "title": "SESSION_STORE",
+      "supports_url_encoding": true
+    },
+    {
+      "id": "kv-ns-bbb",
+      "title": "CACHE"
+    }
+  ],
+  "errors": [],
+  "messages": []
+}

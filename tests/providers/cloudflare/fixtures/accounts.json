@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": "acct-001",
+      "name": "Example Corp",
+      "type": "standard"
+    }
+  ],
+  "errors": [],
+  "messages": []
+}

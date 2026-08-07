@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "result": [
+    {
+      "uuid": "d1-uuid-001",
+      "name": "app-production",
+      "version": "production",
+      "created_at": "2024-03-01T10:00:00.000Z",
+      "num_tables": 12
+    }
+  ],
+  "errors": [],
+  "messages": []
+}

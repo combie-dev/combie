@@ -1,0 +1,169 @@
+#!/usr/bin/env bun
+import { resolveBaseDir } from "../storage/paths.ts";
+import { CombieError } from "../app/errors.ts";
+import { initCombie } from "../app/init.ts";
+import { connectProvider } from "../app/connect.ts";
+import { syncProviders } from "../app/sync.ts";
+import {
+  listProviders,
+  listResources,
+  formatProvidersTable,
+  formatResourcesTable,
+} from "../app/list.ts";
+
+const HELP = `combie — engineering context layer
+
+Usage:
+  combie <command> [options]
+
+Commands:
+  init                         Initialize local Combie state
+  connect <provider>           Connect a provider (cloudflare)
+  sync [provider]              Discover and store resources
+  providers                    List configured providers
+  resources                    List discovered resources
+  help                         Show this help
+
+Connect options:
+  --token <token>              API token (avoid in shared shells; prefer --use-env)
+  --use-env                    Use CLOUDFLARE_API_TOKEN from the environment
+
+Resources options:
+  --provider <id>              Filter by provider
+  --kind <kind>                Filter by kind (worker, database, kv_namespace, zone)
+
+Global:
+  --dir <path>                 Combie state directory (default: ./.combie)
+  --help, -h                   Show help
+
+Examples:
+  combie init
+  combie connect cloudflare --use-env
+  combie sync
+  combie providers
+  combie resources
+`;
+
+interface ParsedArgs {
+  command: string | null;
+  positionals: string[];
+  flags: Record<string, string | boolean>;
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
+  const flags: Record<string, string | boolean> = {};
+  const positionals: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--help" || a === "-h") {
+      flags.help = true;
+      continue;
+    }
+    if (a.startsWith("--")) {
+      const key = a.slice(2);
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        flags[key] = next;
+        i++;
+      } else {
+        flags[key] = true;
+      }
+      continue;
+    }
+    if (a.startsWith("-") && a.length === 2) {
+      flags[a.slice(1)] = true;
+      continue;
+    }
+    positionals.push(a);
+  }
+  return {
+    command: positionals[0] ?? null,
+    positionals: positionals.slice(1),
+    flags,
+  };
+}
+
+function baseDirFromFlags(flags: Record<string, string | boolean>): string {
+  const dir = flags.dir;
+  if (typeof dir === "string" && dir.length > 0) {
+    return resolveBaseDir(dir);
+  }
+  return resolveBaseDir();
+}
+
+async function main(argv: string[]): Promise<number> {
+  const { command, positionals, flags } = parseArgs(argv);
+
+  if (!command || command === "help" || flags.help) {
+    console.log(HELP.trimEnd());
+    return 0;
+  }
+
+  const baseDir = baseDirFromFlags(flags);
+
+  try {
+    switch (command) {
+      case "init": {
+        const result = initCombie(baseDir);
+        console.log(result.message);
+        return result.created ? 0 : 0;
+      }
+      case "connect": {
+        const providerId = positionals[0];
+        if (!providerId) {
+          console.error("Usage: combie connect <provider>\nExample: combie connect cloudflare");
+          return 1;
+        }
+        const token = typeof flags.token === "string" ? flags.token : undefined;
+        const useEnvToken = flags["use-env"] === true;
+        const result = await connectProvider({
+          baseDir,
+          providerId,
+          token,
+          useEnvToken,
+        });
+        console.log(result.message);
+        return 0;
+      }
+      case "sync": {
+        const providerId = positionals[0];
+        const result = await syncProviders({
+          baseDir,
+          providerId,
+        });
+        console.log(result.message);
+        return 0;
+      }
+      case "providers": {
+        const { providers } = listProviders(baseDir);
+        console.log(formatProvidersTable(providers));
+        return 0;
+      }
+      case "resources": {
+        const provider = typeof flags.provider === "string" ? flags.provider : undefined;
+        const kind = typeof flags.kind === "string" ? flags.kind : undefined;
+        const { resources } = listResources({ baseDir, provider, kind });
+        console.log(formatResourcesTable(resources));
+        return 0;
+      }
+      default:
+        console.error(`Unknown command: ${command}\n\n${HELP.trimEnd()}`);
+        return 1;
+    }
+  } catch (err) {
+    if (err instanceof CombieError) {
+      console.error(err.message);
+      return err.exitCode;
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(message);
+    return 1;
+  }
+}
+
+if (import.meta.main) {
+  const code = await main(process.argv.slice(2));
+  process.exit(code);
+}
+
+export { main, parseArgs, HELP };

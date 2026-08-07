@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": "zone-id-example",
+      "name": "example.com",
+      "status": "active",
+      "paused": false,
+      "type": "full",
+      "account": {
+        "id": "acct-001",
+        "name": "Example Corp"
+      },
+      "name_servers": ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"]
+    }
+  ],
+  "errors": [],
+  "messages": []
+}

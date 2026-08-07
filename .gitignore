@@ -1,0 +1,6 @@
+node_modules
+.combie
+*.db
+.DS_Store
+dist
+.history

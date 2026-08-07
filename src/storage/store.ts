@@ -1,0 +1,317 @@
+import { Database } from "bun:sqlite";
+import { existsSync, mkdirSync } from "node:fs";
+import type { Resource, ResourceKind } from "../domain/resource.ts";
+import { dbPath, stateDir } from "./paths.ts";
+
+export interface ProviderRecord {
+  id: string;
+  name: string;
+  status: string;
+  lastSyncAt: string | null;
+  config: Record<string, unknown>;
+}
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  last_sync_at TEXT,
+  config_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS resources (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  provider_resource_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(provider, kind, provider_resource_id)
+);
+`;
+
+export class Store {
+  private readonly baseDir: string;
+  private db: Database | null = null;
+
+  constructor(baseDir: string) {
+    this.baseDir = baseDir;
+  }
+
+  /** Absolute path to the Combie state directory for this store. */
+  get stateDir(): string {
+    return stateDir(this.baseDir);
+  }
+
+  private getDb(): Database {
+    if (!this.db) {
+      throw new Error(
+        "Store is not open. Call init() before using the store.",
+      );
+    }
+    return this.db;
+  }
+
+  /** Create state directory + schema. Idempotent. */
+  init(): void {
+    const dir = this.stateDir;
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+
+    if (!this.db) {
+      this.db = new Database(dbPath(this.baseDir));
+      this.db.exec("PRAGMA journal_mode = WAL;");
+      this.db.exec("PRAGMA foreign_keys = ON;");
+    }
+
+    this.db.exec(SCHEMA);
+    this.db
+      .query(
+        `INSERT INTO meta (key, value) VALUES ('initialized', 'true')
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run();
+    this.db
+      .query(
+        `INSERT INTO meta (key, value) VALUES ('schema_version', '1')
+         ON CONFLICT(key) DO NOTHING`,
+      )
+      .run();
+  }
+
+  isInitialized(): boolean {
+    try {
+      if (!this.db) {
+        const path = dbPath(this.baseDir);
+        if (!existsSync(path)) {
+          return false;
+        }
+        this.db = new Database(path);
+      }
+      const row = this.db
+        .query(`SELECT value FROM meta WHERE key = 'initialized'`)
+        .get() as { value: string } | null;
+      return row?.value === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  upsertProvider(provider: {
+    id: string;
+    name: string;
+    status: string;
+    lastSyncAt?: string | null;
+    config?: Record<string, unknown>;
+  }): void {
+    const db = this.getDb();
+    const configJson = JSON.stringify(provider.config ?? {});
+    const lastSyncAt = provider.lastSyncAt ?? null;
+    db.query(
+      `INSERT INTO providers (id, name, status, last_sync_at, config_json)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         status = excluded.status,
+         last_sync_at = COALESCE(excluded.last_sync_at, providers.last_sync_at),
+         config_json = excluded.config_json`,
+    ).run(provider.id, provider.name, provider.status, lastSyncAt, configJson);
+  }
+
+  getProvider(id: string): ProviderRecord | null {
+    const row = this.getDb()
+      .query(
+        `SELECT id, name, status, last_sync_at, config_json FROM providers WHERE id = ?`,
+      )
+      .get(id) as
+      | {
+          id: string;
+          name: string;
+          status: string;
+          last_sync_at: string | null;
+          config_json: string;
+        }
+      | null;
+    return row ? mapProvider(row) : null;
+  }
+
+  listProviders(): ProviderRecord[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT id, name, status, last_sync_at, config_json FROM providers ORDER BY id`,
+      )
+      .all() as Array<{
+      id: string;
+      name: string;
+      status: string;
+      last_sync_at: string | null;
+      config_json: string;
+    }>;
+    return rows.map(mapProvider);
+  }
+
+  /**
+   * Insert or update a resource.
+   * On conflict (same provider+kind+provider_resource_id): update name, metadata, updated_at;
+   * preserve created_at.
+   */
+  upsertResource(resource: Resource): void {
+    const db = this.getDb();
+    const metadataJson = JSON.stringify(resource.metadata);
+    db.query(
+      `INSERT INTO resources (
+         id, provider, provider_resource_id, kind, name,
+         metadata_json, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(provider, kind, provider_resource_id) DO UPDATE SET
+         name = excluded.name,
+         metadata_json = excluded.metadata_json,
+         updated_at = excluded.updated_at`,
+    ).run(
+      resource.id,
+      resource.provider,
+      resource.providerResourceId,
+      resource.kind,
+      resource.name,
+      metadataJson,
+      resource.createdAt,
+      resource.updatedAt,
+    );
+  }
+
+  listResources(filter?: { provider?: string; kind?: string }): Resource[] {
+    const conditions: string[] = [];
+    const params: string[] = [];
+
+    if (filter?.provider) {
+      conditions.push("provider = ?");
+      params.push(filter.provider);
+    }
+    if (filter?.kind) {
+      conditions.push("kind = ?");
+      params.push(filter.kind);
+    }
+
+    const where =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = this.getDb()
+      .query(
+        `SELECT id, provider, provider_resource_id, kind, name,
+                metadata_json, created_at, updated_at
+         FROM resources ${where}
+         ORDER BY provider, kind, name`,
+      )
+      .all(...params) as Array<{
+      id: string;
+      provider: string;
+      provider_resource_id: string;
+      kind: string;
+      name: string;
+      metadata_json: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+
+    return rows.map(mapResource);
+  }
+
+  getResource(id: string): Resource | null {
+    const row = this.getDb()
+      .query(
+        `SELECT id, provider, provider_resource_id, kind, name,
+                metadata_json, created_at, updated_at
+         FROM resources WHERE id = ?`,
+      )
+      .get(id) as
+      | {
+          id: string;
+          provider: string;
+          provider_resource_id: string;
+          kind: string;
+          name: string;
+          metadata_json: string;
+          created_at: string;
+          updated_at: string;
+        }
+      | null;
+    return row ? mapResource(row) : null;
+  }
+
+  setLastSync(providerId: string, at: string): void {
+    const db = this.getDb();
+    const result = db
+      .query(`UPDATE providers SET last_sync_at = ? WHERE id = ?`)
+      .run(at, providerId);
+    if (result.changes === 0) {
+      throw new Error(
+        `Provider '${providerId}' not found. Connect the provider before syncing.`,
+      );
+    }
+  }
+
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+  }
+}
+
+function mapProvider(row: {
+  id: string;
+  name: string;
+  status: string;
+  last_sync_at: string | null;
+  config_json: string;
+}): ProviderRecord {
+  let config: Record<string, unknown> = {};
+  try {
+    config = JSON.parse(row.config_json) as Record<string, unknown>;
+  } catch {
+    config = {};
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    lastSyncAt: row.last_sync_at,
+    config,
+  };
+}
+
+function mapResource(row: {
+  id: string;
+  provider: string;
+  provider_resource_id: string;
+  kind: string;
+  name: string;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+}): Resource {
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = JSON.parse(row.metadata_json) as Record<string, unknown>;
+  } catch {
+    metadata = {};
+  }
+  return {
+    id: row.id,
+    provider: row.provider,
+    providerResourceId: row.provider_resource_id,
+    kind: row.kind as ResourceKind,
+    name: row.name,
+    metadata,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
