@@ -9,7 +9,7 @@ import {
   type VercelClientOptions,
 } from "./client.ts";
 import { VercelApiError } from "./errors.ts";
-import { normalizeProject } from "./normalize.ts";
+import { normalizeDomains, normalizeProject } from "./normalize.ts";
 
 export interface VercelProviderOptions {
   fetch?: VercelClientOptions["fetch"];
@@ -70,8 +70,22 @@ export function createVercelProvider(
 
       try {
         const projects = await client.listProjects();
+        const resources: DiscoverResult["resources"] = [];
+        for (const project of projects) {
+          try {
+            const domains = normalizeDomains(
+              await client.listProjectDomains(project.id),
+            );
+            resources.push(normalizeProject(project, domains));
+          } catch {
+            // Project identity remains authoritative when optional domain
+            // enrichment is unavailable. Omission means unknown; [] means a
+            // successful check found no custom domains.
+            resources.push(normalizeProject(project));
+          }
+        }
         return {
-          resources: projects.map(normalizeProject),
+          resources,
         };
       } catch (err) {
         if (err instanceof VercelApiError) {

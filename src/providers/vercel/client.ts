@@ -71,6 +71,23 @@ export interface VercelProjectsResponse {
   };
 }
 
+/** Project domain shape returned by GET /v9/projects/{idOrName}/domains. */
+export interface VercelProjectDomain {
+  name: string;
+  apexName?: string;
+  projectId?: string;
+  verified?: boolean;
+}
+
+export interface VercelProjectDomainsResponse {
+  domains: VercelProjectDomain[];
+  pagination?: {
+    count?: number;
+    next?: number | string | null;
+    prev?: number | string | null;
+  };
+}
+
 export interface VercelClientOptions {
   token: string;
   fetch?: FetchLike;
@@ -133,6 +150,40 @@ export class VercelClient {
 
       const paginationNext: string | number | null | undefined = response.pagination?.next;
       if (paginationNext == null || response.projects.length === 0) {
+        break;
+      }
+      next = paginationNext;
+    }
+
+    return all;
+  }
+
+  async listProjectDomains(projectId: string): Promise<VercelProjectDomain[]> {
+    const all: VercelProjectDomain[] = [];
+    const endpoint = `/v9/projects/${encodeURIComponent(projectId)}/domains`;
+    let next: string | number | null = null;
+
+    for (let page = 0; page < 100; page++) {
+      const path: string = next != null
+        ? `${endpoint}?until=${encodeURIComponent(String(next))}`
+        : endpoint;
+      const response: VercelProjectDomainsResponse =
+        await this.getJson<VercelProjectDomainsResponse>(
+          path,
+          `List domains for Vercel project ${projectId}`,
+        );
+      if (!Array.isArray(response?.domains)) {
+        throw new VercelApiError({
+          message: `List domains for Vercel project ${projectId}: response did not contain a domains array. Try again.`,
+          status: 200,
+          endpoint,
+        });
+      }
+      all.push(...response.domains);
+
+      const paginationNext: string | number | null | undefined =
+        response.pagination?.next;
+      if (paginationNext == null || response.domains.length === 0) {
         break;
       }
       next = paginationNext;

@@ -1,9 +1,84 @@
 import { createResource, type Resource } from "../../domain/resource.ts";
-import type { VercelProject, VercelProjectLink } from "./client.ts";
+import { domainToASCII } from "node:url";
+import type {
+  VercelProject,
+  VercelProjectDomain,
+  VercelProjectLink,
+} from "./client.ts";
 
 export const VERCEL_PROVIDER = "vercel";
 
 const GITHUB_LINK_TYPES = new Set(["github", "github-limited"]);
+const VERCEL_DEFAULT_APEX = "vercel.app";
+
+export interface VercelDomainMetadata {
+  hostname: string;
+  apexName: string;
+  custom: true;
+}
+
+function normalizeDnsName(
+  value: unknown,
+  options?: { allowWildcard?: boolean },
+): string | null {
+  if (typeof value !== "string") return null;
+
+  let name = value.trim().replace(/\.+$/, "");
+  const wildcard = options?.allowWildcard === true && name.startsWith("*.");
+  if (wildcard) name = name.slice(2);
+  if (!name || name.includes("*")) return null;
+
+  const ascii = domainToASCII(name).toLowerCase();
+  if (!ascii || ascii.length > 253) return null;
+  const labels = ascii.split(".");
+  if (
+    labels.length < 2 ||
+    labels.some(
+      (label) =>
+        !label ||
+        label.length > 63 ||
+        label.startsWith("-") ||
+        label.endsWith("-"),
+    )
+  ) {
+    return null;
+  }
+
+  return wildcard ? `*.${ascii}` : ascii;
+}
+
+/**
+ * Keep only deterministic custom-domain evidence. Vercel's provider-backed
+ * apexName avoids guessing registrable domains from label count.
+ */
+export function normalizeDomains(
+  domains: VercelProjectDomain[],
+): VercelDomainMetadata[] {
+  const normalized: VercelDomainMetadata[] = [];
+  const seen = new Set<string>();
+
+  for (const domain of domains) {
+    if (!domain || typeof domain !== "object") continue;
+    const hostname = normalizeDnsName(domain.name, { allowWildcard: true });
+    const apexName = normalizeDnsName(domain.apexName);
+    if (!hostname || !apexName) continue;
+
+    const bareHostname = hostname.startsWith("*.") ? hostname.slice(2) : hostname;
+    if (
+      apexName === VERCEL_DEFAULT_APEX ||
+      bareHostname === VERCEL_DEFAULT_APEX ||
+      bareHostname.endsWith(`.${VERCEL_DEFAULT_APEX}`) ||
+      seen.has(hostname)
+    ) {
+      continue;
+    }
+
+    seen.add(hostname);
+    normalized.push({ hostname, apexName, custom: true });
+  }
+
+  return normalized;
+}
 
 /**
  * Extract compact GitHub repository identity from Vercel project.link.
@@ -35,7 +110,10 @@ export function extractGitHubLink(
   return git;
 }
 
-export function normalizeProject(project: VercelProject): Resource {
+export function normalizeProject(
+  project: VercelProject,
+  domains?: VercelDomainMetadata[],
+): Resource {
   const metadata: Record<string, unknown> = {
     accountId: project.accountId,
   };
@@ -50,6 +128,9 @@ export function normalizeProject(project: VercelProject): Resource {
   const git = extractGitHubLink(project.link);
   if (git) {
     metadata.git = git;
+  }
+  if (domains !== undefined) {
+    metadata.domains = domains;
   }
 
   return createResource({

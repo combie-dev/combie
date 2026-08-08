@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createVercelProvider } from "../../../src/providers/vercel/adapter.ts";
 import userFixture from "./fixtures/user.json";
 import projectsFixture from "./fixtures/projects.json";
+import domainsFixture from "./fixtures/domains.json";
+
+const EMPTY_DOMAINS = { domains: [], pagination: { count: 0, next: null } };
 
 function mockFetch(routes: {
   user?: unknown;
@@ -10,6 +13,10 @@ function mockFetch(routes: {
   projectsStatus?: number;
   userError?: string;
   projectsError?: string;
+  /** Per-project domain responses keyed by project id. */
+  domains?: Record<string, unknown>;
+  domainsStatus?: number;
+  domainsError?: string;
 }): typeof fetch {
   return (async (input: string | URL | Request) => {
     const url =
@@ -28,6 +35,20 @@ function mockFetch(routes: {
         );
       }
       return Response.json(routes.user ?? userFixture);
+    }
+
+    // Domain route must be matched BEFORE the generic /v9/projects route.
+    const domainMatch = url.match(/\/v9\/projects\/([^/]+)\/domains/);
+    if (domainMatch) {
+      const status = routes.domainsStatus ?? 200;
+      if (status !== 200) {
+        return Response.json(
+          { error: { message: routes.domainsError ?? "Forbidden", code: "forbidden" } },
+          { status },
+        );
+      }
+      const projectId = decodeURIComponent(domainMatch[1]!);
+      return Response.json(routes.domains?.[projectId] ?? EMPTY_DOMAINS);
     }
 
     if (url.includes("/v9/projects")) {
@@ -168,6 +189,94 @@ describe("Vercel provider adapter", () => {
     expect(resources[0]!.metadata.accountId).toBe("team_xyz789");
   });
 
+  test("discoverResources enriches projects with compact custom-domain evidence", async () => {
+    const provider = createVercelProvider({
+      fetch: mockFetch({
+        domains: { prj_abc123: domainsFixture },
+      }),
+    });
+    const { resources } = await provider.discoverResources("token", {
+      accountId: "user_abc123",
+    });
+
+    expect(resources[0]!.metadata.domains).toEqual([
+      { hostname: "example.com", apexName: "example.com", custom: true },
+      { hostname: "app.example.com", apexName: "example.com", custom: true },
+    ]);
+    expect(resources[0]!.metadata.git).toEqual({
+      provider: "github",
+      org: "example-user",
+      repo: "combie",
+      fullName: "example-user/combie",
+      linkType: "github",
+      repoId: "1001",
+    });
+    expect(resources[1]!.metadata.domains).toEqual([]);
+  });
+
+  test("only vercel.app domains produce an authoritative empty custom-domain list", async () => {
+    const provider = createVercelProvider({
+      fetch: mockFetch({
+        domains: {
+          prj_abc123: {
+            domains: [
+              {
+                name: "combie.vercel.app",
+                apexName: "vercel.app",
+                projectId: "prj_abc123",
+                verified: true,
+              },
+            ],
+            pagination: { count: 1, next: null },
+          },
+        },
+      }),
+    });
+    const { resources } = await provider.discoverResources("token", {
+      accountId: "user_abc123",
+    });
+
+    expect(resources[0]!.metadata.domains).toEqual([]);
+  });
+
+  test("domain enrichment failure preserves projects and represents domains as unknown", async () => {
+    const provider = createVercelProvider({
+      fetch: mockFetch({ domainsStatus: 503, domainsError: "Try again" }),
+    });
+    const { resources } = await provider.discoverResources("token", {
+      accountId: "user_abc123",
+    });
+
+    expect(resources).toHaveLength(3);
+    expect(resources.map((resource) => resource.id)).toEqual([
+      "vercel:project:prj_abc123",
+      "vercel:project:prj_def456",
+      "vercel:project:prj_ghi789",
+    ]);
+    expect(resources.every((resource) => !("domains" in resource.metadata))).toBe(
+      true,
+    );
+  });
+
+  test("repeated discovery keeps domain metadata and project identity stable", async () => {
+    const provider = createVercelProvider({
+      fetch: mockFetch({ domains: { prj_abc123: domainsFixture } }),
+    });
+    const first = await provider.discoverResources("token", {
+      accountId: "user_abc123",
+    });
+    const second = await provider.discoverResources("token", {
+      accountId: "user_abc123",
+    });
+
+    expect(second.resources.map((resource) => resource.id)).toEqual(
+      first.resources.map((resource) => resource.id),
+    );
+    expect(second.resources.map((resource) => resource.metadata)).toEqual(
+      first.resources.map((resource) => resource.metadata),
+    );
+  });
+
   test("discoverResources returns empty list when user has no projects", async () => {
     const provider = createVercelProvider({
       fetch: mockFetch({ projects: { projects: [], pagination: { count: 0, next: null } } }),
@@ -206,6 +315,10 @@ describe("Vercel provider adapter", () => {
 
       if (url.includes("/v2/user")) {
         return Response.json(userFixture);
+      }
+
+      if (/\/v9\/projects\/[^/]+\/domains/.test(url)) {
+        return Response.json(EMPTY_DOMAINS);
       }
 
       if (url.includes("/v9/projects")) {
