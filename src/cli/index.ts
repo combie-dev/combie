@@ -18,7 +18,7 @@ Usage:
 
 Commands:
   init                         Initialize local Combie state
-  connect <provider>           Connect a provider (cloudflare, github)
+  connect <provider>           Connect a provider (cloudflare, github, vercel)
   sync [provider]              Discover and store resources
   providers                    List configured providers
   resources                    List discovered resources
@@ -29,11 +29,12 @@ Connect options:
   --use-env                    Use provider token from the environment
                                cloudflare: CLOUDFLARE_API_TOKEN
                                github: GITHUB_TOKEN or GH_TOKEN
+                               vercel: VERCEL_TOKEN
   --use-gh                     GitHub only: reuse authenticated GitHub CLI (\`gh auth token\`)
 
 Resources options:
   --provider <id>              Filter by provider
-  --kind <kind>                Filter by kind (worker, database, kv_namespace, zone, repository)
+  --kind <kind>                Filter by kind (worker, database, kv_namespace, zone, repository, project)
 
 Global:
   --dir <path>                 Combie state directory (default: ./.combie)
@@ -43,6 +44,7 @@ Examples:
   combie init
   combie connect cloudflare --use-env
   combie connect github --use-gh
+  combie connect vercel --use-env
   combie sync
   combie providers
   combie resources

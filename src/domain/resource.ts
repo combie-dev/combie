@@ -3,7 +3,8 @@ export type ResourceKind =
   | "database"
   | "kv_namespace"
   | "zone"
-  | "repository";
+  | "repository"
+  | "project";
 
 export interface Resource {
   id: string;

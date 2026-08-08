@@ -22,12 +22,18 @@ describe("resourceId", () => {
     expect(resourceId("github", "repository", "1001")).toBe(
       "github:repository:1001",
     );
+    expect(resourceId("vercel", "project", "prj_abc123")).toBe(
+      "vercel:project:prj_abc123",
+    );
   });
 
   test("cross-provider identity does not collide on shared raw ids", () => {
     const cf = resourceId("cloudflare", "worker", "1001");
     const gh = resourceId("github", "repository", "1001");
+    const vc = resourceId("vercel", "project", "1001");
     expect(cf).not.toBe(gh);
+    expect(cf).not.toBe(vc);
+    expect(gh).not.toBe(vc);
   });
 
   test("is stable across repeated calls", () => {

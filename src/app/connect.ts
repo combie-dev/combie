@@ -105,6 +105,28 @@ function resolveGitHubToken(options: ConnectOptions): string {
   );
 }
 
+function resolveVercelToken(options: ConnectOptions): string {
+  if (options.token && options.token.trim().length > 0) {
+    return options.token.trim();
+  }
+  if (options.useEnvToken) {
+    const env = options.env ?? process.env;
+    const fromEnv = env.VERCEL_TOKEN?.trim();
+    if (fromEnv) return fromEnv;
+    throw new CombieError(
+      "MISSING_TOKEN",
+      "VERCEL_TOKEN is not set.\nExport a token and run: combie connect vercel --use-env",
+    );
+  }
+  throw new CombieError(
+    "MISSING_TOKEN",
+    "No Vercel token provided.\n" +
+      "Options:\n" +
+      "  1. Export VERCEL_TOKEN and run: combie connect vercel --use-env\n" +
+      "  2. Run: combie connect vercel --token <token>",
+  );
+}
+
 function resolveTokenFromGhCli(): string {
   let result: ReturnType<typeof spawnSync>;
   try {
@@ -160,6 +182,8 @@ function resolveToken(providerId: string, options: ConnectOptions): string {
       return resolveCloudflareToken(options);
     case "github":
       return resolveGitHubToken(options);
+    case "vercel":
+      return resolveVercelToken(options);
     default:
       throw unknownProvider(providerId);
   }

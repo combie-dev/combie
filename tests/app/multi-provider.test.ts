@@ -28,6 +28,7 @@ function cfEnvelope<T>(result: T) {
 function mockMultiProviderFetch(options?: {
   githubFail?: boolean;
   cloudflareFail?: boolean;
+  vercelFail?: boolean;
 }): typeof fetch {
   return (async (input: string | URL | Request) => {
     const url =
@@ -37,8 +38,52 @@ function mockMultiProviderFetch(options?: {
           ? input.href
           : input.url;
 
+    // Vercel (check before GitHub since /v2/user overlaps with /user)
+    if (url.includes("api.vercel.com")) {
+      if (url.includes("/v2/user")) {
+        if (options?.vercelFail) {
+          return Response.json(
+            { error: { message: "Invalid token", code: "unauthorized" } },
+            { status: 403 },
+          );
+        }
+        return Response.json({
+          user: { uid: "vercel_user_1", email: "test@example.com", username: "test-vercel-user" },
+        });
+      }
+      if (url.includes("/v9/projects")) {
+        if (options?.vercelFail) {
+          return Response.json(
+            { error: { message: "Forbidden", code: "forbidden" } },
+            { status: 403 },
+          );
+        }
+        return Response.json({
+          projects: [
+            {
+              id: "prj_abc123",
+              name: "combie-web",
+              framework: "nextjs",
+              accountId: "team_xyz",
+              createdAt: 1704067200000,
+              updatedAt: 1706745600000,
+            },
+            {
+              id: "prj_def456",
+              name: "docs-site",
+              framework: "astro",
+              accountId: "team_xyz",
+              createdAt: 1698710400000,
+              updatedAt: 1701388800000,
+            },
+          ],
+          pagination: { count: 2, next: null },
+        });
+      }
+    }
+
     // GitHub
-    if (url.includes("api.github.com") || url.includes("/user")) {
+    if (url.includes("api.github.com") || (url.includes("/user") && !url.includes("api.vercel.com"))) {
       if (url.endsWith("/user") || (url.includes("/user") && !url.includes("/repos"))) {
         if (options?.githubFail) {
           return Response.json({ message: "Bad credentials" }, { status: 401 });
@@ -332,6 +377,176 @@ describe("multi-provider connection", () => {
     expect(all).toHaveLength(1);
     expect(all[0]!.id).toBe("github:repository:1001");
     expect(all[0]!.name).toBe("combie-renamed");
+    expect(all[0]!.createdAt).toBe(original.createdAt);
+    store.close();
+  });
+
+  test("connect Vercel via --token and list providers", async () => {
+    initCombie(dir);
+    const secret = "vercel_test_must_not_leak";
+    const result = await connectProvider({
+      baseDir: dir,
+      providerId: "vercel",
+      token: secret,
+    });
+    expect(result.provider).toBe("Vercel");
+    expect(result.accountName).toBe("test-vercel-user");
+    expect(result.message).toContain("Connected");
+    expect(result.message).not.toContain(secret);
+
+    const { providers } = listProviders(dir);
+    expect(providers).toHaveLength(1);
+    expect(providers[0]!.id).toBe("vercel");
+    expect(providers[0]!.config.accountName).toBe("test-vercel-user");
+  });
+
+  test("connect Vercel via --use-env (VERCEL_TOKEN)", async () => {
+    initCombie(dir);
+    const result = await connectProvider({
+      baseDir: dir,
+      providerId: "vercel",
+      useEnvToken: true,
+      env: { VERCEL_TOKEN: "env-vercel-token" } as NodeJS.ProcessEnv,
+    });
+    expect(result.provider).toBe("Vercel");
+  });
+
+  test("Cloudflare + GitHub + Vercel coexist after triple connect and sync", async () => {
+    initCombie(dir);
+    const cfSecret = "cf-token-secret";
+    const ghSecret = "gh-token-secret";
+    const vcSecret = "vc-token-secret";
+
+    await connectProvider({ baseDir: dir, providerId: "cloudflare", token: cfSecret });
+    await connectProvider({ baseDir: dir, providerId: "github", token: ghSecret });
+    await connectProvider({ baseDir: dir, providerId: "vercel", token: vcSecret });
+
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(true);
+    expect(sync.results).toHaveLength(3);
+    expect(sync.results.every((r) => r.ok)).toBe(true);
+
+    // Cloudflare: worker + d1 + kv + zone = 4
+    // GitHub: 2 repositories
+    // Vercel: 2 projects
+    expect(sync.totalResources).toBe(8);
+
+    const { resources } = listResources({ baseDir: dir });
+    expect(resources).toHaveLength(8);
+
+    const byProvider = {
+      cloudflare: resources.filter((r) => r.provider === "cloudflare"),
+      github: resources.filter((r) => r.provider === "github"),
+      vercel: resources.filter((r) => r.provider === "vercel"),
+    };
+    expect(byProvider.cloudflare).toHaveLength(4);
+    expect(byProvider.github).toHaveLength(2);
+    expect(byProvider.vercel).toHaveLength(2);
+    expect(byProvider.vercel.every((r) => r.kind === "project")).toBe(true);
+
+    // repeated sync does not duplicate
+    const sync2 = await syncProviders({ baseDir: dir });
+    expect(sync2.ok).toBe(true);
+    const { resources: again } = listResources({ baseDir: dir });
+    expect(again).toHaveLength(8);
+    expect(new Set(again.map((r) => r.id)).size).toBe(8);
+
+    // credentials separate and not in output
+    expect(existsSync(credentialsPath(dir))).toBe(true);
+    const credRaw = readFileSync(credentialsPath(dir), "utf8");
+    expect(credRaw).toContain(cfSecret);
+    expect(credRaw).toContain(ghSecret);
+    expect(credRaw).toContain(vcSecret);
+    expect(sync.message).not.toContain(cfSecret);
+    expect(sync.message).not.toContain(ghSecret);
+    expect(sync.message).not.toContain(vcSecret);
+
+    const { providers } = listProviders(dir);
+    const table = formatProvidersTable(providers);
+    expect(table).toContain("Cloudflare");
+    expect(table).toContain("GitHub");
+    expect(table).toContain("Vercel");
+    expect(table).toContain("Connected");
+
+    const rTable = formatResourcesTable(resources);
+    expect(rTable).toContain("repository");
+    expect(rTable).toContain("github");
+    expect(rTable).toContain("worker");
+    expect(rTable).toContain("cloudflare");
+    expect(rTable).toContain("project");
+    expect(rTable).toContain("vercel");
+    expect(rTable).toContain("combie-web");
+  });
+
+  test("three-provider partial failure: Cloudflare + Vercel succeed, GitHub fails", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "cloudflare", token: "cf-ok" });
+    await connectProvider({ baseDir: dir, providerId: "github", token: "gh-ok" });
+    await connectProvider({ baseDir: dir, providerId: "vercel", token: "vc-ok" });
+
+    globalThis.fetch = mockMultiProviderFetch({ githubFail: true });
+    new CredentialsStore(dir).setCredential("github", "bad-gh-token");
+
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(false);
+
+    const cfResult = sync.results.find((r) => r.providerId === "cloudflare");
+    const ghResult = sync.results.find((r) => r.providerId === "github");
+    const vcResult = sync.results.find((r) => r.providerId === "vercel");
+    expect(cfResult?.ok).toBe(true);
+    expect(ghResult?.ok).toBe(false);
+    expect(vcResult?.ok).toBe(true);
+    expect(ghResult?.error).toBeTruthy();
+    expect(ghResult!.error).not.toContain("bad-gh-token");
+
+    const { resources } = listResources({ baseDir: dir });
+    expect(resources.some((r) => r.provider === "cloudflare")).toBe(true);
+    expect(resources.some((r) => r.provider === "vercel")).toBe(true);
+  });
+
+  test("three-provider persistence: all survive process restart", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "cloudflare", token: "cf-tok" });
+    await connectProvider({ baseDir: dir, providerId: "github", token: "gh-tok" });
+    await connectProvider({ baseDir: dir, providerId: "vercel", token: "vc-tok" });
+    await syncProviders({ baseDir: dir });
+
+    const store = new Store(dir);
+    expect(store.isInitialized()).toBe(true);
+    const providers = store.listProviders();
+    expect(providers.map((p) => p.id).sort()).toEqual(["cloudflare", "github", "vercel"]);
+    const resources = store.listResources();
+    expect(resources.length).toBe(8);
+    store.close();
+  });
+
+  test("Vercel project rename keeps stable identity on upsert", async () => {
+    initCombie(dir);
+    const store = new Store(dir);
+    store.init();
+
+    const original = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_abc123",
+      kind: "project",
+      name: "combie-web",
+      metadata: { framework: "nextjs" },
+    });
+    store.upsertResource(original);
+
+    const renamed = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_abc123",
+      kind: "project",
+      name: "combie-web-v2",
+      metadata: { framework: "nextjs" },
+    });
+    store.upsertResource(renamed);
+
+    const all = store.listResources({ provider: "vercel" });
+    expect(all).toHaveLength(1);
+    expect(all[0]!.id).toBe("vercel:project:prj_abc123");
+    expect(all[0]!.name).toBe("combie-web-v2");
     expect(all[0]!.createdAt).toBe(original.createdAt);
     store.close();
   });

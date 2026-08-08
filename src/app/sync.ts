@@ -47,6 +47,7 @@ function formatKindLabel(kind: ResourceKind, n: number): string {
     kv_namespace: ["KV namespace", "KV namespaces"],
     zone: ["zone", "zones"],
     repository: ["repository", "repositories"],
+    project: ["project", "projects"],
   };
   const [one, many] = labels[kind];
   return `${n} ${n === 1 ? one : many}`;
