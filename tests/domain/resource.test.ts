@@ -25,15 +25,24 @@ describe("resourceId", () => {
     expect(resourceId("vercel", "project", "prj_abc123")).toBe(
       "vercel:project:prj_abc123",
     );
+    expect(resourceId("sentry", "project", "450001")).toBe(
+      "sentry:project:450001",
+    );
   });
 
   test("cross-provider identity does not collide on shared raw ids", () => {
     const cf = resourceId("cloudflare", "worker", "1001");
     const gh = resourceId("github", "repository", "1001");
     const vc = resourceId("vercel", "project", "1001");
+    const sn = resourceId("sentry", "project", "1001");
     expect(cf).not.toBe(gh);
     expect(cf).not.toBe(vc);
+    expect(cf).not.toBe(sn);
     expect(gh).not.toBe(vc);
+    expect(gh).not.toBe(sn);
+    expect(vc).not.toBe(sn);
+    expect(vc).toBe("vercel:project:1001");
+    expect(sn).toBe("sentry:project:1001");
   });
 
   test("is stable across repeated calls", () => {

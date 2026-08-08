@@ -46,7 +46,7 @@ function mockFetch(routes: {
 }
 
 describe("Vercel provider adapter", () => {
-  test("authenticate validates identity and returns user uid/username", async () => {
+  test("authenticate validates identity and returns user id/username", async () => {
     const provider = createVercelProvider({
       fetch: mockFetch({}),
     });
@@ -55,6 +55,67 @@ describe("Vercel provider adapter", () => {
     if (result.ok) {
       expect(result.accountId).toBe("user_abc123");
       expect(result.accountName).toBe("test-user");
+    }
+  });
+
+  test("authenticate maps live API shape (id, no uid) — connect→sync failure mode", async () => {
+    // Live GET /v2/user returns `id`, not the historical `uid` field.
+    // Regression: reading only `uid` left accountId undefined, so connect
+    // showed username while sync failed with NO_ACCOUNT.
+    const provider = createVercelProvider({
+      fetch: mockFetch({
+        user: {
+          user: {
+            id: "AEIIDYVk59zbFF2Sxfyxxmua",
+            email: "sgr0691@example.com",
+            username: "sgr0691",
+            name: "Sergio",
+          },
+        },
+      }),
+    });
+    const result = await provider.authenticate("vercel_live_shaped_token");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.accountId).toBe("AEIIDYVk59zbFF2Sxfyxxmua");
+      expect(result.accountName).toBe("sgr0691");
+    }
+  });
+
+  test("authenticate accepts legacy uid when id is absent", async () => {
+    const provider = createVercelProvider({
+      fetch: mockFetch({
+        user: {
+          user: {
+            uid: "legacy_uid_xyz",
+            username: "legacy-user",
+          },
+        },
+      }),
+    });
+    const result = await provider.authenticate("vercel_legacy_token");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.accountId).toBe("legacy_uid_xyz");
+      expect(result.accountName).toBe("legacy-user");
+    }
+  });
+
+  test("authenticate fails when username is present but no id/uid", async () => {
+    const provider = createVercelProvider({
+      fetch: mockFetch({
+        user: {
+          user: {
+            username: "name-only",
+            email: "name@example.com",
+          },
+        },
+      }),
+    });
+    const result = await provider.authenticate("vercel_no_id_token");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message.toLowerCase()).toMatch(/identity|user id|account/);
     }
   });
 

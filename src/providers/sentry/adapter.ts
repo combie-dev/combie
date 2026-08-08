@@ -4,41 +4,41 @@ import type {
   ProviderAuthResult,
 } from "../../provider/types.ts";
 import {
-  createVercelClient,
-  type VercelClient,
-  type VercelClientOptions,
+  createSentryClient,
+  type SentryClient,
+  type SentryClientOptions,
 } from "./client.ts";
-import { VercelApiError } from "./errors.ts";
+import { SentryApiError } from "./errors.ts";
 import { normalizeProject } from "./normalize.ts";
 
-export interface VercelProviderOptions {
-  fetch?: VercelClientOptions["fetch"];
+export interface SentryProviderOptions {
+  fetch?: SentryClientOptions["fetch"];
   baseUrl?: string;
 }
 
 function clientFor(
   token: string,
-  options?: VercelProviderOptions,
-): VercelClient {
-  return createVercelClient(token, {
+  options?: SentryProviderOptions,
+): SentryClient {
+  return createSentryClient(token, {
     fetch: options?.fetch,
     baseUrl: options?.baseUrl,
   });
 }
 
-export function createVercelProvider(
-  options?: VercelProviderOptions,
+export function createSentryProvider(
+  options?: SentryProviderOptions,
 ): Provider {
   return {
-    id: "vercel",
-    name: "Vercel",
+    id: "sentry",
+    name: "Sentry",
 
     async authenticate(token: string): Promise<ProviderAuthResult> {
       if (!token || token.trim() === "") {
         return {
           ok: false,
           message:
-            "Vercel authentication failed: token is empty. Provide a token via --token or --use-env.",
+            "Sentry authentication failed: token is empty. Provide a token via --token or --use-env.",
         };
       }
 
@@ -48,16 +48,16 @@ export function createVercelProvider(
         return {
           ok: true,
           accountId: user.id,
-          accountName: user.username ?? user.name,
+          accountName: user.username ?? user.name ?? user.email,
         };
       } catch (err) {
-        if (err instanceof VercelApiError) {
+        if (err instanceof SentryApiError) {
           return { ok: false, message: err.message };
         }
         const reason = err instanceof Error ? err.message : "unknown error";
         return {
           ok: false,
-          message: `Vercel authentication failed: ${reason}`,
+          message: `Sentry authentication failed: ${reason}`,
         };
       }
     },
@@ -69,23 +69,23 @@ export function createVercelProvider(
       const client = clientFor(token, options);
 
       try {
-        const projects = await client.listProjects();
+        const projects = await client.listAllProjects();
         return {
           resources: projects.map(normalizeProject),
         };
       } catch (err) {
-        if (err instanceof VercelApiError) {
-          throw new VercelApiError({
-            message: `Vercel project discovery failed: ${err.message}`,
+        if (err instanceof SentryApiError) {
+          throw new SentryApiError({
+            message: `Sentry project discovery failed: ${err.message}`,
             status: err.status,
             endpoint: err.endpoint,
           });
         }
         const reason = err instanceof Error ? err.message : "unknown error";
-        throw new Error(`Vercel project discovery failed: ${reason}`);
+        throw new Error(`Sentry project discovery failed: ${reason}`);
       }
     },
   };
 }
 
-export const vercelProvider: Provider = createVercelProvider();
+export const sentryProvider: Provider = createSentryProvider();

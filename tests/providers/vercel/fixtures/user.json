@@ -1,6 +1,6 @@
 {
   "user": {
-    "uid": "user_abc123",
+    "id": "user_abc123",
     "email": "test@example.com",
     "username": "test-user",
     "name": "Test User"

@@ -4,14 +4,31 @@ const DEFAULT_BASE_URL = "https://api.vercel.com";
 
 export type FetchLike = typeof fetch;
 
+/**
+ * Authenticated Vercel user.
+ *
+ * Live GET /v2/user returns `id` (required in current docs). Older responses
+ * and some docs historically used `uid`. Both are accepted when parsing.
+ */
 export interface VercelUser {
-  uid: string;
+  /** Stable user identity (normalized from `id` or legacy `uid`). */
+  id: string;
   email?: string;
   username?: string;
+  name?: string;
+}
+
+/** Raw user object as returned by the Vercel API before identity normalization. */
+interface VercelUserRaw {
+  id?: string;
+  uid?: string;
+  email?: string;
+  username?: string;
+  name?: string;
 }
 
 export interface VercelUserResponse {
-  user: VercelUser;
+  user: VercelUserRaw;
 }
 
 export interface VercelProject {
@@ -54,7 +71,28 @@ export class VercelClient {
       "/v2/user",
       "Validate Vercel identity",
     );
-    return body.user;
+    const raw = body.user;
+    // Live API documents `id`; some historical payloads used `uid`.
+    const id =
+      typeof raw?.id === "string" && raw.id.trim() !== ""
+        ? raw.id
+        : typeof raw?.uid === "string" && raw.uid.trim() !== ""
+          ? raw.uid
+          : undefined;
+    if (!id) {
+      throw new VercelApiError({
+        message:
+          "Validate Vercel identity: authentication succeeded but no user id was returned. Re-check the token and try again.",
+        status: 200,
+        endpoint: "/v2/user",
+      });
+    }
+    return {
+      id,
+      email: raw.email,
+      username: raw.username,
+      name: raw.name,
+    };
   }
 
   async listProjects(): Promise<VercelProject[]> {

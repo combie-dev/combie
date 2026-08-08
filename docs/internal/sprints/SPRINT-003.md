@@ -505,9 +505,24 @@ Adding Vercel alone should not require Canon changes.
 - Vercel token resolution in `connect.ts` (`--token`, `--use-env` with `VERCEL_TOKEN`)
 - `"project"` kind label in `sync.ts` `formatKindLabel`
 - CLI help text updated with Vercel provider, `VERCEL_TOKEN`, `project` kind
-- Vercel test fixtures and adapter/normalize tests (12 new tests)
-- Multi-provider tests extended: 3-provider coexistence, partial failure, persistence, rename stability (6 new tests)
-- Domain and CLI tests updated for Vercel/project (3 assertions added)
+- Vercel test fixtures and adapter/normalize tests
+- Multi-provider tests extended: 3-provider coexistence, partial failure, persistence, rename stability
+- Domain and CLI tests updated for Vercel/project
+
+### Live-sync identity bugfix (post-implementation)
+
+Live verification exposed: `combie connect vercel --use-env` reported account `sgr0691`, then `combie sync` failed with `Vercel authentication succeeded but no account identity was returned.`
+
+**Root cause:** Live `GET /v2/user` returns `user.id` (current Vercel docs). The adapter mapped only historical `user.uid`, so `accountId` was undefined while `accountName`/`username` still worked. Connect displayed the name and stored `accountId: null`; sync requires a string `accountId` and re-auth could not recover.
+
+**Fix (smallest, Sprint-scoped):**
+
+1. **Vercel client** — normalize identity from `id` with fallback to legacy `uid`; reject responses with no user id
+2. **Vercel adapter** — use normalized `user.id` as `accountId`
+3. **Connect (provider-independent)** — require a non-empty string `accountId` before persisting a connection (same bar as sync; prevents half-connected state)
+4. **Regression tests** — live API user shape (`id`, no `uid`); legacy `uid` still works; username-without-id fails auth/connect; connect→sync app flow with live-shaped payload; assert persisted `config.accountId`
+
+**Already-connected installs** with `accountId: null` recover on next successful sync once the adapter returns an id (sync already re-auths and backfills config). Reconnect also works.
 
 ### Architecture Pressure Results
 
@@ -521,15 +536,16 @@ Adding Vercel alone should not require Canon changes.
 | Sync orchestration (`sync.ts`) | Minimal change | Added `"project"` label to `formatKindLabel` — one-line addition |
 | Credentials (`credentials.ts`) | YES | Keyed by provider string — `setCredential("vercel", token)` just works |
 | CLI (`cli/index.ts`) | Help text only | No structural changes; only updated help strings |
+| Connect identity bar | Minimal change | Require string `accountId` on successful connect (provider-independent hardening from live bug) |
 
 ### Deviations
 
-None. Implementation follows the Sprint contract exactly.
+None beyond the live-bug fix above. No team modeling, deployments, relationships, graph, memory, AI, or MCP.
 
 ### Validation
 
-- **Automated**: 80 tests pass across 12 files (up from 61 tests at baseline), 370 expect() calls, typecheck clean
-- **Live verification**: Deferred (no `VERCEL_TOKEN` available in this session). Automated coverage includes auth, discovery, normalization, pagination, error handling, secret safety, 3-provider coexistence, partial failure, persistence, and rename stability.
+- **Automated**: 85 tests pass across 12 files, 398 expect() calls, typecheck clean
+- **Live verification**: Connect reported identity; sync then failed on missing `accountId` (field-name bug). Fixed with live-shaped fixture coverage. Re-run live connect→sync after this fix to close the manual checkbox.
 
 ### Learnings
 
@@ -537,7 +553,7 @@ None. Implementation follows the Sprint contract exactly.
 
 **Yes.** The third provider required exactly two single-line additions to the domain/sync layer (`"project"` in `ResourceKind` and `formatKindLabel`) and one switch case in `connect.ts`. Everything else was pure extension: new adapter files, a registry entry, and help text. No provider-specific branching, no framework building, no abstraction changes.
 
-The provider contract (`authenticate` + `discoverResources`) proved general enough for infrastructure (Cloudflare), source (GitHub), and application platform (Vercel) resource types. The `accountId`/`accountName` auth result fields map cleanly to Vercel's `uid`/`username`. The pagination model (Vercel uses `until` cursor, GitHub uses `page`, Cloudflare doesn't paginate) stays inside each adapter's client.
+The provider contract (`authenticate` + `discoverResources`) proved general enough for infrastructure (Cloudflare), source (GitHub), and application platform (Vercel) resource types. Account identity must map to the **live** provider field names (`id` for current Vercel `/v2/user`, not historical `uid`). Connect and sync must share the same identity invariant: a successful connection requires a string `accountId`, not only a display name. Fixtures that only mirror historical API shapes will miss live breakage. The pagination model (Vercel uses `until` cursor, GitHub uses `page`, Cloudflare doesn't paginate) stays inside each adapter's client.
 
 ### Canon Changes
 

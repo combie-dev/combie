@@ -175,7 +175,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
     if (providers.length === 0) {
       throw new CombieError(
         "NO_PROVIDERS",
-        "No connected providers to sync.\nRun: combie connect cloudflare\nor: combie connect github",
+        "No connected providers to sync.\nRun: combie connect cloudflare\nor: combie connect github\nor: combie connect vercel\nor: combie connect sentry",
       );
     }
 

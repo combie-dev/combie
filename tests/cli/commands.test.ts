@@ -108,12 +108,23 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("--use-gh");
     expect(result.stdout).toContain("vercel");
     expect(result.stdout).toContain("VERCEL_TOKEN");
+    expect(result.stdout).toContain("sentry");
+    expect(result.stdout).toContain("SENTRY_AUTH_TOKEN");
   });
 
   test("connect vercel without auth option fails with guidance", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const result = await capture(() =>
       main(["connect", "vercel", "--dir", dir]),
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr.toLowerCase()).toMatch(/token|use-env/);
+  });
+
+  test("connect sentry without auth option fails with guidance", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() =>
+      main(["connect", "sentry", "--dir", dir]),
     );
     expect(result.code).not.toBe(0);
     expect(result.stderr.toLowerCase()).toMatch(/token|use-env/);

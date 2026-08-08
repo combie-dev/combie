@@ -17,6 +17,8 @@ export interface ConnectOptions {
    * When true, use a provider-specific environment variable after user consent.
    * Cloudflare: CLOUDFLARE_API_TOKEN
    * GitHub: GITHUB_TOKEN or GH_TOKEN
+   * Vercel: VERCEL_TOKEN
+   * Sentry: SENTRY_AUTH_TOKEN or SENTRY_TOKEN
    */
   useEnvToken?: boolean;
   /**
@@ -127,6 +129,31 @@ function resolveVercelToken(options: ConnectOptions): string {
   );
 }
 
+function resolveSentryToken(options: ConnectOptions): string {
+  if (options.token && options.token.trim().length > 0) {
+    return options.token.trim();
+  }
+  if (options.useEnvToken) {
+    const env = options.env ?? process.env;
+    const fromEnv =
+      env.SENTRY_AUTH_TOKEN?.trim() ||
+      env.SENTRY_TOKEN?.trim() ||
+      undefined;
+    if (fromEnv) return fromEnv;
+    throw new CombieError(
+      "MISSING_TOKEN",
+      "SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) is not set.\nExport a token and run: combie connect sentry --use-env",
+    );
+  }
+  throw new CombieError(
+    "MISSING_TOKEN",
+    "No Sentry token provided.\n" +
+      "Options:\n" +
+      "  1. Export SENTRY_AUTH_TOKEN and run: combie connect sentry --use-env\n" +
+      "  2. Run: combie connect sentry --token <token>",
+  );
+}
+
 function resolveTokenFromGhCli(): string {
   let result: ReturnType<typeof spawnSync>;
   try {
@@ -184,6 +211,8 @@ function resolveToken(providerId: string, options: ConnectOptions): string {
       return resolveGitHubToken(options);
     case "vercel":
       return resolveVercelToken(options);
+    case "sentry":
+      return resolveSentryToken(options);
     default:
       throw unknownProvider(providerId);
   }
@@ -218,6 +247,20 @@ export async function connectProvider(
       );
     }
 
+    // Sync requires a string accountId. Fail at connect so identity is never
+    // half-persisted (display name without id).
+    const accountId =
+      typeof auth.accountId === "string" && auth.accountId.trim() !== ""
+        ? auth.accountId
+        : undefined;
+    if (!accountId) {
+      throw new CombieError(
+        "NO_ACCOUNT",
+        `${provider.name} authentication succeeded but no account identity was returned.\n` +
+          `Reconnect with a token that can read the authenticated account, or report this as a provider bug.`,
+      );
+    }
+
     const creds = new CredentialsStore(options.baseDir);
     creds.setCredential(providerId, token);
 
@@ -227,20 +270,18 @@ export async function connectProvider(
       status: "connected",
       lastSyncAt: null,
       config: {
-        accountId: auth.accountId ?? null,
+        accountId,
         accountName: auth.accountName ?? null,
       },
     });
 
     const accountPart = auth.accountName
       ? ` (account: ${auth.accountName})`
-      : auth.accountId
-        ? ` (account: ${auth.accountId})`
-        : "";
+      : ` (account: ${accountId})`;
 
     return {
       provider: provider.name,
-      accountId: auth.accountId,
+      accountId,
       accountName: auth.accountName,
       message: `Connected ${provider.name}${accountPart}.\nCredentials stored securely for local use.`,
     };
