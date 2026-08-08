@@ -15,6 +15,7 @@ import {
   formatChangesTable,
 } from "../app/list.ts";
 import { getRelatedContext, formatRelatedContext } from "../app/related.ts";
+import { getResourceHistory, formatResourceHistory } from "../app/history.ts";
 
 const HELP = `combie — engineering context layer
 
@@ -29,6 +30,7 @@ Commands:
   resources                    List discovered resources
   relationships                List known cross-provider relationships
   changes                      List observed Resource changes
+  history <resource-id>        Show current state and observed history
   related <resource-id>        Show one-hop related context for a resource
   help                         Show this help
 
@@ -45,7 +47,7 @@ Resources options:
   --provider <id>              Filter by provider
   --kind <kind>                Filter by kind (worker, database, kv_namespace, zone, repository, project)
 
-Related:
+Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId
                                Example: github:repository:1001
 
@@ -64,6 +66,7 @@ Examples:
   combie resources
   combie relationships
   combie changes
+  combie history github:repository:1001
   combie related github:repository:1001
 `;
 
@@ -181,6 +184,18 @@ async function main(argv: string[]): Promise<number> {
       case "changes": {
         const { changes } = listChanges(baseDir);
         console.log(formatChangesTable(changes));
+        return 0;
+      }
+      case "history": {
+        const resourceRef = positionals[0];
+        if (!resourceRef) {
+          console.error(
+            "Usage: combie history <resource-id>\nExample: combie history github:repository:1001\nList ids: combie resources",
+          );
+          return 1;
+        }
+        const history = getResourceHistory({ baseDir, resourceRef });
+        console.log(formatResourceHistory(history));
         return 0;
       }
       case "related": {

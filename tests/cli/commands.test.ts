@@ -116,6 +116,7 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("sentry");
     expect(result.stdout).toContain("SENTRY_AUTH_TOKEN");
     expect(result.stdout).toContain("relationships");
+    expect(result.stdout).toContain("history");
   });
 
   test("connect vercel without auth option fails with guidance", async () => {
@@ -218,6 +219,132 @@ describe("CLI commands", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test("history requires initialization and an exact Resource id", async () => {
+    const uninitialized = await capture(() =>
+      main(["history", "github:repository:1", "--dir", dir]),
+    );
+    expect(uninitialized.code).not.toBe(0);
+    expect(uninitialized.stderr).toContain("combie init");
+
+    await capture(() => main(["init", "--dir", dir]));
+    const missingArgument = await capture(() =>
+      main(["history", "--dir", dir]),
+    );
+    expect(missingArgument.code).not.toBe(0);
+    expect(missingArgument.stderr).toContain("Usage: combie history <resource-id>");
+
+    const unknown = await capture(() =>
+      main(["history", "github:repository:missing", "--dir", dir]),
+    );
+    expect(unknown.code).not.toBe(0);
+    expect(unknown.stderr).toContain("Resource not found");
+    expect(unknown.stderr).toContain("combie resources");
+  });
+
+  test("history renders the current Resource and trustworthy zero state", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.isInitialized();
+    const resource = createResource({
+      provider: "cloudflare",
+      providerResourceId: "zone-history",
+      kind: "zone",
+      name: "example.com",
+      metadata: {},
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    store.close();
+
+    const result = await capture(() =>
+      main(["history", resource.id, "--dir", dir]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Cloudflare zone: example.com");
+    expect(result.stdout).toContain(resource.id);
+    expect(result.stdout).toContain("CURRENT");
+    expect(result.stdout).toContain("No changes recorded yet.");
+    expect(result.stdout).toContain("trustworthy Change baseline");
+  });
+
+  test("history is offline, scoped, grouped, ordered, and read-only", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.isInitialized();
+    const resource = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_history",
+      kind: "project",
+      name: "before",
+      metadata: { framework: "nextjs", regions: ["iad1"] },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "repo-history",
+      kind: "repository",
+      name: "other",
+      metadata: {},
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-08T08:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "other-initial",
+      observedAt: "2026-08-08T08:00:00.000Z",
+    });
+    store.applyResource(
+      { ...resource, name: "middle", metadata: { regions: ["iad1", "sfo1"] } },
+      { id: "older", observedAt: "2026-08-08T09:00:00.000Z" },
+    );
+    store.applyResource(
+      { ...resource, name: "current", metadata: { regions: ["sfo1"] } },
+      { id: "newer", observedAt: "2026-08-08T10:00:00.000Z" },
+    );
+    store.applyResource(
+      { ...other, name: "other-new" },
+      { id: "other-change", observedAt: "2026-08-08T11:00:00.000Z" },
+    );
+    const resourcesBefore = store.listResources();
+    const changesBefore = store.listChanges();
+    const relationshipsBefore = store.listRelationships();
+    store.close();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("history must not call a provider");
+    }) as unknown as typeof fetch;
+    try {
+      const result = await capture(() =>
+        main(["history", resource.id, "--dir", dir]),
+      );
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("name  \"current\"");
+      expect(result.stdout.match(/Observed:/g)).toHaveLength(2);
+      expect(result.stdout.indexOf("2026-08-08T10:00:00.000Z")).toBeLessThan(
+        result.stdout.indexOf("2026-08-08T09:00:00.000Z"),
+      );
+      expect(result.stdout).toContain('"nextjs" → (absent)');
+      expect(result.stdout).toContain('["iad1"] → ["iad1","sfo1"]');
+      expect(result.stdout).not.toContain("other-change");
+
+      const globalFeed = await capture(() => main(["changes", "--dir", dir]));
+      expect(globalFeed.code).toBe(0);
+      expect(globalFeed.stdout.match(/updated/g)).toHaveLength(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const reopened = new Store(dir);
+    reopened.isInitialized();
+    expect(reopened.listResources()).toEqual(resourcesBefore);
+    expect(reopened.listChanges()).toEqual(changesBefore);
+    expect(reopened.listRelationships()).toEqual(relationshipsBefore);
+    reopened.close();
   });
 
   test("relationships empty state after init", async () => {

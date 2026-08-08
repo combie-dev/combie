@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS changes (
 CREATE INDEX IF NOT EXISTS changes_observed_at_idx
   ON changes(observed_at DESC);
 
+CREATE INDEX IF NOT EXISTS changes_resource_observed_id_idx
+  ON changes(resource_id, observed_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS resource_change_baselines (
   resource_id TEXT PRIMARY KEY
 );
@@ -379,6 +382,18 @@ export class Store {
          ORDER BY observed_at DESC, rowid DESC`,
       )
       .all() as ChangeRow[];
+    return rows.map(mapChange);
+  }
+
+  listChangesForResource(resourceId: string): Change[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT id, resource_id, kind, observed_at, fields_json
+         FROM changes
+         WHERE resource_id = ?
+         ORDER BY observed_at DESC, id DESC`,
+      )
+      .all(resourceId) as ChangeRow[];
     return rows.map(mapChange);
   }
 

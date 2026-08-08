@@ -466,6 +466,112 @@ describe("Store", () => {
     ]);
   });
 
+  test("listChangesForResource returns empty history for a known Resource", () => {
+    const { store } = openStore();
+    store.init();
+    const resource = createResource({
+      provider: "cloudflare",
+      providerResourceId: "history-empty",
+      kind: "zone",
+      name: "example.com",
+      metadata: {},
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+
+    expect(store.listChangesForResource(resource.id)).toEqual([]);
+  });
+
+  test("listChangesForResource filters exactly and orders stable ties by id", () => {
+    const { store } = openStore();
+    store.init();
+    const resource = createResource({
+      provider: "vercel",
+      providerResourceId: "history-main",
+      kind: "project",
+      name: "a",
+      metadata: { region: "iad1" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "history-other",
+      kind: "repository",
+      name: "other-a",
+      metadata: {},
+    });
+    store.applyResource(resource, {
+      id: "initial-main",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "initial-other",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    store.applyResource(
+      { ...resource, name: "b" },
+      { id: "change-old", observedAt: "2026-08-08T10:00:00.000Z" },
+    );
+    store.applyResource(
+      { ...other, name: "other-b" },
+      { id: "change-other", observedAt: "2026-08-08T11:00:00.000Z" },
+    );
+    store.applyResource(
+      { ...resource, name: "c", metadata: { region: "sfo1" } },
+      { id: "tie-a", observedAt: "2026-08-08T12:00:00.000Z" },
+    );
+    store.applyResource(
+      { ...resource, name: "d", metadata: { region: "sfo1" } },
+      { id: "tie-z", observedAt: "2026-08-08T12:00:00.000Z" },
+    );
+
+    const changes = store.listChangesForResource(resource.id);
+    expect(changes.map((change) => change.id)).toEqual([
+      "tie-z",
+      "tie-a",
+      "change-old",
+    ]);
+    expect(changes.some((change) => change.resourceId === other.id)).toBe(false);
+    expect(changes[1]?.fields).toEqual([
+      { path: "metadata.region", before: "iad1", after: "sfo1" },
+      { path: "name", before: "b", after: "c" },
+    ]);
+  });
+
+  test("scoped Change reads survive restart and do not mutate domain state", () => {
+    const { store, dir } = openStore();
+    store.init();
+    const resource = createResource({
+      provider: "sentry",
+      providerResourceId: "history-restart",
+      kind: "project",
+      name: "before",
+      metadata: { removed: true },
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    store.applyResource(
+      { ...resource, name: "after", metadata: {} },
+      { id: "persisted", observedAt: "2026-08-08T10:00:00.000Z" },
+    );
+    const resourceBefore = store.getResource(resource.id);
+    const globalBefore = store.listChanges();
+    const relationshipsBefore = store.listRelationships();
+    store.close();
+
+    const reopened = new Store(dir);
+    stores.push(reopened);
+    expect(reopened.isInitialized()).toBe(true);
+    expect(reopened.listChangesForResource(resource.id)).toEqual(globalBefore);
+    expect(reopened.listChangesForResource(resource.id)).toEqual(globalBefore);
+    expect(reopened.getResource(resource.id)).toEqual(resourceBefore);
+    expect(reopened.listChanges()).toEqual(globalBefore);
+    expect(reopened.listRelationships()).toEqual(relationshipsBefore);
+  });
+
   test("upsertRelationship does not duplicate on repeated sync", () => {
     const { store } = openStore();
     store.init();
