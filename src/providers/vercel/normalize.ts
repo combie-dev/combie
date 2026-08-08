@@ -77,7 +77,11 @@ export function normalizeDomains(
     normalized.push({ hostname, apexName, custom: true });
   }
 
-  return normalized;
+  return normalized.sort((a, b) => {
+    const left = `${a.hostname}\0${a.apexName}`;
+    const right = `${b.hostname}\0${b.apexName}`;
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
 }
 
 /**

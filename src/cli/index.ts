@@ -8,9 +8,11 @@ import {
   listProviders,
   listResources,
   listRelationships,
+  listChanges,
   formatProvidersTable,
   formatResourcesTable,
   formatRelationshipsTable,
+  formatChangesTable,
 } from "../app/list.ts";
 import { getRelatedContext, formatRelatedContext } from "../app/related.ts";
 
@@ -26,6 +28,7 @@ Commands:
   providers                    List configured providers
   resources                    List discovered resources
   relationships                List known cross-provider relationships
+  changes                      List observed Resource changes
   related <resource-id>        Show one-hop related context for a resource
   help                         Show this help
 
@@ -60,6 +63,7 @@ Examples:
   combie providers
   combie resources
   combie relationships
+  combie changes
   combie related github:repository:1001
 `;
 
@@ -172,6 +176,11 @@ async function main(argv: string[]): Promise<number> {
       case "relationships": {
         const { relationships, labels } = listRelationships(baseDir);
         console.log(formatRelationshipsTable(relationships, labels));
+        return 0;
+      }
+      case "changes": {
+        const { changes } = listChanges(baseDir);
+        console.log(formatChangesTable(changes));
         return 0;
       }
       case "related": {

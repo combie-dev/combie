@@ -1,5 +1,11 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
+import {
+  diffResource,
+  type Change,
+  type ChangeField,
+  type ChangeObservation,
+} from "../domain/change.ts";
 import type { Resource, ResourceKind } from "../domain/resource.ts";
 import type {
   Relationship,
@@ -52,7 +58,27 @@ CREATE TABLE IF NOT EXISTS relationships (
   updated_at TEXT NOT NULL,
   UNIQUE(source_resource_id, kind, target_resource_id)
 );
+
+CREATE TABLE IF NOT EXISTS changes (
+  id TEXT PRIMARY KEY,
+  resource_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind = 'updated'),
+  observed_at TEXT NOT NULL,
+  fields_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS changes_observed_at_idx
+  ON changes(observed_at DESC);
+
+CREATE TABLE IF NOT EXISTS resource_change_baselines (
+  resource_id TEXT PRIMARY KEY
+);
 `;
+
+export interface ApplyResourceObservation extends ChangeObservation {
+  /** Missing keys listed here are unknown, so their previous facts survive. */
+  preserveMissingMetadataKeys?: string[];
+}
 
 export class Store {
   private readonly baseDir: string;
@@ -81,6 +107,24 @@ export class Store {
     db.exec(SCHEMA);
   }
 
+  /** Baseline only Resources that existed before Change detection was enabled. */
+  private prepareChangeDetection(db: Database): void {
+    const migrate = db.transaction(() => {
+      const marker = db
+        .query(`SELECT value FROM meta WHERE key = 'change_detection_v1'`)
+        .get() as { value: string } | null;
+      if (marker) return;
+      db.exec(
+        `INSERT OR IGNORE INTO resource_change_baselines (resource_id)
+         SELECT id FROM resources`,
+      );
+      db.query(
+        `INSERT INTO meta (key, value) VALUES ('change_detection_v1', 'true')`,
+      ).run();
+    });
+    migrate();
+  }
+
   /** Create state directory + schema. Idempotent. */
   init(): void {
     const dir = this.stateDir;
@@ -101,6 +145,7 @@ export class Store {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       )
       .run();
+    this.prepareChangeDetection(this.db);
     this.db
       .query(
         `INSERT INTO meta (key, value) VALUES ('schema_version', '1')
@@ -125,7 +170,9 @@ export class Store {
       const row = this.db
         .query(`SELECT value FROM meta WHERE key = 'initialized'`)
         .get() as { value: string } | null;
-      return row?.value === "true";
+      const initialized = row?.value === "true";
+      if (initialized) this.prepareChangeDetection(this.db);
+      return initialized;
     } catch {
       return false;
     }
@@ -269,6 +316,70 @@ export class Store {
         }
       | null;
     return row ? mapResource(row) : null;
+  }
+
+  /**
+   * Atomically compare an authoritative normalized Resource, persist at most
+   * one Change, and update current state. Initial discovery and upgrade
+   * baselines update current state without fabricating history.
+   */
+  applyResource(
+    resource: Resource,
+    observation: ApplyResourceObservation,
+  ): Change | null {
+    const db = this.getDb();
+    const apply = db.transaction((): Change | null => {
+      const previous = this.getResource(resource.id);
+      const effective = previous
+        ? preserveUnknownMetadata(previous, resource, observation)
+        : resource;
+      const baseline = db
+        .query(
+          `SELECT resource_id FROM resource_change_baselines WHERE resource_id = ?`,
+        )
+        .get(resource.id) as { resource_id: string } | null;
+
+      let change: Change | null = null;
+      if (previous && !baseline) {
+        change = diffResource(previous, effective, observation);
+        if (change) this.insertChange(change);
+      }
+
+      this.upsertResource(effective);
+      if (baseline) {
+        db.query(
+          `DELETE FROM resource_change_baselines WHERE resource_id = ?`,
+        ).run(resource.id);
+      }
+      return change;
+    });
+    return apply();
+  }
+
+  private insertChange(change: Change): void {
+    this.getDb()
+      .query(
+        `INSERT INTO changes (id, resource_id, kind, observed_at, fields_json)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        change.id,
+        change.resourceId,
+        change.kind,
+        change.observedAt,
+        serializeChangeFields(change.fields),
+      );
+  }
+
+  listChanges(): Change[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT id, resource_id, kind, observed_at, fields_json
+         FROM changes
+         ORDER BY observed_at DESC, rowid DESC`,
+      )
+      .all() as ChangeRow[];
+    return rows.map(mapChange);
   }
 
   setLastSync(providerId: string, at: string): void {
@@ -480,4 +591,66 @@ function mapRelationship(row: {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+interface ChangeRow {
+  id: string;
+  resource_id: string;
+  kind: string;
+  observed_at: string;
+  fields_json: string;
+}
+
+interface StoredChangeField {
+  path: string;
+  beforePresent: boolean;
+  before?: unknown;
+  afterPresent: boolean;
+  after?: unknown;
+}
+
+function serializeChangeFields(fields: ChangeField[]): string {
+  const stored: StoredChangeField[] = fields.map((field) => ({
+    path: field.path,
+    beforePresent: field.before !== undefined,
+    ...(field.before !== undefined ? { before: field.before } : {}),
+    afterPresent: field.after !== undefined,
+    ...(field.after !== undefined ? { after: field.after } : {}),
+  }));
+  return JSON.stringify(stored);
+}
+
+function mapChange(row: ChangeRow): Change {
+  const stored = JSON.parse(row.fields_json) as StoredChangeField[];
+  return {
+    id: row.id,
+    resourceId: row.resource_id,
+    kind: "updated",
+    observedAt: row.observed_at,
+    fields: stored.map((field) => ({
+      path: field.path,
+      before: field.beforePresent ? field.before : undefined,
+      after: field.afterPresent ? field.after : undefined,
+    })),
+  };
+}
+
+function preserveUnknownMetadata(
+  previous: Resource,
+  incoming: Resource,
+  observation: ApplyResourceObservation,
+): Resource {
+  const keys = observation.preserveMissingMetadataKeys ?? [];
+  if (keys.length === 0) return incoming;
+
+  const metadata = { ...incoming.metadata };
+  for (const key of keys) {
+    if (
+      !Object.prototype.hasOwnProperty.call(incoming.metadata, key) &&
+      Object.prototype.hasOwnProperty.call(previous.metadata, key)
+    ) {
+      metadata[key] = previous.metadata[key];
+    }
+  }
+  return { ...incoming, metadata };
 }

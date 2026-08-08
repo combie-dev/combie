@@ -236,6 +236,7 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
         .listRelationships()
         .filter((r) => r.kind === "uses_domain_in"),
     ).toHaveLength(1);
+    expect(store.listChanges()).toHaveLength(0);
     store.close();
   });
 
@@ -278,6 +279,29 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
     expect(sync.domainRelationships?.inferred).toBe(0);
     expect(sync.domainRelationships?.removed).toBe(1);
     expect(usesDomainIn()).toHaveLength(0);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.listChanges()).toHaveLength(1);
+    expect(store.listChanges()[0]?.fields).toEqual([
+      {
+        path: "metadata.domains",
+        before: [
+          {
+            hostname: "app.example.com",
+            apexName: "example.com",
+            custom: true,
+          },
+          {
+            hostname: "www.example.com",
+            apexName: "example.com",
+            custom: true,
+          },
+        ],
+        after: [],
+      },
+    ]);
+    store.close();
   });
 
   test("authoritative zone removal deletes stale edge after complete sync", async () => {
@@ -313,6 +337,37 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
     expect(sync.domainRelationships?.refreshed).toBe(true);
     expect(sync.domainRelationships?.removed).toBe(0);
     expect(usesDomainIn()).toHaveLength(1);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.listChanges()).toHaveLength(0);
+    expect(
+      store.getResource("vercel:project:prj_web")?.metadata.domains,
+    ).toBeArrayOfSize(2);
+    store.close();
+  });
+
+  test("unknown domain enrichment cannot create an edge from prior evidence", async () => {
+    globalThis.fetch = mockVercelCloudflareFetch({
+      domainsByProject: DEFAULT_DOMAINS,
+      zones: [],
+    });
+    await connectBoth();
+    await syncProviders({ baseDir: dir });
+    expect(usesDomainIn()).toHaveLength(0);
+
+    globalThis.fetch = mockVercelCloudflareFetch({
+      domainsByProject: {
+        prj_web: "fail",
+        prj_empty: [],
+        prj_unknown: "fail",
+      },
+      zones: [{ id: "zone-1", name: "example.com" }],
+    });
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(true);
+    expect(sync.domainRelationships?.inferred).toBe(0);
+    expect(usesDomainIn()).toHaveLength(0);
   });
 
   test("Vercel provider failure prevents destructive refresh", async () => {
@@ -330,6 +385,10 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
     expect(sync.ok).toBe(false);
     expect(sync.domainRelationships?.refreshed).toBe(false);
     expect(usesDomainIn()).toHaveLength(1);
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.listChanges()).toHaveLength(0);
+    store.close();
   });
 
   test("Cloudflare provider failure prevents destructive refresh", async () => {
@@ -347,6 +406,40 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
     expect(sync.ok).toBe(false);
     expect(sync.domainRelationships?.refreshed).toBe(false);
     expect(usesDomainIn()).toHaveLength(1);
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.listChanges()).toHaveLength(0);
+    store.close();
+  });
+
+  test("successful provider Changes persist during partial multi-provider failure", async () => {
+    await connectBoth();
+    await syncProviders({ baseDir: dir });
+
+    globalThis.fetch = mockVercelCloudflareFetch({
+      cloudflareFail: true,
+      domainsByProject: {
+        prj_web: [],
+        prj_empty: [],
+        prj_unknown: "fail",
+      },
+    });
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(false);
+    expect(sync.results.find((result) => result.providerId === "vercel")?.ok).toBe(
+      true,
+    );
+    expect(sync.results.find((result) => result.providerId === "cloudflare")?.ok).toBe(
+      false,
+    );
+
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.listChanges()).toHaveLength(1);
+    expect(store.listChanges()[0]?.resourceId).toBe(
+      "vercel:project:prj_web",
+    );
+    store.close();
   });
 
   test("single-provider sync does not refresh uses_domain_in", async () => {

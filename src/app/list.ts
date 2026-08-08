@@ -1,4 +1,5 @@
 import type { Resource, ResourceKind } from "../domain/resource.ts";
+import type { Change } from "../domain/change.ts";
 import type { Relationship } from "../domain/relationship.ts";
 import { Store, type ProviderRecord } from "../storage/store.ts";
 import { notInitialized } from "./errors.ts";
@@ -15,6 +16,10 @@ export interface ListResourcesOptions {
 
 export interface ListResourcesResult {
   resources: Resource[];
+}
+
+export interface ListChangesResult {
+  changes: Change[];
 }
 
 export interface ResourceLabel {
@@ -78,6 +83,18 @@ export function listRelationships(baseDir: string): ListRelationshipsResult {
       });
     }
     return { relationships, labels };
+  } finally {
+    store.close();
+  }
+}
+
+export function listChanges(baseDir: string): ListChangesResult {
+  const store = new Store(baseDir);
+  try {
+    if (!store.isInitialized()) {
+      throw notInitialized();
+    }
+    return { changes: store.listChanges() };
   } finally {
     store.close();
   }
@@ -213,6 +230,47 @@ export function formatResourcesTable(resources: Resource[]): string {
     .map(
       (r) =>
         r.type.padEnd(col1) + "  " + r.name.padEnd(col2) + "  " + r.provider,
+    )
+    .join("\n");
+  return `${header}\n${body}`;
+}
+
+export function formatChangesTable(
+  changes: Change[],
+  now = Date.now(),
+): string {
+  if (changes.length === 0) {
+    return "No changes observed yet.\nRun: combie sync";
+  }
+  const rows = changes.map((change) => ({
+    when: formatRelativeTime(change.observedAt, now),
+    resource: change.resourceId,
+    kind: change.kind,
+    fields: change.fields.map((field) => field.path).join(", "),
+  }));
+  const col1 = Math.max("WHEN".length, ...rows.map((row) => row.when.length));
+  const col2 = Math.max(
+    "RESOURCE".length,
+    ...rows.map((row) => row.resource.length),
+  );
+  const col3 = Math.max("CHANGE".length, ...rows.map((row) => row.kind.length));
+  const header =
+    "WHEN".padEnd(col1) +
+    "  " +
+    "RESOURCE".padEnd(col2) +
+    "  " +
+    "CHANGE".padEnd(col3) +
+    "  FIELDS";
+  const body = rows
+    .map(
+      (row) =>
+        row.when.padEnd(col1) +
+        "  " +
+        row.resource.padEnd(col2) +
+        "  " +
+        row.kind.padEnd(col3) +
+        "  " +
+        row.fields,
     )
     .join("\n");
   return `${header}\n${body}`;

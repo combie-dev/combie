@@ -37,6 +37,19 @@ describe("normalizeWorker", () => {
     expect(resource.name).toBe("cron-cleanup");
     expect(resource.providerResourceId).toBe("cron-cleanup");
   });
+
+  test("sorts set-like handler evidence", () => {
+    const resource = normalizeWorker(
+      { id: "worker", handlers: ["scheduled", "fetch", "fetch"] },
+      ACCOUNT_ID,
+    );
+    expect(resource.metadata.handlers).toEqual(["fetch", "scheduled"]);
+    const permuted = normalizeWorker(
+      { id: "worker", handlers: ["fetch", "scheduled"] },
+      ACCOUNT_ID,
+    );
+    expect(permuted.metadata.handlers).toEqual(resource.metadata.handlers);
+  });
 });
 
 describe("normalizeD1", () => {
@@ -99,6 +112,30 @@ describe("normalizeZone", () => {
       "ada.ns.cloudflare.com",
       "bob.ns.cloudflare.com",
     ]);
+  });
+
+  test("sorts set-like name server evidence", () => {
+    const resource = normalizeZone({
+      id: "zone",
+      name: "example.com",
+      name_servers: [
+        "z.ns.cloudflare.com",
+        "a.ns.cloudflare.com",
+        "a.ns.cloudflare.com",
+      ],
+    });
+    expect(resource.metadata.nameServers).toEqual([
+      "a.ns.cloudflare.com",
+      "z.ns.cloudflare.com",
+    ]);
+    const permuted = normalizeZone({
+      id: "zone",
+      name: "example.com",
+      name_servers: ["a.ns.cloudflare.com", "z.ns.cloudflare.com"],
+    });
+    expect(permuted.metadata.nameServers).toEqual(
+      resource.metadata.nameServers,
+    );
   });
 });
 

@@ -162,17 +162,24 @@ describe("normalizeDomains", () => {
     ]);
   });
 
-  test("preserves multiple custom domains in order", () => {
+  test("sorts multiple custom domains by normalized identity", () => {
     const facts = normalizeDomains([
-      dom("example.com", "example.com"),
-      dom("www.example.com", "example.com"),
       dom("other.dev", "other.dev"),
+      dom("www.example.com", "example.com"),
+      dom("example.com", "example.com"),
     ]);
     expect(facts.map((f) => f.hostname)).toEqual([
       "example.com",
-      "www.example.com",
       "other.dev",
+      "www.example.com",
     ]);
+    expect(
+      normalizeDomains([
+        dom("example.com", "example.com"),
+        dom("other.dev", "other.dev"),
+        dom("www.example.com", "example.com"),
+      ]),
+    ).toEqual(facts);
   });
 
   test("excludes vercel.app defaults", () => {

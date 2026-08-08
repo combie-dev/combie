@@ -153,6 +153,73 @@ describe("CLI commands", () => {
     expect(result.stderr).toContain("combie init");
   });
 
+  test("changes fails when not initialized", async () => {
+    const result = await capture(() => main(["changes", "--dir", dir]));
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("combie init");
+  });
+
+  test("changes has an offline empty state and renders persisted Changes", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const empty = await capture(() => main(["changes", "--dir", dir]));
+    expect(empty.code).toBe(0);
+    expect(empty.stdout).toContain("No changes observed yet");
+
+    const store = new Store(dir);
+    store.isInitialized();
+    const resource = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_change",
+      kind: "project",
+      name: "before",
+      metadata: { region: "iad1" },
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-08T10:00:00.000Z",
+    });
+    store.applyResource(
+      { ...resource, name: "after", metadata: { region: "sfo1" } },
+      { id: "rename", observedAt: "2026-08-08T11:00:00.000Z" },
+    );
+    const second = createResource({
+      provider: "github",
+      providerResourceId: "repo_change",
+      kind: "repository",
+      name: "repo-before",
+      metadata: {},
+    });
+    store.applyResource(second, {
+      id: "second-initial",
+      observedAt: "2026-08-08T11:30:00.000Z",
+    });
+    store.applyResource(
+      { ...second, name: "repo-after" },
+      { id: "second-rename", observedAt: "2026-08-08T12:00:00.000Z" },
+    );
+    store.close();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("changes must not call a provider");
+    }) as unknown as typeof fetch;
+    try {
+      const result = await capture(() => main(["changes", "--dir", dir]));
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("RESOURCE");
+      expect(result.stdout).toContain("vercel:project:prj_change");
+      expect(result.stdout).toContain("github:repository:repo_change");
+      expect(result.stdout).toContain("updated");
+      expect(result.stdout).toContain("metadata.region, name");
+      expect(result.stdout.match(/updated/g)).toHaveLength(2);
+      expect(result.stdout.indexOf("github:repository:repo_change")).toBeLessThan(
+        result.stdout.indexOf("vercel:project:prj_change"),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("relationships empty state after init", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const result = await capture(() => main(["relationships", "--dir", dir]));

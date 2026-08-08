@@ -200,8 +200,8 @@ describe("Vercel provider adapter", () => {
     });
 
     expect(resources[0]!.metadata.domains).toEqual([
-      { hostname: "example.com", apexName: "example.com", custom: true },
       { hostname: "app.example.com", apexName: "example.com", custom: true },
+      { hostname: "example.com", apexName: "example.com", custom: true },
     ]);
     expect(resources[0]!.metadata.git).toEqual({
       provider: "github",

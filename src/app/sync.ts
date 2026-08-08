@@ -1,4 +1,5 @@
 import type { Resource, ResourceKind } from "../domain/resource.ts";
+import { randomUUID } from "node:crypto";
 import { Store } from "../storage/store.ts";
 import { CredentialsStore } from "../storage/credentials.ts";
 import { getProvider } from "../provider/registry.ts";
@@ -31,6 +32,8 @@ export interface SyncProviderResult {
   total: number;
   /** Resource ids discovered by this run's successful sync. */
   discoveredResourceIds: string[];
+  /** Vercel projects whose domain enrichment was authoritative this run. */
+  authoritativeDomainResourceIds: string[];
   message: string;
   error?: string;
 }
@@ -139,11 +142,27 @@ async function syncOne(
     );
   }
 
+  const now = new Date().toISOString();
+  const authoritativeDomainResourceIds = discovered.resources
+    .filter(
+      (resource) =>
+        resource.provider === "vercel" &&
+        resource.kind === "project" &&
+        hasAuthoritativeDomainEvidence(resource),
+    )
+    .map((resource) => resource.id);
   for (const resource of discovered.resources) {
-    store.upsertResource(resource);
+    const preserveMissingMetadataKeys =
+      resource.provider === "vercel" && resource.kind === "project"
+        ? ["domains"]
+        : undefined;
+    store.applyResource(resource, {
+      id: randomUUID(),
+      observedAt: now,
+      preserveMissingMetadataKeys,
+    });
   }
 
-  const now = new Date().toISOString();
   store.setLastSync(providerId, now);
 
   const counts = countByKind(discovered.resources);
@@ -168,6 +187,7 @@ async function syncOne(
     counts,
     total: discovered.resources.length,
     discoveredResourceIds: discovered.resources.map((r) => r.id),
+    authoritativeDomainResourceIds,
     message,
   };
 }
@@ -223,6 +243,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
           counts: {},
           total: 0,
           discoveredResourceIds: [],
+          authoritativeDomainResourceIds: [],
           message: `Syncing ${name}...\n✗ failed`,
           error: errorMessage,
         });
@@ -362,25 +383,19 @@ function refreshVercelCloudflareRelationships(
   // set are authoritatively absent (Combie does not delete stale Resources).
   // Edges supported only by stale zone Resources are never (re)created.
   const liveResourceIds = new Set(cloudflareResult.discoveredResourceIds);
-  const inferred = inferVercelCloudflareRelationships(resources).filter((r) =>
-    liveResourceIds.has(r.targetResourceId),
+  const authoritativeProjectIds = new Set(
+    vercelResult.authoritativeDomainResourceIds,
+  );
+  const inferred = inferVercelCloudflareRelationships(resources).filter(
+    (r) =>
+      authoritativeProjectIds.has(r.sourceResourceId) &&
+      liveResourceIds.has(r.targetResourceId),
   );
   const inferredIds = new Set(inferred.map((r) => r.id));
 
   for (const rel of inferred) {
     store.upsertRelationship(rel);
   }
-
-  const authoritativeProjectIds = new Set(
-    resources
-      .filter(
-        (r) =>
-          r.provider === "vercel" &&
-          r.kind === "project" &&
-          hasAuthoritativeDomainEvidence(r),
-      )
-      .map((r) => r.id),
-  );
 
   const existing = store
     .listRelationships()

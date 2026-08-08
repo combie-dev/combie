@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { createResource } from "../../src/domain/resource.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { Store } from "../../src/storage/store.ts";
+import { dbPath } from "../../src/storage/paths.ts";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "combie-store-"));
@@ -204,6 +206,264 @@ describe("Store", () => {
     expect(found!.name).toBe("prod-d1");
     expect(found!.kind).toBe("database");
     expect(store.getResource("missing")).toBeNull();
+  });
+
+  test("applyResource records only meaningful updates", () => {
+    const { store } = openStore();
+    store.init();
+    const initial = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_1",
+      kind: "project",
+      name: "web",
+      metadata: { framework: "nextjs" },
+    });
+
+    expect(
+      store.applyResource(initial, {
+        id: "chg-initial",
+        observedAt: "2026-08-08T10:00:00.000Z",
+      }),
+    ).toBeNull();
+    expect(store.listChanges()).toEqual([]);
+
+    const updated = { ...initial, name: "web-renamed", updatedAt: "later" };
+    const change = store.applyResource(updated, {
+      id: "chg-update",
+      observedAt: "2026-08-08T11:00:00.000Z",
+    });
+    expect(change?.fields).toEqual([
+      { path: "name", before: "web", after: "web-renamed" },
+    ]);
+    expect(store.listChanges()).toEqual([change!]);
+
+    expect(
+      store.applyResource(
+        { ...updated, updatedAt: "bookkeeping-only" },
+        {
+          id: "chg-identical",
+          observedAt: "2026-08-08T12:00:00.000Z",
+        },
+      ),
+    ).toBeNull();
+    expect(store.listChanges()).toHaveLength(1);
+  });
+
+  test("Change evidence preserves absent values across restart", () => {
+    const { store, dir } = openStore();
+    store.init();
+    const initial = createResource({
+      provider: "github",
+      providerResourceId: "1",
+      kind: "repository",
+      name: "repo",
+      metadata: { removed: true },
+    });
+    store.applyResource(initial, {
+      id: "chg-initial",
+      observedAt: "2026-08-08T10:00:00.000Z",
+    });
+    store.applyResource(
+      { ...initial, metadata: { added: true } },
+      { id: "chg-absence", observedAt: "2026-08-08T11:00:00.000Z" },
+    );
+    store.close();
+
+    const reopened = new Store(dir);
+    stores.push(reopened);
+    expect(reopened.isInitialized()).toBe(true);
+    expect(reopened.listChanges()[0]?.fields).toEqual([
+      { path: "metadata.added", before: undefined, after: true },
+      { path: "metadata.removed", before: true, after: undefined },
+    ]);
+  });
+
+  test("A to B to A creates two distinct chronologically listed Changes", () => {
+    const { store } = openStore();
+    store.init();
+    const a = createResource({
+      provider: "cloudflare",
+      providerResourceId: "worker",
+      kind: "worker",
+      name: "a",
+      metadata: {},
+    });
+    store.applyResource(a, {
+      id: "initial",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    store.applyResource(
+      { ...a, name: "b" },
+      { id: "to-b", observedAt: "2026-08-08T10:00:00.000Z" },
+    );
+    store.applyResource(a, {
+      id: "back-to-a",
+      observedAt: "2026-08-08T11:00:00.000Z",
+    });
+
+    expect(store.listChanges().map((change) => change.id)).toEqual([
+      "back-to-a",
+      "to-b",
+    ]);
+  });
+
+  test("Resource update rolls back when Change insertion fails", () => {
+    const { store } = openStore();
+    store.init();
+    const initial = createResource({
+      provider: "sentry",
+      providerResourceId: "project",
+      kind: "project",
+      name: "a",
+      metadata: {},
+    });
+    store.applyResource(initial, {
+      id: "initial",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    store.applyResource(
+      { ...initial, name: "b" },
+      { id: "duplicate", observedAt: "2026-08-08T10:00:00.000Z" },
+    );
+
+    expect(() =>
+      store.applyResource(
+        { ...initial, name: "c" },
+        { id: "duplicate", observedAt: "2026-08-08T11:00:00.000Z" },
+      ),
+    ).toThrow();
+    expect(store.getResource(initial.id)?.name).toBe("b");
+    expect(store.listChanges()).toHaveLength(1);
+  });
+
+  test("Change insertion rolls back when the Resource update fails", () => {
+    const { store, dir } = openStore();
+    store.init();
+    const initial = createResource({
+      provider: "github",
+      providerResourceId: "rollback",
+      kind: "repository",
+      name: "before",
+      metadata: {},
+    });
+    store.applyResource(initial, {
+      id: "initial",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    store.close();
+
+    const raw = new Database(dbPath(dir));
+    raw.exec(`
+      CREATE TRIGGER fail_resource_update
+      BEFORE UPDATE ON resources
+      BEGIN
+        SELECT RAISE(ABORT, 'forced Resource update failure');
+      END;
+    `);
+    raw.close();
+
+    const reopened = new Store(dir);
+    stores.push(reopened);
+    expect(reopened.isInitialized()).toBe(true);
+    expect(() =>
+      reopened.applyResource(
+        { ...initial, name: "after" },
+        { id: "must-rollback", observedAt: "2026-08-08T10:00:00.000Z" },
+      ),
+    ).toThrow("forced Resource update failure");
+    expect(reopened.getResource(initial.id)?.name).toBe("before");
+    expect(reopened.listChanges()).toHaveLength(0);
+  });
+
+  test("unknown metadata preserves the last authoritative fact", () => {
+    const { store } = openStore();
+    store.init();
+    const initial = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_domains",
+      kind: "project",
+      name: "web",
+      metadata: { domains: [{ hostname: "app.example.com" }] },
+    });
+    store.applyResource(initial, {
+      id: "initial",
+      observedAt: "2026-08-08T09:00:00.000Z",
+    });
+    const change = store.applyResource(
+      { ...initial, name: "renamed", metadata: {} },
+      {
+        id: "unknown-domains",
+        observedAt: "2026-08-08T10:00:00.000Z",
+        preserveMissingMetadataKeys: ["domains"],
+      },
+    );
+
+    expect(change?.fields).toEqual([
+      { path: "name", before: "web", after: "renamed" },
+    ]);
+    expect(store.getResource(initial.id)?.metadata.domains).toEqual(
+      initial.metadata.domains,
+    );
+  });
+
+  test("existing Resources are baselined once before Change detection", () => {
+    const { store, dir } = openStore();
+    store.init();
+    const initial = createResource({
+      provider: "github",
+      providerResourceId: "legacy",
+      kind: "repository",
+      name: "legacy-a",
+      metadata: {},
+    });
+    const untouched = createResource({
+      provider: "cloudflare",
+      providerResourceId: "legacy-zone",
+      kind: "zone",
+      name: "legacy.example",
+      metadata: {},
+    });
+    store.upsertResource(initial);
+    store.upsertResource(untouched);
+    store.close();
+
+    // Recreate the pre-Sprint-010 meta state while retaining its Resource row.
+    const legacyDb = new Database(dbPath(dir));
+    legacyDb.query(`DELETE FROM meta WHERE key = 'change_detection_v1'`).run();
+    legacyDb.close();
+
+    const upgraded = new Store(dir);
+    stores.push(upgraded);
+    expect(upgraded.isInitialized()).toBe(true);
+    expect(
+      upgraded.applyResource(
+        { ...initial, name: "legacy-b" },
+        { id: "baseline", observedAt: "2026-08-08T10:00:00.000Z" },
+      ),
+    ).toBeNull();
+    expect(upgraded.listChanges()).toEqual([]);
+    expect(upgraded.getResource(initial.id)?.name).toBe("legacy-b");
+
+    upgraded.close();
+    const restarted = new Store(dir);
+    stores.push(restarted);
+    expect(restarted.isInitialized()).toBe(true);
+    expect(
+      restarted.applyResource(
+        { ...untouched, name: "current.example" },
+        { id: "late-baseline", observedAt: "2026-08-08T10:30:00.000Z" },
+      ),
+    ).toBeNull();
+    expect(restarted.listChanges()).toEqual([]);
+
+    expect(
+      restarted.applyResource(
+        { ...initial, name: "legacy-c" },
+        { id: "after-baseline", observedAt: "2026-08-08T11:00:00.000Z" },
+      )?.fields,
+    ).toEqual([
+      { path: "name", before: "legacy-b", after: "legacy-c" },
+    ]);
   });
 
   test("upsertRelationship does not duplicate on repeated sync", () => {

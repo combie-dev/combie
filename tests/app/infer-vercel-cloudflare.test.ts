@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createResource, type Resource } from "../../src/domain/resource.ts";
 import {
+  hasAuthoritativeDomainEvidence,
   inferVercelCloudflareRelationships,
   isVercelCloudflareUsesDomainIn,
 } from "../../src/app/infer-vercel-cloudflare.ts";
@@ -216,6 +217,27 @@ describe("inferVercelCloudflareRelationships", () => {
     const zone = cloudflareZone("zone-1", "example.com");
 
     expect(inferVercelCloudflareRelationships([project, zone])).toHaveLength(0);
+  });
+});
+
+describe("hasAuthoritativeDomainEvidence", () => {
+  test("requires an array rather than mere domains-key presence", () => {
+    const project = vercelProject("prj_a", "web");
+    expect(
+      hasAuthoritativeDomainEvidence({
+        ...project,
+        metadata: { domains: null },
+      }),
+    ).toBe(false);
+    expect(
+      hasAuthoritativeDomainEvidence({
+        ...project,
+        metadata: { domains: undefined },
+      }),
+    ).toBe(false);
+    expect(
+      hasAuthoritativeDomainEvidence({ ...project, metadata: { domains: [] } }),
+    ).toBe(true);
   });
 });
 

@@ -23,7 +23,9 @@ export function normalizeWorker(
       ...(script.modified_on ? { modifiedOn: script.modified_on } : {}),
       ...(script.created_on ? { createdOn: script.created_on } : {}),
       ...(script.usage_model ? { usageModel: script.usage_model } : {}),
-      ...(script.handlers ? { handlers: script.handlers } : {}),
+      ...(script.handlers
+        ? { handlers: [...new Set(script.handlers)].sort() }
+        : {}),
     },
   });
 }
@@ -76,7 +78,9 @@ export function normalizeZone(zone: CloudflareZone): Resource {
       ...(zone.paused != null ? { paused: zone.paused } : {}),
       ...(zone.type ? { type: zone.type } : {}),
       ...(zone.account?.id ? { accountId: zone.account.id } : {}),
-      ...(zone.name_servers ? { nameServers: zone.name_servers } : {}),
+      ...(zone.name_servers
+        ? { nameServers: [...new Set(zone.name_servers)].sort() }
+        : {}),
     },
   });
 }
