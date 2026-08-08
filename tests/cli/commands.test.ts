@@ -251,6 +251,121 @@ describe("CLI commands", () => {
     expect(fromTarget.stdout).toContain("acme/demo-hub");
   });
 
+  test("relationships and related render uses_domain_in both ways", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.isInitialized();
+    const vc = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_web",
+      kind: "project",
+      name: "web",
+      metadata: {},
+    });
+    const zone = createResource({
+      provider: "cloudflare",
+      providerResourceId: "zone-1",
+      kind: "zone",
+      name: "example.com",
+      metadata: {},
+    });
+    const gh = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "web",
+      metadata: { fullName: "acme/web" },
+    });
+    store.upsertResource(vc);
+    store.upsertResource(zone);
+    store.upsertResource(gh);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: vc.id,
+        targetResourceId: zone.id,
+        kind: "uses_domain_in",
+        evidence: {
+          source: "vercel",
+          mechanism: "custom_domain_apex",
+          apexName: "example.com",
+          hostnames: ["app.example.com"],
+        },
+      }),
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: gh.id,
+        targetResourceId: vc.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/web",
+        },
+      }),
+    );
+    store.close();
+
+    const rels = await capture(() => main(["relationships", "--dir", dir]));
+    expect(rels.code).toBe(0);
+    expect(rels.stdout).toContain("uses_domain_in");
+    expect(rels.stdout).toContain("source_for");
+    expect(rels.stdout).toContain("Vercel web");
+    expect(rels.stdout).toContain("Cloudflare example.com");
+    expect(rels.stdout).toContain("example.com");
+
+    const fromProject = await capture(() =>
+      main(["related", vc.id, "--dir", dir]),
+    );
+    expect(fromProject.code).toBe(0);
+    expect(fromProject.stdout).toContain("uses_domain_in →");
+    expect(fromProject.stdout).toContain("Cloudflare zone");
+    expect(fromProject.stdout).toContain("← source_for");
+
+    const fromZone = await capture(() =>
+      main(["related", zone.id, "--dir", dir]),
+    );
+    expect(fromZone.code).toBe(0);
+    expect(fromZone.stdout).toContain("← uses_domain_in");
+    expect(fromZone.stdout).toContain("Vercel project");
+    expect(fromZone.stdout).toContain("custom_domain_apex");
+    expect(fromZone.stdout).not.toContain("secret");
+  });
+
+  test("formatRelationshipsTable shows uses_domain_in apex evidence", () => {
+    const rel = createRelationship({
+      sourceResourceId: "vercel:project:prj_web",
+      targetResourceId: "cloudflare:zone:zone-1",
+      kind: "uses_domain_in",
+      evidence: {
+        source: "vercel",
+        mechanism: "custom_domain_apex",
+        apexName: "example.com",
+        hostnames: ["app.example.com"],
+      },
+    });
+    const labels = new Map<string, ResourceLabel>([
+      [
+        "vercel:project:prj_web",
+        { provider: "vercel", name: "web", kind: "project", displayName: "web" },
+      ],
+      [
+        "cloudflare:zone:zone-1",
+        {
+          provider: "cloudflare",
+          name: "example.com",
+          kind: "zone",
+          displayName: "example.com",
+        },
+      ],
+    ]);
+    const table = formatRelationshipsTable([rel], labels);
+    expect(table).toContain("uses_domain_in");
+    expect(table).toContain("Vercel web");
+    expect(table).toContain("Cloudflare example.com");
+    expect(table).toContain("example.com");
+  });
+
   test("formatRelationshipsTable shows source kind target and evidence", () => {
     const rel = createRelationship({
       sourceResourceId: "github:repository:1001",

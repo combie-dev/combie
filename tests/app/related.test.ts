@@ -310,4 +310,74 @@ describe("getRelatedContext", () => {
       first.related[0]!.relationship.id,
     );
   });
+
+  test("uses_domain_in reads from both endpoints without inverse storage", () => {
+    const store = new Store(dir);
+    store.isInitialized();
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_web",
+      kind: "project",
+      name: "web",
+      metadata: {
+        domains: [
+          { hostname: "app.example.com", apexName: "example.com", custom: true },
+        ],
+      },
+    });
+    const zone = createResource({
+      provider: "cloudflare",
+      providerResourceId: "zone-1",
+      kind: "zone",
+      name: "example.com",
+      metadata: {},
+    });
+    store.upsertResource(project);
+    store.upsertResource(zone);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: project.id,
+        targetResourceId: zone.id,
+        kind: "uses_domain_in",
+        evidence: {
+          source: "vercel",
+          mechanism: "custom_domain_apex",
+          apexName: "example.com",
+          hostnames: ["app.example.com"],
+        },
+      }),
+    );
+    store.close();
+
+    const fromProject = getRelatedContext({
+      baseDir: dir,
+      resourceRef: project.id,
+    });
+    expect(fromProject.related).toHaveLength(1);
+    expect(fromProject.related[0]!.direction).toBe("outbound");
+    expect(fromProject.related[0]!.relationship.kind).toBe("uses_domain_in");
+    expect(fromProject.related[0]!.resource?.id).toBe(zone.id);
+
+    const fromZone = getRelatedContext({ baseDir: dir, resourceRef: zone.id });
+    expect(fromZone.related).toHaveLength(1);
+    expect(fromZone.related[0]!.direction).toBe("inbound");
+    expect(fromZone.related[0]!.relationship.kind).toBe("uses_domain_in");
+    expect(fromZone.related[0]!.resource?.id).toBe(project.id);
+
+    const text = formatRelatedContext(fromZone);
+    expect(text).toContain("Cloudflare zone");
+    expect(text).toContain("← uses_domain_in");
+    expect(text).toContain("Vercel project");
+    expect(text).toContain("custom_domain_apex");
+
+    // Only the canonical row exists.
+    const check = new Store(dir);
+    check.isInitialized();
+    expect(
+      check
+        .listRelationships()
+        .filter((r) => r.kind === "uses_domain_in"),
+    ).toHaveLength(1);
+    check.close();
+  });
 });

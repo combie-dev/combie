@@ -123,6 +123,9 @@ function formatEvidence(relationship: Relationship): string {
   if (e.repository) {
     return base ? `${base} (${e.repository})` : e.repository;
   }
+  if (e.apexName) {
+    return base ? `${base} (${e.apexName})` : e.apexName;
+  }
   if (e.githubRepoId) {
     return base ? `${base} (repoId ${e.githubRepoId})` : `repoId ${e.githubRepoId}`;
   }

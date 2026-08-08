@@ -11,6 +11,11 @@ import {
   inferGitHubVercelRelationships,
   isGitHubVercelSourceFor,
 } from "./infer-github-vercel.ts";
+import {
+  hasAuthoritativeDomainEvidence,
+  inferVercelCloudflareRelationships,
+  isVercelCloudflareUsesDomainIn,
+} from "./infer-vercel-cloudflare.ts";
 
 export interface SyncOptions {
   baseDir: string;
@@ -24,15 +29,18 @@ export interface SyncProviderResult {
   ok: boolean;
   counts: Partial<Record<ResourceKind, number>>;
   total: number;
+  /** Resource ids discovered by this run's successful sync. */
+  discoveredResourceIds: string[];
   message: string;
   error?: string;
 }
 
 export interface RelationshipSyncSummary {
-  /** Whether relationship inference ran (both GitHub + Vercel succeeded). */
+  /** Whether this resolver refreshed (both required providers succeeded). */
   refreshed: boolean;
   inferred: number;
   removed: number;
+  /** Content lines without the shared "Relationships:" header. */
   message: string;
 }
 
@@ -43,6 +51,7 @@ export interface SyncResult {
   message: string;
   totalResources: number;
   relationships?: RelationshipSyncSummary;
+  domainRelationships?: RelationshipSyncSummary;
 }
 
 function countByKind(resources: Resource[]): Partial<Record<ResourceKind, number>> {
@@ -158,6 +167,7 @@ async function syncOne(
     ok: true,
     counts,
     total: discovered.resources.length,
+    discoveredResourceIds: discovered.resources.map((r) => r.id),
     message,
   };
 }
@@ -212,6 +222,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
           ok: false,
           counts: {},
           total: 0,
+          discoveredResourceIds: [],
           message: `Syncing ${name}...\n✗ failed`,
           error: errorMessage,
         });
@@ -232,8 +243,18 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
     }
 
     const relationships = refreshGitHubVercelRelationships(store, results);
-    if (relationships.message) {
-      parts.push(relationships.message);
+    const domainRelationships = refreshVercelCloudflareRelationships(
+      store,
+      results,
+    );
+
+    const relationshipLines = [relationships, domainRelationships]
+      .filter((s) => s.message.length > 0)
+      .flatMap((s) => s.message.split("\n"));
+    if (relationshipLines.length > 0) {
+      parts.push(
+        `Relationships:\n${relationshipLines.map((l) => `  ${l}`).join("\n")}`,
+      );
     }
 
     const summary =
@@ -248,6 +269,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
       ok,
       totalResources,
       relationships,
+      domainRelationships,
       message: parts.join("\n\n") + summary,
     };
   } finally {
@@ -292,16 +314,104 @@ function refreshGitHubVercelRelationships(
   const removed = store.deleteRelationshipsByIds(staleIds);
 
   const n = inferred.length;
-  const message =
+  const lines =
     n === 0
-      ? `Relationships:\n  0 GitHub → Vercel source_for (no deterministic matches)`
-      : `Relationships:\n  ${n} GitHub → Vercel source_for` +
-        (removed > 0 ? `\n  ${removed} stale relationship${removed === 1 ? "" : "s"} removed` : "");
+      ? ["0 GitHub → Vercel source_for (no deterministic matches)"]
+      : [`${n} GitHub → Vercel source_for`];
+  if (removed > 0) {
+    lines.push(
+      `${removed} stale relationship${removed === 1 ? "" : "s"} removed`,
+    );
+  }
 
   return {
     refreshed: true,
     inferred: n,
     removed,
-    message,
+    message: lines.join("\n"),
+  };
+}
+
+/**
+ * Refresh Vercel↔Cloudflare uses_domain_in Relationships only when both
+ * providers succeeded in this sync run. Stale cleanup is scoped to this
+ * resolver's edges and only proceeds for projects with authoritative domain
+ * evidence: `domains: []` (known empty) or a current non-matching domain set.
+ * Projects whose enrichment is unknown (omitted `domains`) keep prior edges.
+ * Never touches `source_for`.
+ */
+function refreshVercelCloudflareRelationships(
+  store: Store,
+  results: SyncProviderResult[],
+): RelationshipSyncSummary {
+  const vercelResult = results.find((r) => r.providerId === "vercel");
+  const cloudflareResult = results.find((r) => r.providerId === "cloudflare");
+
+  if (!vercelResult?.ok || !cloudflareResult?.ok) {
+    return {
+      refreshed: false,
+      inferred: 0,
+      removed: 0,
+      message: "",
+    };
+  }
+
+  const resources = store.listResources();
+
+  // Zones discovered this run are live; persisted zone Resources outside this
+  // set are authoritatively absent (Combie does not delete stale Resources).
+  // Edges supported only by stale zone Resources are never (re)created.
+  const liveResourceIds = new Set(cloudflareResult.discoveredResourceIds);
+  const inferred = inferVercelCloudflareRelationships(resources).filter((r) =>
+    liveResourceIds.has(r.targetResourceId),
+  );
+  const inferredIds = new Set(inferred.map((r) => r.id));
+
+  for (const rel of inferred) {
+    store.upsertRelationship(rel);
+  }
+
+  const authoritativeProjectIds = new Set(
+    resources
+      .filter(
+        (r) =>
+          r.provider === "vercel" &&
+          r.kind === "project" &&
+          hasAuthoritativeDomainEvidence(r),
+      )
+      .map((r) => r.id),
+  );
+
+  const existing = store
+    .listRelationships()
+    .filter(isVercelCloudflareUsesDomainIn);
+  const staleIds = existing
+    .filter((r) => !inferredIds.has(r.id))
+    .filter(
+      (r) =>
+        // Zone authoritatively absent: the edge cannot hold without it.
+        !liveResourceIds.has(r.targetResourceId) ||
+        // Supported zones: clean up only with authoritative domain evidence.
+        authoritativeProjectIds.has(r.sourceResourceId),
+    )
+    .map((r) => r.id);
+  const removed = store.deleteRelationshipsByIds(staleIds);
+
+  const n = inferred.length;
+  const lines =
+    n === 0
+      ? ["0 Vercel → Cloudflare uses_domain_in (no deterministic matches)"]
+      : [`${n} Vercel → Cloudflare uses_domain_in`];
+  if (removed > 0) {
+    lines.push(
+      `${removed} stale relationship${removed === 1 ? "" : "s"} removed`,
+    );
+  }
+
+  return {
+    refreshed: true,
+    inferred: n,
+    removed,
+    message: lines.join("\n"),
   };
 }

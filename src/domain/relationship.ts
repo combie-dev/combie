@@ -4,8 +4,12 @@
  * Kind `source_for` means the source Resource is the Git source for the target.
  * Chosen because Vercel project `link` proves a Git repository connection, not
  * deployment semantics — do not call this `deploys_to`.
+ *
+ * Kind `uses_domain_in` means the source Vercel project has a custom domain
+ * whose normalized apex equals the target Cloudflare zone name. It does not
+ * claim hosting, deployment, or current DNS routing semantics.
  */
-export type RelationshipKind = "source_for";
+export type RelationshipKind = "source_for" | "uses_domain_in";
 
 /** Compact provenance explaining why the Relationship exists. */
 export interface RelationshipEvidence {
@@ -13,12 +17,16 @@ export interface RelationshipEvidence {
   source: string;
   /** How the link was established (e.g. "git_repository_reference"). */
   mechanism: string;
-  /** Canonical owner/repo from provider evidence. */
-  repository: string;
-  /** GitHub numeric repository id when available. */
+  /** Canonical owner/repo from provider evidence (source_for). */
+  repository?: string;
+  /** GitHub numeric repository id when available (source_for). */
   githubRepoId?: string;
-  /** Vercel link type when available (e.g. "github"). */
+  /** Vercel link type when available (source_for). */
   vercelLinkType?: string;
+  /** Normalized custom-domain apex (uses_domain_in). */
+  apexName?: string;
+  /** Custom hostnames supporting the apex match (uses_domain_in). */
+  hostnames?: string[];
 }
 
 export interface Relationship {

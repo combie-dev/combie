@@ -123,6 +123,7 @@ export function formatRelationshipsTable(
     const evidence =
       rel.evidence.repository ||
       rel.evidence.githubRepoId ||
+      rel.evidence.apexName ||
       rel.evidence.mechanism;
     return {
       from,

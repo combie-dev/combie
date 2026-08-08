@@ -87,4 +87,39 @@ describe("createRelationship", () => {
     const b: Relationship = createRelationship(input);
     expect(a.id).toBe(b.id);
   });
+
+  test("uses_domain_in is a valid kind with domain evidence", () => {
+    const rel = createRelationship({
+      sourceResourceId: "vercel:project:prj_abc",
+      targetResourceId: "cloudflare:zone:zone-1",
+      kind: "uses_domain_in",
+      evidence: {
+        source: "vercel",
+        mechanism: "custom_domain_apex",
+        apexName: "example.com",
+        hostnames: ["app.example.com"],
+      },
+    });
+
+    expect(rel.kind).toBe("uses_domain_in");
+    expect(rel.id).toBe(
+      "rel:vercel:project:prj_abc:uses_domain_in:cloudflare:zone:zone-1",
+    );
+    expect(rel.evidence.apexName).toBe("example.com");
+    expect(rel.evidence.hostnames).toEqual(["app.example.com"]);
+  });
+
+  test("identity differs from source_for for same endpoints", () => {
+    const a = relationshipId(
+      "vercel:project:prj_abc",
+      "source_for",
+      "cloudflare:zone:zone-1",
+    );
+    const b = relationshipId(
+      "vercel:project:prj_abc",
+      "uses_domain_in",
+      "cloudflare:zone:zone-1",
+    );
+    expect(a).not.toBe(b);
+  });
 });

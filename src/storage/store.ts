@@ -465,7 +465,6 @@ function mapRelationship(row: {
   let evidence: RelationshipEvidence = {
     source: "unknown",
     mechanism: "unknown",
-    repository: "",
   };
   try {
     evidence = JSON.parse(row.evidence_json) as RelationshipEvidence;
