@@ -330,6 +330,31 @@ export class Store {
     return rows.map(mapRelationship);
   }
 
+  /**
+   * One-hop Relationships where the Resource is either source or target.
+   * Does not invent inverse rows — reverse lookup reads canonical storage.
+   */
+  listRelationshipsForResource(resourceId: string): Relationship[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT id, source_resource_id, target_resource_id, kind,
+                evidence_json, created_at, updated_at
+         FROM relationships
+         WHERE source_resource_id = ? OR target_resource_id = ?
+         ORDER BY kind, source_resource_id, target_resource_id`,
+      )
+      .all(resourceId, resourceId) as Array<{
+      id: string;
+      source_resource_id: string;
+      target_resource_id: string;
+      kind: string;
+      evidence_json: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+    return rows.map(mapRelationship);
+  }
+
   getRelationship(id: string): Relationship | null {
     const row = this.getDb()
       .query(

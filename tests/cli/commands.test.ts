@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { main } from "../../src/cli/index.ts";
 import { formatRelationshipsTable } from "../../src/app/list.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
+import { createResource } from "../../src/domain/resource.ts";
+import { Store } from "../../src/storage/store.ts";
 import type { ResourceLabel } from "../../src/app/list.ts";
 
 function capture(fn: () => Promise<number>): Promise<{
@@ -162,6 +164,91 @@ describe("CLI commands", () => {
     const result = await capture(() => main(["help"]));
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("relationships");
+  });
+
+  test("related fails when not initialized", async () => {
+    const result = await capture(() =>
+      main(["related", "github:repository:1", "--dir", dir]),
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("combie init");
+  });
+
+  test("related requires resource id", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() => main(["related", "--dir", dir]));
+    expect(result.code).not.toBe(0);
+    expect(result.stderr.toLowerCase()).toMatch(/usage|resource/);
+  });
+
+  test("related not-found state", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() =>
+      main(["related", "github:repository:does-not-exist", "--dir", dir]),
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("Resource not found");
+    expect(result.stderr).toContain("combie resources");
+  });
+
+  test("help lists related command", async () => {
+    const result = await capture(() => main(["help"]));
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("related");
+    expect(result.stdout).toContain("provider:kind:providerResourceId");
+  });
+
+  test("related shows source and target directions with evidence", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.isInitialized();
+    const gh = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "demo-hub",
+      metadata: { fullName: "acme/demo-hub" },
+    });
+    const vc = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_demo",
+      kind: "project",
+      name: "demo-hub",
+      metadata: {},
+    });
+    store.upsertResource(gh);
+    store.upsertResource(vc);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: gh.id,
+        targetResourceId: vc.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/demo-hub",
+        },
+      }),
+    );
+    store.close();
+
+    const fromSource = await capture(() =>
+      main(["related", gh.id, "--dir", dir]),
+    );
+    expect(fromSource.code).toBe(0);
+    expect(fromSource.stdout).toContain("source_for →");
+    expect(fromSource.stdout).toContain("Vercel project");
+    expect(fromSource.stdout).toContain("Evidence:");
+    expect(fromSource.stdout).toContain("git_repository_reference");
+    expect(fromSource.stdout).not.toContain("secret");
+
+    const fromTarget = await capture(() =>
+      main(["related", vc.id, "--dir", dir]),
+    );
+    expect(fromTarget.code).toBe(0);
+    expect(fromTarget.stdout).toContain("← source_for");
+    expect(fromTarget.stdout).toContain("GitHub repository");
+    expect(fromTarget.stdout).toContain("acme/demo-hub");
   });
 
   test("formatRelationshipsTable shows source kind target and evidence", () => {

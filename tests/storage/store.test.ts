@@ -275,6 +275,68 @@ describe("Store", () => {
     expect(store.listRelationships()).toHaveLength(0);
   });
 
+  test("listRelationshipsForResource matches source or target", () => {
+    const { store } = openStore();
+    store.init();
+
+    store.upsertResource(
+      createResource({
+        provider: "github",
+        providerResourceId: "1001",
+        kind: "repository",
+        name: "combie",
+        metadata: { fullName: "acme/combie" },
+      }),
+    );
+    store.upsertResource(
+      createResource({
+        provider: "vercel",
+        providerResourceId: "prj_1",
+        kind: "project",
+        name: "web",
+        metadata: {},
+      }),
+    );
+    store.upsertResource(
+      createResource({
+        provider: "github",
+        providerResourceId: "1002",
+        kind: "repository",
+        name: "other",
+        metadata: { fullName: "acme/other" },
+      }),
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: "github:repository:1001",
+        targetResourceId: "vercel:project:prj_1",
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/combie",
+        },
+      }),
+    );
+
+    const fromSource = store.listRelationshipsForResource(
+      "github:repository:1001",
+    );
+    const fromTarget = store.listRelationshipsForResource(
+      "vercel:project:prj_1",
+    );
+    const unrelated = store.listRelationshipsForResource(
+      "github:repository:1002",
+    );
+
+    expect(fromSource).toHaveLength(1);
+    expect(fromTarget).toHaveLength(1);
+    expect(fromSource[0]!.id).toBe(fromTarget[0]!.id);
+    expect(unrelated).toHaveLength(0);
+    // still a single canonical row
+    expect(store.listRelationships()).toHaveLength(1);
+  });
+
   test("resources and relationships coexist in same store", () => {
     const { store } = openStore();
     store.init();

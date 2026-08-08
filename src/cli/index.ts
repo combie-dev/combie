@@ -12,6 +12,7 @@ import {
   formatResourcesTable,
   formatRelationshipsTable,
 } from "../app/list.ts";
+import { getRelatedContext, formatRelatedContext } from "../app/related.ts";
 
 const HELP = `combie — engineering context layer
 
@@ -25,6 +26,7 @@ Commands:
   providers                    List configured providers
   resources                    List discovered resources
   relationships                List known cross-provider relationships
+  related <resource-id>        Show one-hop related context for a resource
   help                         Show this help
 
 Connect options:
@@ -40,6 +42,10 @@ Resources options:
   --provider <id>              Filter by provider
   --kind <kind>                Filter by kind (worker, database, kv_namespace, zone, repository, project)
 
+Related:
+  <resource-id>                Stable id: provider:kind:providerResourceId
+                               Example: github:repository:1001
+
 Global:
   --dir <path>                 Combie state directory (default: ./.combie)
   --help, -h                   Show help
@@ -54,6 +60,7 @@ Examples:
   combie providers
   combie resources
   combie relationships
+  combie related github:repository:1001
 `;
 
 interface ParsedArgs {
@@ -165,6 +172,18 @@ async function main(argv: string[]): Promise<number> {
       case "relationships": {
         const { relationships, labels } = listRelationships(baseDir);
         console.log(formatRelationshipsTable(relationships, labels));
+        return 0;
+      }
+      case "related": {
+        const resourceRef = positionals[0];
+        if (!resourceRef) {
+          console.error(
+            "Usage: combie related <resource-id>\nExample: combie related github:repository:1001\nList ids: combie resources",
+          );
+          return 1;
+        }
+        const ctx = getRelatedContext({ baseDir, resourceRef });
+        console.log(formatRelatedContext(ctx));
         return 0;
       }
       default:
