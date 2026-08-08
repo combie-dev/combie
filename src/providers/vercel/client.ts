@@ -31,6 +31,26 @@ export interface VercelUserResponse {
   user: VercelUserRaw;
 }
 
+/**
+ * Git repository linkage returned by Vercel on project list/detail.
+ * Present when the project is connected to GitHub/GitLab/Bitbucket.
+ * Live list (`GET /v9/projects`) includes this when linked.
+ */
+export interface VercelProjectLink {
+  type?: string;
+  org?: string;
+  repo?: string;
+  /** GitHub numeric repository id when type is github / github-limited. */
+  repoId?: number | string;
+  repoOwnerId?: number | string;
+  productionBranch?: string;
+  gitCredentialId?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  deployHooks?: unknown[];
+  sourceless?: boolean;
+}
+
 export interface VercelProject {
   id: string;
   name: string;
@@ -38,6 +58,8 @@ export interface VercelProject {
   accountId: string;
   createdAt?: number;
   updatedAt?: number;
+  /** Provider-backed Git link; may be absent for CLI-only / unlinked projects. */
+  link?: VercelProjectLink | null;
 }
 
 export interface VercelProjectsResponse {

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createResource } from "../../src/domain/resource.ts";
+import { createRelationship } from "../../src/domain/relationship.ts";
 import { Store } from "../../src/storage/store.ts";
 
 function tempDir(): string {
@@ -203,5 +204,113 @@ describe("Store", () => {
     expect(found!.name).toBe("prod-d1");
     expect(found!.kind).toBe("database");
     expect(store.getResource("missing")).toBeNull();
+  });
+
+  test("upsertRelationship does not duplicate on repeated sync", () => {
+    const { store } = openStore();
+    store.init();
+
+    const first = createRelationship({
+      sourceResourceId: "github:repository:1001",
+      targetResourceId: "vercel:project:prj_abc",
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "acme/combie",
+        githubRepoId: "1001",
+      },
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+
+    store.upsertRelationship(first);
+    expect(store.listRelationships()).toHaveLength(1);
+
+    const second = createRelationship({
+      sourceResourceId: "github:repository:1001",
+      targetResourceId: "vercel:project:prj_abc",
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "acme/combie",
+        githubRepoId: "1001",
+        vercelLinkType: "github",
+      },
+      createdAt: "2025-02-01T00:00:00.000Z",
+      updatedAt: "2025-02-01T00:00:00.000Z",
+    });
+
+    store.upsertRelationship(second);
+    const all = store.listRelationships();
+    expect(all).toHaveLength(1);
+    expect(all[0]!.evidence.vercelLinkType).toBe("github");
+    expect(all[0]!.updatedAt).toBe("2025-02-01T00:00:00.000Z");
+    expect(all[0]!.createdAt).toBe("2025-01-01T00:00:00.000Z");
+    expect(all[0]!.id).toBe(first.id);
+  });
+
+  test("getRelationship and deleteRelationshipsByIds", () => {
+    const { store } = openStore();
+    store.init();
+
+    const rel = createRelationship({
+      sourceResourceId: "github:repository:1",
+      targetResourceId: "vercel:project:p1",
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "o/r",
+      },
+    });
+    store.upsertRelationship(rel);
+
+    expect(store.getRelationship(rel.id)?.kind).toBe("source_for");
+    expect(store.getRelationship("missing")).toBeNull();
+
+    const deleted = store.deleteRelationshipsByIds([rel.id, "nope"]);
+    expect(deleted).toBe(1);
+    expect(store.listRelationships()).toHaveLength(0);
+  });
+
+  test("resources and relationships coexist in same store", () => {
+    const { store } = openStore();
+    store.init();
+
+    store.upsertResource(
+      createResource({
+        provider: "github",
+        providerResourceId: "1001",
+        kind: "repository",
+        name: "combie",
+        metadata: { fullName: "acme/combie" },
+      }),
+    );
+    store.upsertResource(
+      createResource({
+        provider: "vercel",
+        providerResourceId: "prj_1",
+        kind: "project",
+        name: "web",
+        metadata: {},
+      }),
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: "github:repository:1001",
+        targetResourceId: "vercel:project:prj_1",
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/combie",
+        },
+      }),
+    );
+
+    expect(store.listResources()).toHaveLength(2);
+    expect(store.listRelationships()).toHaveLength(1);
   });
 });

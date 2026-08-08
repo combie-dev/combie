@@ -1,6 +1,11 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import type { Resource, ResourceKind } from "../domain/resource.ts";
+import type {
+  Relationship,
+  RelationshipEvidence,
+  RelationshipKind,
+} from "../domain/relationship.ts";
 import { dbPath, stateDir } from "./paths.ts";
 
 export interface ProviderRecord {
@@ -36,6 +41,17 @@ CREATE TABLE IF NOT EXISTS resources (
   updated_at TEXT NOT NULL,
   UNIQUE(provider, kind, provider_resource_id)
 );
+
+CREATE TABLE IF NOT EXISTS relationships (
+  id TEXT PRIMARY KEY,
+  source_resource_id TEXT NOT NULL,
+  target_resource_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  evidence_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(source_resource_id, kind, target_resource_id)
+);
 `;
 
 export class Store {
@@ -60,6 +76,11 @@ export class Store {
     return this.db;
   }
 
+  /** Apply idempotent schema (safe on existing DBs that predate new tables). */
+  private applySchema(db: Database): void {
+    db.exec(SCHEMA);
+  }
+
   /** Create state directory + schema. Idempotent. */
   init(): void {
     const dir = this.stateDir;
@@ -73,7 +94,7 @@ export class Store {
       this.db.exec("PRAGMA foreign_keys = ON;");
     }
 
-    this.db.exec(SCHEMA);
+    this.applySchema(this.db);
     this.db
       .query(
         `INSERT INTO meta (key, value) VALUES ('initialized', 'true')
@@ -96,7 +117,11 @@ export class Store {
           return false;
         }
         this.db = new Database(path);
+        this.db.exec("PRAGMA journal_mode = WAL;");
+        this.db.exec("PRAGMA foreign_keys = ON;");
       }
+      // Ensure newer tables (e.g. relationships) exist on pre-005 databases.
+      this.applySchema(this.db);
       const row = this.db
         .query(`SELECT value FROM meta WHERE key = 'initialized'`)
         .get() as { value: string } | null;
@@ -258,6 +283,93 @@ export class Store {
     }
   }
 
+  /**
+   * Insert or update a relationship.
+   * On conflict (same source+kind+target): update evidence and updated_at;
+   * preserve created_at and stable id.
+   */
+  upsertRelationship(relationship: Relationship): void {
+    const db = this.getDb();
+    const evidenceJson = JSON.stringify(relationship.evidence);
+    db.query(
+      `INSERT INTO relationships (
+         id, source_resource_id, target_resource_id, kind,
+         evidence_json, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(source_resource_id, kind, target_resource_id) DO UPDATE SET
+         evidence_json = excluded.evidence_json,
+         updated_at = excluded.updated_at`,
+    ).run(
+      relationship.id,
+      relationship.sourceResourceId,
+      relationship.targetResourceId,
+      relationship.kind,
+      evidenceJson,
+      relationship.createdAt,
+      relationship.updatedAt,
+    );
+  }
+
+  listRelationships(): Relationship[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT id, source_resource_id, target_resource_id, kind,
+                evidence_json, created_at, updated_at
+         FROM relationships
+         ORDER BY kind, source_resource_id, target_resource_id`,
+      )
+      .all() as Array<{
+      id: string;
+      source_resource_id: string;
+      target_resource_id: string;
+      kind: string;
+      evidence_json: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+    return rows.map(mapRelationship);
+  }
+
+  getRelationship(id: string): Relationship | null {
+    const row = this.getDb()
+      .query(
+        `SELECT id, source_resource_id, target_resource_id, kind,
+                evidence_json, created_at, updated_at
+         FROM relationships WHERE id = ?`,
+      )
+      .get(id) as
+      | {
+          id: string;
+          source_resource_id: string;
+          target_resource_id: string;
+          kind: string;
+          evidence_json: string;
+          created_at: string;
+          updated_at: string;
+        }
+      | null;
+    return row ? mapRelationship(row) : null;
+  }
+
+  deleteRelationship(id: string): void {
+    this.getDb().query(`DELETE FROM relationships WHERE id = ?`).run(id);
+  }
+
+  /**
+   * Delete relationships by id. Used for stale inference cleanup.
+   */
+  deleteRelationshipsByIds(ids: string[]): number {
+    if (ids.length === 0) return 0;
+    const db = this.getDb();
+    let deleted = 0;
+    const stmt = db.query(`DELETE FROM relationships WHERE id = ?`);
+    for (const id of ids) {
+      const result = stmt.run(id);
+      deleted += Number(result.changes);
+    }
+    return deleted;
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
@@ -311,6 +423,36 @@ function mapResource(row: {
     kind: row.kind as ResourceKind,
     name: row.name,
     metadata,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapRelationship(row: {
+  id: string;
+  source_resource_id: string;
+  target_resource_id: string;
+  kind: string;
+  evidence_json: string;
+  created_at: string;
+  updated_at: string;
+}): Relationship {
+  let evidence: RelationshipEvidence = {
+    source: "unknown",
+    mechanism: "unknown",
+    repository: "",
+  };
+  try {
+    evidence = JSON.parse(row.evidence_json) as RelationshipEvidence;
+  } catch {
+    /* keep default */
+  }
+  return {
+    id: row.id,
+    sourceResourceId: row.source_resource_id,
+    targetResourceId: row.target_resource_id,
+    kind: row.kind as RelationshipKind,
+    evidence,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

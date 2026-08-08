@@ -6,7 +6,17 @@
       "framework": "nextjs",
       "accountId": "team_xyz789",
       "createdAt": 1704067200000,
-      "updatedAt": 1706745600000
+      "updatedAt": 1706745600000,
+      "link": {
+        "type": "github",
+        "org": "example-user",
+        "repo": "combie",
+        "repoId": 1001,
+        "repoOwnerId": 123456,
+        "productionBranch": "master",
+        "gitCredentialId": "cred_test",
+        "deployHooks": []
+      }
     },
     {
       "id": "prj_def456",
@@ -14,7 +24,16 @@
       "framework": "astro",
       "accountId": "team_xyz789",
       "createdAt": 1698710400000,
-      "updatedAt": 1701388800000
+      "updatedAt": 1701388800000,
+      "link": {
+        "type": "github",
+        "org": "example-user",
+        "repo": "docs",
+        "repoId": 2002,
+        "productionBranch": "main",
+        "gitCredentialId": "cred_test",
+        "deployHooks": []
+      }
     },
     {
       "id": "prj_ghi789",

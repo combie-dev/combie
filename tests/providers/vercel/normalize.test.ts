@@ -20,6 +20,38 @@ describe("normalizeProject", () => {
     });
     expect(resource.metadata.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(resource.metadata.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(resource.metadata.git).toEqual({
+      provider: "github",
+      org: "example-user",
+      repo: "combie",
+      fullName: "example-user/combie",
+      linkType: "github",
+      repoId: "1001",
+    });
+  });
+
+  test("preserves GitHub git link and omits when unlinked", () => {
+    const linked = normalizeProject(projectsFixture.projects[0] as VercelProject);
+    const unlinked = normalizeProject(projectsFixture.projects[2] as VercelProject);
+    expect(linked.metadata.git).toBeDefined();
+    expect((linked.metadata.git as { repoId: string }).repoId).toBe("1001");
+    expect(unlinked.metadata.git).toBeUndefined();
+  });
+
+  test("ignores non-github link types", () => {
+    const project: VercelProject = {
+      id: "prj_gl",
+      name: "gitlab-app",
+      accountId: "acct-1",
+      link: {
+        type: "gitlab",
+        org: "acme",
+        repo: "app",
+        repoId: 42,
+      },
+    };
+    const resource = normalizeProject(project);
+    expect(resource.metadata.git).toBeUndefined();
   });
 
   test("uses stable Vercel project id (rename-safe identity)", () => {

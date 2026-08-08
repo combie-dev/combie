@@ -7,8 +7,10 @@ import { syncProviders } from "../app/sync.ts";
 import {
   listProviders,
   listResources,
+  listRelationships,
   formatProvidersTable,
   formatResourcesTable,
+  formatRelationshipsTable,
 } from "../app/list.ts";
 
 const HELP = `combie — engineering context layer
@@ -22,6 +24,7 @@ Commands:
   sync [provider]              Discover and store resources
   providers                    List configured providers
   resources                    List discovered resources
+  relationships                List known cross-provider relationships
   help                         Show this help
 
 Connect options:
@@ -50,6 +53,7 @@ Examples:
   combie sync
   combie providers
   combie resources
+  combie relationships
 `;
 
 interface ParsedArgs {
@@ -156,6 +160,11 @@ async function main(argv: string[]): Promise<number> {
         const kind = typeof flags.kind === "string" ? flags.kind : undefined;
         const { resources } = listResources({ baseDir, provider, kind });
         console.log(formatResourcesTable(resources));
+        return 0;
+      }
+      case "relationships": {
+        const { relationships, labels } = listRelationships(baseDir);
+        console.log(formatRelationshipsTable(relationships, labels));
         return 0;
       }
       default:

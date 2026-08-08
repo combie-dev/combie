@@ -3,6 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "../../src/cli/index.ts";
+import { formatRelationshipsTable } from "../../src/app/list.ts";
+import { createRelationship } from "../../src/domain/relationship.ts";
+import type { ResourceLabel } from "../../src/app/list.ts";
 
 function capture(fn: () => Promise<number>): Promise<{
   code: number;
@@ -110,6 +113,7 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("VERCEL_TOKEN");
     expect(result.stdout).toContain("sentry");
     expect(result.stdout).toContain("SENTRY_AUTH_TOKEN");
+    expect(result.stdout).toContain("relationships");
   });
 
   test("connect vercel without auth option fails with guidance", async () => {
@@ -139,6 +143,70 @@ describe("CLI commands", () => {
     const resources = await capture(() => main(["resources", "--dir", dir]));
     expect(resources.code).toBe(0);
     expect(resources.stdout.toLowerCase()).toMatch(/no resources|sync/);
+  });
+
+  test("relationships fails when not initialized", async () => {
+    const result = await capture(() => main(["relationships", "--dir", dir]));
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("combie init");
+  });
+
+  test("relationships empty state after init", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() => main(["relationships", "--dir", dir]));
+    expect(result.code).toBe(0);
+    expect(result.stdout.toLowerCase()).toMatch(/no relationships|sync/);
+  });
+
+  test("help lists relationships command", async () => {
+    const result = await capture(() => main(["help"]));
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("relationships");
+  });
+
+  test("formatRelationshipsTable shows source kind target and evidence", () => {
+    const rel = createRelationship({
+      sourceResourceId: "github:repository:1001",
+      targetResourceId: "vercel:project:prj_abc",
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "acme/combie",
+        githubRepoId: "1001",
+      },
+    });
+    const labels = new Map<string, ResourceLabel>([
+      [
+        "github:repository:1001",
+        {
+          provider: "github",
+          name: "combie",
+          kind: "repository",
+          displayName: "acme/combie",
+        },
+      ],
+      [
+        "vercel:project:prj_abc",
+        {
+          provider: "vercel",
+          name: "combie-web",
+          kind: "project",
+          displayName: "combie-web",
+        },
+      ],
+    ]);
+    const table = formatRelationshipsTable([rel], labels);
+    expect(table).toContain("FROM");
+    expect(table).toContain("RELATIONSHIP");
+    expect(table).toContain("TO");
+    expect(table).toContain("EVIDENCE");
+    expect(table).toContain("GitHub acme/combie");
+    expect(table).toContain("source_for");
+    expect(table).toContain("Vercel combie-web");
+    expect(table).toContain("acme/combie");
+    expect(table).not.toContain("ghp_");
+    expect(table).not.toContain("secret");
   });
 
   test("connect does not leak token on auth failure", async () => {

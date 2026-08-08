@@ -7,6 +7,10 @@ import {
   providerNotConnected,
   CombieError,
 } from "./errors.ts";
+import {
+  inferGitHubVercelRelationships,
+  isGitHubVercelSourceFor,
+} from "./infer-github-vercel.ts";
 
 export interface SyncOptions {
   baseDir: string;
@@ -24,12 +28,21 @@ export interface SyncProviderResult {
   error?: string;
 }
 
+export interface RelationshipSyncSummary {
+  /** Whether relationship inference ran (both GitHub + Vercel succeeded). */
+  refreshed: boolean;
+  inferred: number;
+  removed: number;
+  message: string;
+}
+
 export interface SyncResult {
   results: SyncProviderResult[];
   /** True when every attempted provider succeeded. */
   ok: boolean;
   message: string;
   totalResources: number;
+  relationships?: RelationshipSyncSummary;
 }
 
 function countByKind(resources: Resource[]): Partial<Record<ResourceKind, number>> {
@@ -218,6 +231,11 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
       }
     }
 
+    const relationships = refreshGitHubVercelRelationships(store, results);
+    if (relationships.message) {
+      parts.push(relationships.message);
+    }
+
     const summary =
       results.length > 1
         ? `\nSync ${ok ? "complete" : "finished with errors"}.\n${totalResources} resources stored from successful providers.`
@@ -229,9 +247,61 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
       results,
       ok,
       totalResources,
+      relationships,
       message: parts.join("\n\n") + summary,
     };
   } finally {
     store.close();
   }
+}
+
+/**
+ * Refresh GitHub↔Vercel source_for Relationships only when both providers
+ * succeeded in this sync run (complete evidence). Incomplete evidence never
+ * triggers destructive stale cleanup.
+ */
+function refreshGitHubVercelRelationships(
+  store: Store,
+  results: SyncProviderResult[],
+): RelationshipSyncSummary {
+  const githubResult = results.find((r) => r.providerId === "github");
+  const vercelResult = results.find((r) => r.providerId === "vercel");
+
+  // Both providers must have been attempted and succeeded this run.
+  if (!githubResult?.ok || !vercelResult?.ok) {
+    return {
+      refreshed: false,
+      inferred: 0,
+      removed: 0,
+      message: "",
+    };
+  }
+
+  const resources = store.listResources();
+  const inferred = inferGitHubVercelRelationships(resources);
+  const inferredIds = new Set(inferred.map((r) => r.id));
+
+  for (const rel of inferred) {
+    store.upsertRelationship(rel);
+  }
+
+  const existing = store.listRelationships().filter(isGitHubVercelSourceFor);
+  const staleIds = existing
+    .filter((r) => !inferredIds.has(r.id))
+    .map((r) => r.id);
+  const removed = store.deleteRelationshipsByIds(staleIds);
+
+  const n = inferred.length;
+  const message =
+    n === 0
+      ? `Relationships:\n  0 GitHub → Vercel source_for (no deterministic matches)`
+      : `Relationships:\n  ${n} GitHub → Vercel source_for` +
+        (removed > 0 ? `\n  ${removed} stale relationship${removed === 1 ? "" : "s"} removed` : "");
+
+  return {
+    refreshed: true,
+    inferred: n,
+    removed,
+    message,
+  };
 }

@@ -1,4 +1,5 @@
 import type { Resource, ResourceKind } from "../domain/resource.ts";
+import type { Relationship } from "../domain/relationship.ts";
 import { Store, type ProviderRecord } from "../storage/store.ts";
 import { notInitialized } from "./errors.ts";
 
@@ -14,6 +15,20 @@ export interface ListResourcesOptions {
 
 export interface ListResourcesResult {
   resources: Resource[];
+}
+
+export interface ResourceLabel {
+  provider: string;
+  name: string;
+  kind: string;
+  /** Prefer fullName for GitHub repositories when present. */
+  displayName: string;
+}
+
+export interface ListRelationshipsResult {
+  relationships: Relationship[];
+  /** Resolved labels for source/target when resources still exist. */
+  labels: Map<string, ResourceLabel>;
 }
 
 export function listProviders(baseDir: string): ListProvidersResult {
@@ -41,6 +56,106 @@ export function listResources(options: ListResourcesOptions): ListResourcesResul
   } finally {
     store.close();
   }
+}
+
+export function listRelationships(baseDir: string): ListRelationshipsResult {
+  const store = new Store(baseDir);
+  try {
+    if (!store.isInitialized()) {
+      throw notInitialized();
+    }
+    const relationships = store.listRelationships();
+    const resources = store.listResources();
+    const labels = new Map<string, ResourceLabel>();
+    for (const r of resources) {
+      const fullName =
+        typeof r.metadata.fullName === "string" ? r.metadata.fullName : null;
+      labels.set(r.id, {
+        provider: r.provider,
+        name: r.name,
+        kind: r.kind,
+        displayName: fullName && fullName.length > 0 ? fullName : r.name,
+      });
+    }
+    return { relationships, labels };
+  } finally {
+    store.close();
+  }
+}
+
+const PROVIDER_DISPLAY: Record<string, string> = {
+  github: "GitHub",
+  vercel: "Vercel",
+  cloudflare: "Cloudflare",
+  sentry: "Sentry",
+};
+
+function formatResourceLabel(
+  resourceId: string,
+  labels: Map<string, ResourceLabel>,
+): string {
+  const label = labels.get(resourceId);
+  if (label) {
+    // Display: "GitHub sgr0691/combie" / "Vercel combie-web"
+    const providerLabel =
+      PROVIDER_DISPLAY[label.provider] ??
+      label.provider.charAt(0).toUpperCase() + label.provider.slice(1);
+    return `${providerLabel} ${label.displayName}`;
+  }
+  return resourceId;
+}
+
+export function formatRelationshipsTable(
+  relationships: Relationship[],
+  labels: Map<string, ResourceLabel>,
+): string {
+  if (relationships.length === 0) {
+    return (
+      "No relationships discovered yet.\n" +
+      "Run: combie sync\n" +
+      "(Relationships require deterministic provider evidence, e.g. Vercel GitHub link matched to a GitHub repository.)"
+    );
+  }
+
+  const rows = relationships.map((rel) => {
+    const from = formatResourceLabel(rel.sourceResourceId, labels);
+    const to = formatResourceLabel(rel.targetResourceId, labels);
+    const evidence =
+      rel.evidence.repository ||
+      rel.evidence.githubRepoId ||
+      rel.evidence.mechanism;
+    return {
+      from,
+      kind: rel.kind,
+      to,
+      evidence: String(evidence),
+    };
+  });
+
+  const col1 = Math.max("FROM".length, ...rows.map((r) => r.from.length));
+  const col2 = Math.max("RELATIONSHIP".length, ...rows.map((r) => r.kind.length));
+  const col3 = Math.max("TO".length, ...rows.map((r) => r.to.length));
+  const header =
+    "FROM".padEnd(col1) +
+    "  " +
+    "RELATIONSHIP".padEnd(col2) +
+    "  " +
+    "TO".padEnd(col3) +
+    "  " +
+    "EVIDENCE";
+  const body = rows
+    .map(
+      (r) =>
+        r.from.padEnd(col1) +
+        "  " +
+        r.kind.padEnd(col2) +
+        "  " +
+        r.to.padEnd(col3) +
+        "  " +
+        r.evidence,
+    )
+    .join("\n");
+  return `${header}\n${body}`;
 }
 
 /** Format relative time for CLI display. */
