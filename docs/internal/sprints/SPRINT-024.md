@@ -939,8 +939,8 @@ Do not implement Sprint 025 in this Sprint.
 - [x] whitespace/diff checks clean
 - [x] completion notes updated
 - [x] Canon changes recorded or None
-- [ ] Sprint 024 committed separately
-- [ ] worktree clean
+- [x] Sprint 024 committed separately (`d9e50d9`)
+- [x] worktree clean
 - [x] Sprint 025 not started
 
 ## Explicitly Out of Scope
