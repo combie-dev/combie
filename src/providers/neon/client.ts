@@ -90,6 +90,30 @@ interface NeonEndpointsResponse {
   endpoints?: unknown;
 }
 
+/** Current v2 operation list item. Extra wire fields are never persisted. */
+export interface NeonOperationRaw {
+  id?: unknown;
+  project_id?: unknown;
+  branch_id?: unknown;
+  endpoint_id?: unknown;
+  action?: unknown;
+  status?: unknown;
+  error?: unknown;
+  failures_count?: unknown;
+  retry_at?: unknown;
+  created_at?: unknown;
+  updated_at?: unknown;
+  total_duration_ms?: unknown;
+  [key: string]: unknown;
+}
+
+interface NeonOperationsResponse {
+  operations?: unknown;
+  pagination?: {
+    cursor?: unknown;
+  };
+}
+
 export interface NeonClientOptions {
   token: string;
   fetch?: FetchLike;
@@ -312,6 +336,68 @@ export class NeonClient {
     return response.endpoints as NeonEndpoint[];
   }
 
+  /**
+   * List the current retained operation history for one exact Neon project.
+   * The cursor remains opaque; no unsupported incremental watermark is used.
+   */
+  async listProjectOperations(projectId: string): Promise<NeonOperationRaw[]> {
+    const endpoint =
+      `/projects/${encodeURIComponent(projectId)}/operations`;
+    const all: NeonOperationRaw[] = [];
+    let cursor: string | undefined;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const params = new URLSearchParams({ limit: "1000" });
+      if (cursor) params.set("cursor", cursor);
+      const response = await this.getJson<NeonOperationsResponse>(
+        `${endpoint}?${params.toString()}`,
+        `List operations for Neon project ${projectId}`,
+      );
+      if (!Array.isArray(response?.operations)) {
+        throw malformedOperationsError(projectId, endpoint);
+      }
+      for (const operation of response.operations) {
+        if (!isValidOperationWireItem(operation, projectId)) {
+          throw malformedOperationsError(projectId, endpoint);
+        }
+        all.push(operation);
+      }
+
+      const pagination = response.pagination as unknown;
+      if (
+        pagination !== undefined &&
+        (!pagination || typeof pagination !== "object" || Array.isArray(pagination))
+      ) {
+        throw malformedOperationsError(projectId, endpoint);
+      }
+      const next = (pagination as { cursor?: unknown } | undefined)?.cursor;
+      if (next !== undefined && typeof next !== "string") {
+        throw malformedOperationsError(projectId, endpoint);
+      }
+      if (
+        typeof next !== "string" ||
+        next.trim() === "" ||
+        response.operations.length === 0
+      ) {
+        return all;
+      }
+      if (next === cursor) {
+        throw new NeonApiError({
+          message: `List operations for Neon project ${projectId}: pagination cursor did not advance. Try again.`,
+          status: 200,
+          endpoint,
+        });
+      }
+      cursor = next;
+    }
+
+    throw new NeonApiError({
+      message: `List operations for Neon project ${projectId}: pagination exceeded ${MAX_PAGES} pages. Operation refresh remains unknown; narrow the project scope and try again.`,
+      status: 200,
+      endpoint,
+    });
+  }
+
   private async getJson<T>(path: string, context: string): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     let response: Response;
@@ -378,6 +464,89 @@ export class NeonClient {
 
     return body as T;
   }
+}
+
+function malformedOperationsError(
+  projectId: string,
+  endpoint: string,
+): NeonApiError {
+  return new NeonApiError({
+    message: `List operations for Neon project ${projectId}: response did not contain a valid operations array. Try again.`,
+    status: 200,
+    endpoint,
+  });
+}
+
+function isUuid(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
+function isProviderId(value: unknown): boolean {
+  return typeof value === "string" && /^[a-z0-9-]{1,60}$/.test(value);
+}
+
+function isSafeProviderValue(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 255 &&
+    value.trim() === value &&
+    !/[\u0000-\u001f\u007f-\u009f]/.test(value)
+  );
+}
+
+const RFC3339_DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+function isDateTime(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const match = RFC3339_DATE_TIME.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const calendarDay = new Date(Date.UTC(year, month - 1, day));
+  return (
+    calendarDay.getUTCFullYear() === year &&
+    calendarDay.getUTCMonth() === month - 1 &&
+    calendarDay.getUTCDate() === day &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+function isNonNegativeInteger(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isOptionalProviderId(value: unknown): boolean {
+  return value == null || isProviderId(value);
+}
+
+function isValidOperationWireItem(
+  value: unknown,
+  expectedProjectId: string,
+): value is NeonOperationRaw {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const operation = value as NeonOperationRaw;
+  return (
+    isUuid(operation.id) &&
+    operation.project_id === expectedProjectId &&
+    isProviderId(operation.project_id) &&
+    isSafeProviderValue(operation.action) &&
+    isSafeProviderValue(operation.status) &&
+    isNonNegativeInteger(operation.failures_count) &&
+    isDateTime(operation.created_at) &&
+    isDateTime(operation.updated_at) &&
+    isNonNegativeInteger(operation.total_duration_ms) &&
+    isOptionalProviderId(operation.branch_id) &&
+    isOptionalProviderId(operation.endpoint_id) &&
+    (operation.retry_at == null || isDateTime(operation.retry_at))
+  );
 }
 
 /** Neon errors are top-level `{ code, message }`; tolerate nested `error`. */

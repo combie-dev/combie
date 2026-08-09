@@ -14,6 +14,11 @@ import {
   type DeploymentEvidenceAuthority,
   type VercelDeploymentEvidence,
 } from "../providers/vercel/deployment.ts";
+import {
+  composeNeonOperationAuthority,
+  type NeonOperationEvidence,
+  type NeonOperationEvidenceAuthority,
+} from "../providers/neon/operation.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { getResourceHistoryForResource } from "./history.ts";
@@ -49,6 +54,8 @@ export interface InvestigationNeighbor {
    * not_applicable for non-GitHub neighbors or dangling edges.
    */
   workflowRuns: WorkflowRunEvidenceAuthority;
+  /** Neon operation evidence for a one-hop Neon project neighbor. */
+  operations: NeonOperationEvidenceAuthority;
 }
 
 /**
@@ -63,6 +70,8 @@ export interface InvestigationContext {
   subjectDeployments: DeploymentEvidenceAuthority;
   /** Workflow-run evidence for the subject (GitHub repositories only). */
   subjectWorkflowRuns: WorkflowRunEvidenceAuthority;
+  /** Operation evidence for the subject (Neon projects only). */
+  subjectOperations: NeonOperationEvidenceAuthority;
 }
 
 export interface GetInvestigationContextOptions {
@@ -146,6 +155,25 @@ function loadWorkflowRunAuthority(
   );
 }
 
+function loadNeonOperationAuthority(
+  store: Store,
+  resource: Resource | null,
+): NeonOperationEvidenceAuthority {
+  if (
+    !resource ||
+    resource.provider !== "neon" ||
+    resource.kind !== "project"
+  ) {
+    return { kind: "not_applicable" };
+  }
+  return composeNeonOperationAuthority(
+    resource.provider,
+    resource.kind,
+    store.getNeonOperationRefresh(resource.id),
+    store.listNeonOperationsForResource(resource.id),
+  );
+}
+
 /**
  * Compose investigation context for an already-resolved subject Resource.
  * Reuses one-hop related-context and per-Resource history reads.
@@ -168,6 +196,7 @@ export function getInvestigationContextForResource(
         : [],
       deployments: loadDeploymentAuthority(store, neighbor.resource),
       workflowRuns: loadWorkflowRunAuthority(store, neighbor.resource),
+      operations: loadNeonOperationAuthority(store, neighbor.resource),
     }),
   );
 
@@ -177,6 +206,7 @@ export function getInvestigationContextForResource(
     related,
     subjectDeployments: loadDeploymentAuthority(store, subject),
     subjectWorkflowRuns: loadWorkflowRunAuthority(store, subject),
+    subjectOperations: loadNeonOperationAuthority(store, subject),
   };
 }
 
@@ -356,6 +386,52 @@ function formatWorkflowRunsBlock(
   return authority.runs.map(formatWorkflowRun).join("\n\n");
 }
 
+function formatNeonOperation(operation: NeonOperationEvidence): string {
+  const lines = [
+    `operation id: ${operation.operationId}`,
+    `action: ${operation.action}`,
+    `status: ${operation.status}`,
+    `failures count: ${operation.failuresCount}`,
+  ];
+  if (operation.branchId) lines.push(`branch id: ${operation.branchId}`);
+  if (operation.endpointId) lines.push(`endpoint id: ${operation.endpointId}`);
+  lines.push(`created at: ${operation.createdAt}`);
+  lines.push(`status updated at: ${operation.updatedAt}`);
+  if (operation.retryAt) lines.push(`last retried at: ${operation.retryAt}`);
+  lines.push(`total duration ms: ${operation.totalDurationMs}`);
+  lines.push(`observed by Combie at: ${operation.observedAt}`);
+  return lines.join("\n");
+}
+
+function formatNeonOperationsBlock(
+  authority: NeonOperationEvidenceAuthority,
+): string {
+  if (authority.kind === "not_applicable") {
+    return "Operation evidence does not apply to this resource.";
+  }
+  if (authority.kind === "unknown") {
+    const header = "Operation evidence has not been successfully refreshed.";
+    const message = authority.message ? `\n(${authority.message})` : "";
+    const stale =
+      authority.operations.length > 0
+        ? `\n\nPrior recorded operations (may be stale):\n\n${authority.operations.map(formatNeonOperation).join("\n\n")}`
+        : "";
+    return `${header}${message}${stale}`;
+  }
+  if (authority.kind === "empty") {
+    const historical =
+      authority.operations.length > 0
+        ? `\n\nPreviously recorded operations (outside the current retained response):\n\n${authority.operations.map(formatNeonOperation).join("\n\n")}`
+        : "";
+    return (
+      "No operations recorded for this project in Neon's current retained response.\n" +
+      `Last successful refresh observed by Combie at: ${authority.observedAt}` +
+      historical
+    );
+  }
+  return authority.operations.map(formatNeonOperation).join("\n\n");
+}
+
 function formatRelatedNeighbor(item: InvestigationNeighbor): string {
   const direction =
     item.direction === "outbound"
@@ -374,13 +450,18 @@ function formatRelatedNeighbor(item: InvestigationNeighbor): string {
     item.workflowRuns.kind === "not_applicable"
       ? ""
       : `\n\nWORKFLOW RUNS (newest first)\n\n${formatWorkflowRunsBlock(item.workflowRuns)}`;
+  const operationSection =
+    item.operations.kind === "not_applicable"
+      ? ""
+      : `\n\nOPERATIONS (newest first)\n\n${formatNeonOperationsBlock(item.operations)}`;
   return (
     `${direction}\n` +
     `${identity}${stableId}\n` +
     `Evidence: ${formatEvidence(item.relationship.evidence)}\n\n` +
     `CHANGES\n\n${formatChangesBlock(item.changes)}` +
     deploymentSection +
-    workflowSection
+    workflowSection +
+    operationSection
   );
 }
 
@@ -440,6 +521,11 @@ export function formatInvestigationContext(
       ? ""
       : `\n\nWORKFLOW RUNS (newest first)\n\n${formatWorkflowRunsBlock(context.subjectWorkflowRuns)}`;
 
+  const subjectOperations =
+    context.subjectOperations.kind === "not_applicable"
+      ? ""
+      : `\n\nOPERATIONS (newest first)\n\n${formatNeonOperationsBlock(context.subjectOperations)}`;
+
   const related =
     context.related.length === 0
       ? "No relationships discovered."
@@ -449,7 +535,8 @@ export function formatInvestigationContext(
     `${header}\n\n` +
     `${subjectChanges}` +
     `${subjectDeployments}` +
-    `${subjectWorkflowRuns}\n\n` +
+    `${subjectWorkflowRuns}` +
+    `${subjectOperations}\n\n` +
     `RELATED CONTEXT\n\n${related}\n\n` +
     `TIMELINE (newest first)\n\n${formatTimeline(context)}`
   );

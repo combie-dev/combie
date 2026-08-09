@@ -18,6 +18,7 @@ import {
   isVercelCloudflareUsesDomainIn,
 } from "./infer-vercel-cloudflare.ts";
 import { syncGitHubWorkflowRuns } from "./github-workflow-runs.ts";
+import { syncNeonOperations } from "./neon-operations.ts";
 import { syncVercelDeployments } from "./vercel-deployments.ts";
 
 export interface SyncOptions {
@@ -200,6 +201,15 @@ async function syncOne(
       observedAt: now,
     });
     evidenceLines.push(...workflowSync.lines);
+  }
+  if (providerId === "neon") {
+    const operationSync = await syncNeonOperations({
+      store,
+      token,
+      projects: discovered.resources,
+      observedAt: now,
+    });
+    evidenceLines.push(...operationSync.lines);
   }
 
   store.setLastSync(providerId, now);

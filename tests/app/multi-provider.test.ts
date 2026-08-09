@@ -35,6 +35,7 @@ function mockMultiProviderFetch(options?: {
   sentryFail?: boolean;
   neonFail?: boolean;
   neonEnrichmentFail?: boolean;
+  neonOperationFail?: boolean;
   neonProjectName?: string;
   neonReverseBranches?: boolean;
   planetscaleFail?: boolean;
@@ -286,6 +287,34 @@ function mockMultiProviderFetch(options?: {
         });
       }
       // Enrichment routes must match before the generic project list.
+      const operationMatch = url.match(/\/projects\/([^/?]+)\/operations/);
+      if (operationMatch) {
+        if (options?.neonOperationFail) {
+          return Response.json(
+            { message: "operation retrieval failed" },
+            { status: 503 },
+          );
+        }
+        return Response.json({
+          operations: [
+            {
+              id:
+                operationMatch[1] === "steep-moon-132241"
+                  ? "00000000-0000-4000-8000-000000000001"
+                  : "00000000-0000-4000-8000-000000000002",
+              project_id: operationMatch[1],
+              branch_id: `br-${operationMatch[1]}-main`,
+              endpoint_id: `ep-${operationMatch[1]}`,
+              action: "start_compute",
+              status: "finished",
+              failures_count: 0,
+              created_at: "2026-08-09T10:00:00Z",
+              updated_at: "2026-08-09T10:00:01Z",
+              total_duration_ms: 1000,
+            },
+          ],
+        });
+      }
       const dbMatch = url.match(/\/projects\/([^/?]+)\/branches\/([^/?]+)\/databases/);
       if (dbMatch) {
         if (options?.neonFail || options?.neonEnrichmentFail) {
@@ -1198,6 +1227,34 @@ describe("multi-provider connection", () => {
     expect(resources.filter((resource) => resource.provider === "neon")).toHaveLength(2);
     expect(formatProvidersTable(providers)).toContain("Neon");
     expect(formatResourcesTable(resources)).toContain("combie-app");
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.countNeonOperations()).toBe(2);
+    expect(
+      store.getNeonOperationRefresh("neon:project:steep-moon-132241")?.status,
+    ).toBe("success");
+    store.close();
+  });
+
+  test("Neon operation failure preserves project sync and prior evidence", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "neon", token: "neon" });
+    await syncProviders({ baseDir: dir, providerId: "neon" });
+
+    globalThis.fetch = mockMultiProviderFetch({ neonOperationFail: true });
+    const sync = await syncProviders({ baseDir: dir, providerId: "neon" });
+    expect(sync.ok).toBe(true);
+    expect(sync.message).toContain("Operation evidence: 0 projects refreshed, 2 projects failed");
+    expect(listResources({ baseDir: dir }).resources.filter((resource) => resource.provider === "neon")).toHaveLength(2);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.countNeonOperations()).toBe(2);
+    expect(
+      store.getNeonOperationRefresh("neon:project:steep-moon-132241")?.status,
+    ).toBe("failure");
+    expect(store.listChanges()).toEqual([]);
+    store.close();
   });
 
   test("Neon ordering noise is idempotent and meaningful changes use generic history/context", async () => {

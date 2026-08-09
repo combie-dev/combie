@@ -17,6 +17,10 @@ import type {
   GitHubWorkflowRunRefresh,
 } from "../providers/github/workflow-run.ts";
 import type {
+  NeonOperationEvidence,
+  NeonOperationRefresh,
+} from "../providers/neon/operation.ts";
+import type {
   VercelDeploymentEvidence,
   VercelDeploymentRefresh,
 } from "../providers/vercel/deployment.ts";
@@ -138,6 +142,34 @@ CREATE TABLE IF NOT EXISTS github_workflow_run_refresh (
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
   message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS neon_operations (
+  operation_id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'neon',
+  resource_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  status TEXT NOT NULL,
+  failures_count INTEGER NOT NULL,
+  branch_id TEXT,
+  endpoint_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  retry_at TEXT,
+  total_duration_ms INTEGER NOT NULL,
+  observed_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS neon_operations_resource_created_id_idx
+  ON neon_operations(resource_id, created_at DESC, operation_id DESC);
+
+CREATE TABLE IF NOT EXISTS neon_operation_refresh (
+  resource_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+  observed_at TEXT NOT NULL,
+  message TEXT,
+  result_count INTEGER
 );
 `;
 
@@ -825,6 +857,118 @@ export class Store {
     };
   }
 
+  /** Upsert the latest observed lifecycle for one stable Neon operation id. */
+  upsertNeonOperation(operation: NeonOperationEvidence): void {
+    this.getDb()
+      .query(
+        `INSERT INTO neon_operations (
+           operation_id, provider, resource_id, project_id,
+           action, status, failures_count, branch_id, endpoint_id,
+           created_at, updated_at, retry_at, total_duration_ms, observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(operation_id) DO UPDATE SET
+           provider = excluded.provider,
+           resource_id = excluded.resource_id,
+           project_id = excluded.project_id,
+           action = excluded.action,
+           status = excluded.status,
+           failures_count = excluded.failures_count,
+           branch_id = excluded.branch_id,
+           endpoint_id = excluded.endpoint_id,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at,
+           retry_at = excluded.retry_at,
+           total_duration_ms = excluded.total_duration_ms,
+           observed_at = excluded.observed_at`,
+      )
+      .run(
+        operation.operationId,
+        operation.provider,
+        operation.resourceId,
+        operation.projectId,
+        operation.action,
+        operation.status,
+        operation.failuresCount,
+        operation.branchId,
+        operation.endpointId,
+        operation.createdAt,
+        operation.updatedAt,
+        operation.retryAt,
+        operation.totalDurationMs,
+        operation.observedAt,
+      );
+  }
+
+  /** Newest-first operations for one exact Neon project Resource. */
+  listNeonOperationsForResource(resourceId: string): NeonOperationEvidence[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT operation_id, provider, resource_id, project_id,
+                action, status, failures_count, branch_id, endpoint_id,
+                created_at, updated_at, retry_at,
+                total_duration_ms, observed_at
+         FROM neon_operations
+         WHERE resource_id = ?
+         ORDER BY created_at DESC, operation_id DESC`,
+      )
+      .all(resourceId) as NeonOperationRow[];
+    return rows.map(mapNeonOperation);
+  }
+
+  countNeonOperations(): number {
+    const row = this.getDb()
+      .query(`SELECT COUNT(*) AS n FROM neon_operations`)
+      .get() as { n: number };
+    return Number(row.n);
+  }
+
+  setNeonOperationRefresh(refresh: NeonOperationRefresh): void {
+    this.getDb()
+      .query(
+        `INSERT INTO neon_operation_refresh (
+           resource_id, status, observed_at, message, result_count
+         ) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(resource_id) DO UPDATE SET
+           status = excluded.status,
+           observed_at = excluded.observed_at,
+           message = excluded.message,
+           result_count = excluded.result_count`,
+      )
+      .run(
+        refresh.resourceId,
+        refresh.status,
+        refresh.observedAt,
+        refresh.message,
+        refresh.resultCount,
+      );
+  }
+
+  getNeonOperationRefresh(resourceId: string): NeonOperationRefresh | null {
+    const row = this.getDb()
+      .query(
+        `SELECT resource_id, status, observed_at, message, result_count
+         FROM neon_operation_refresh
+         WHERE resource_id = ?`,
+      )
+      .get(resourceId) as
+      | {
+          resource_id: string;
+          status: string;
+          observed_at: string;
+          message: string | null;
+          result_count: number | null;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      resourceId: row.resource_id,
+      status: row.status as "success" | "failure",
+      observedAt: row.observed_at,
+      message: row.message,
+      resultCount: row.result_count,
+    };
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
@@ -1046,6 +1190,42 @@ function mapGitHubWorkflowRun(
     createdAt: row.created_at,
     runStartedAt: row.run_started_at,
     updatedAt: row.updated_at,
+    observedAt: row.observed_at,
+  };
+}
+
+interface NeonOperationRow {
+  operation_id: string;
+  provider: string;
+  resource_id: string;
+  project_id: string;
+  action: string;
+  status: string;
+  failures_count: number;
+  branch_id: string | null;
+  endpoint_id: string | null;
+  created_at: string;
+  updated_at: string;
+  retry_at: string | null;
+  total_duration_ms: number;
+  observed_at: string;
+}
+
+function mapNeonOperation(row: NeonOperationRow): NeonOperationEvidence {
+  return {
+    provider: "neon",
+    operationId: row.operation_id,
+    resourceId: row.resource_id,
+    projectId: row.project_id,
+    action: row.action,
+    status: row.status,
+    failuresCount: row.failures_count,
+    branchId: row.branch_id,
+    endpointId: row.endpoint_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    retryAt: row.retry_at,
+    totalDurationMs: row.total_duration_ms,
     observedAt: row.observed_at,
   };
 }
