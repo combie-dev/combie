@@ -1,0 +1,42 @@
+{
+  "branches": [
+    {
+      "id": "br-wild-fog-111111",
+      "project_id": "steep-moon-132241",
+      "name": "main",
+      "current_state": "ready",
+      "default": true,
+      "primary": true,
+      "protected": true,
+      "creation_source": "console",
+      "created_at": "2025-01-15T10:00:00Z",
+      "updated_at": "2026-08-01T09:30:00Z"
+    },
+    {
+      "id": "br-calm-dawn-222222",
+      "project_id": "steep-moon-132241",
+      "parent_id": "br-wild-fog-111111",
+      "name": "dev",
+      "current_state": "ready",
+      "default": false,
+      "primary": false,
+      "protected": false,
+      "creation_source": "console",
+      "created_at": "2025-01-16T10:00:00Z",
+      "updated_at": "2026-07-30T09:30:00Z"
+    },
+    {
+      "id": "br-preview-333333",
+      "project_id": "steep-moon-132241",
+      "parent_id": "br-calm-dawn-222222",
+      "name": "preview-pr-42",
+      "current_state": "init",
+      "default": false,
+      "primary": false,
+      "protected": false,
+      "creation_source": "api",
+      "created_at": "2026-07-29T10:00:00Z",
+      "updated_at": "2026-07-29T10:05:00Z"
+    }
+  ]
+}

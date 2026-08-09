@@ -25,7 +25,7 @@ Usage:
 
 Commands:
   init                         Initialize local Combie state
-  connect <provider>           Connect a provider (cloudflare, github, vercel, sentry)
+  connect <provider>           Connect a provider (cloudflare, github, vercel, sentry, neon)
   sync [provider]              Discover and store resources
   providers                    List configured providers
   resources                    List discovered resources
@@ -43,6 +43,7 @@ Connect options:
                                github: GITHUB_TOKEN or GH_TOKEN
                                vercel: VERCEL_TOKEN
                                sentry: SENTRY_AUTH_TOKEN
+                               neon: NEON_API_KEY
   --use-gh                     GitHub only: reuse authenticated GitHub CLI (\`gh auth token\`)
 
 Resources options:
@@ -63,6 +64,7 @@ Examples:
   combie connect github --use-gh
   combie connect vercel --use-env
   combie connect sentry --use-env
+  combie connect neon --use-env
   combie sync
   combie providers
   combie resources

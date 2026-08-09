@@ -65,6 +65,21 @@ function countByKind(resources: Resource[]): Partial<Record<ResourceKind, number
   return counts;
 }
 
+/**
+ * Optional-enrichment metadata keys per provider resource. When a provider's
+ * enrichment call fails, the key is omitted (unknown) rather than set to
+ * empty. Listing the key here preserves the previously observed value instead
+ * of converting unknown evidence into a false removal/Change.
+ */
+function preserveMissingMetadataKeysFor(
+  resource: Resource,
+): string[] | undefined {
+  if (resource.kind !== "project") return undefined;
+  if (resource.provider === "vercel") return ["domains"];
+  if (resource.provider === "neon") return ["branches", "databases", "endpoints"];
+  return undefined;
+}
+
 function formatKindLabel(kind: ResourceKind, n: number): string {
   const labels: Record<ResourceKind, [string, string]> = {
     worker: ["Worker", "Workers"],
@@ -152,14 +167,10 @@ async function syncOne(
     )
     .map((resource) => resource.id);
   for (const resource of discovered.resources) {
-    const preserveMissingMetadataKeys =
-      resource.provider === "vercel" && resource.kind === "project"
-        ? ["domains"]
-        : undefined;
     store.applyResource(resource, {
       id: randomUUID(),
       observedAt: now,
-      preserveMissingMetadataKeys,
+      preserveMissingMetadataKeys: preserveMissingMetadataKeysFor(resource),
     });
   }
 
@@ -218,7 +229,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
     if (providers.length === 0) {
       throw new CombieError(
         "NO_PROVIDERS",
-        "No connected providers to sync.\nRun: combie connect cloudflare\nor: combie connect github\nor: combie connect vercel\nor: combie connect sentry",
+        "No connected providers to sync.\nRun: combie connect cloudflare\nor: combie connect github\nor: combie connect vercel\nor: combie connect sentry\nor: combie connect neon",
       );
     }
 

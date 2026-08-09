@@ -66,6 +66,7 @@ const PROVIDER_DISPLAY: Record<string, string> = {
   vercel: "Vercel",
   cloudflare: "Cloudflare",
   sentry: "Sentry",
+  neon: "Neon",
 };
 
 function providerLabel(provider: string): string {

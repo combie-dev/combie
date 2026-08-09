@@ -8,9 +8,12 @@ import { syncProviders } from "../../src/app/sync.ts";
 import {
   listProviders,
   listResources,
+  listChanges,
   formatProvidersTable,
   formatResourcesTable,
 } from "../../src/app/list.ts";
+import { getResourceHistory } from "../../src/app/history.ts";
+import { getResourceContext } from "../../src/app/context.ts";
 import { CredentialsStore } from "../../src/storage/credentials.ts";
 import { Store } from "../../src/storage/store.ts";
 import { createResource } from "../../src/domain/resource.ts";
@@ -30,6 +33,10 @@ function mockMultiProviderFetch(options?: {
   cloudflareFail?: boolean;
   vercelFail?: boolean;
   sentryFail?: boolean;
+  neonFail?: boolean;
+  neonEnrichmentFail?: boolean;
+  neonProjectName?: string;
+  neonReverseBranches?: boolean;
 }): typeof fetch {
   return (async (input: string | URL | Request) => {
     const url =
@@ -145,6 +152,128 @@ function mockMultiProviderFetch(options?: {
             },
           ],
           pagination: { count: 2, next: null },
+        });
+      }
+    }
+
+    // Neon
+    if (url.includes("console.neon.tech")) {
+      if (url.endsWith("/auth")) {
+        if (options?.neonFail) {
+          return Response.json(
+            { code: "UNAUTHENTICATED", message: "Invalid API key" },
+            { status: 401 },
+          );
+        }
+        return Response.json({
+          account_id: "org-neon-1",
+          auth_method: "api_key_org",
+        });
+      }
+      if (url.includes("/users/me/organizations")) {
+        return Response.json({
+          organizations: [{ id: "org-neon-1", name: "Neon Test Org" }],
+        });
+      }
+      // Enrichment routes must match before the generic project list.
+      const dbMatch = url.match(/\/projects\/([^/?]+)\/branches\/([^/?]+)\/databases/);
+      if (dbMatch) {
+        if (options?.neonFail || options?.neonEnrichmentFail) {
+          return Response.json(
+            { code: "INTERNAL", message: "enrichment failed" },
+            { status: 500 },
+          );
+        }
+        return Response.json({
+          databases: [
+            {
+              id: 1000001,
+              branch_id: dbMatch[2],
+              name: "neondb",
+              owner_name: "neondb_owner",
+            },
+          ],
+        });
+      }
+      const branchMatch = url.match(/\/projects\/([^/?]+)\/branches/);
+      if (branchMatch) {
+        if (options?.neonFail || options?.neonEnrichmentFail) {
+          return Response.json(
+            { code: "INTERNAL", message: "enrichment failed" },
+            { status: 500 },
+          );
+        }
+        const branches = [
+            {
+              id: `br-${branchMatch[1]}-main`,
+              name: "main",
+              default: true,
+              primary: true,
+              protected: false,
+              current_state: "ready",
+            },
+            {
+              id: `br-${branchMatch[1]}-dev`,
+              name: "dev",
+              default: false,
+              primary: false,
+              protected: false,
+              current_state: "ready",
+            },
+          ];
+        return Response.json({
+          branches: options?.neonReverseBranches ? branches.reverse() : branches,
+        });
+      }
+      const endpointMatch = url.match(/\/projects\/([^/?]+)\/endpoints/);
+      if (endpointMatch) {
+        if (options?.neonFail || options?.neonEnrichmentFail) {
+          return Response.json(
+            { code: "INTERNAL", message: "enrichment failed" },
+            { status: 500 },
+          );
+        }
+        return Response.json({
+          endpoints: [
+            {
+              id: `ep-${endpointMatch[1]}`,
+              host: `ep-${endpointMatch[1]}.us-east-2.aws.neon.tech`,
+              branch_id: `br-${endpointMatch[1]}-main`,
+              type: "read_write",
+              current_state: "idle",
+            },
+          ],
+        });
+      }
+      if (url.includes("/projects")) {
+        if (options?.neonFail) {
+          return Response.json(
+            { code: "INTERNAL", message: "project list failed" },
+            { status: 500 },
+          );
+        }
+        return Response.json({
+          projects: [
+            {
+              id: "steep-moon-132241",
+              name: options?.neonProjectName ?? "combie-app",
+              region_id: "aws-us-east-2",
+              pg_version: 17,
+              created_at: "2025-01-15T10:00:00Z",
+              updated_at: "2026-08-01T09:30:00Z",
+            },
+            {
+              id: "quiet-river-98765",
+              name: "analytics",
+              region_id: "aws-eu-central-1",
+              pg_version: 16,
+              created_at: "2025-03-02T08:15:00Z",
+              updated_at: "2026-07-20T14:00:00Z",
+              org_id: "org-acme-555",
+              org_name: "Acme Inc",
+            },
+          ],
+          pagination: { cursor: "" },
         });
       }
     }
@@ -914,5 +1043,116 @@ describe("multi-provider connection", () => {
     expect(all.find((r) => r.provider === "vercel")!.name).toBe("vercel-app");
     expect(all.find((r) => r.provider === "sentry")!.name).toBe("sentry-app");
     store.close();
+  });
+
+  test("connect Neon via --use-env and sync five providers together", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "cloudflare", token: "cf" });
+    await connectProvider({ baseDir: dir, providerId: "github", token: "gh" });
+    await connectProvider({ baseDir: dir, providerId: "vercel", token: "vc" });
+    await connectProvider({ baseDir: dir, providerId: "sentry", token: "sn" });
+    const neon = await connectProvider({
+      baseDir: dir,
+      providerId: "neon",
+      useEnvToken: true,
+      env: { NEON_API_KEY: "neon-env-secret" } as NodeJS.ProcessEnv,
+    });
+
+    expect(neon.accountId).toBe("org-neon-1");
+    expect(neon.accountName).toBe("Neon Test Org");
+    expect(neon.message).not.toContain("neon-env-secret");
+
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(true);
+    expect(sync.results).toHaveLength(5);
+    expect(sync.totalResources).toBe(12);
+
+    const { providers } = listProviders(dir);
+    expect(providers.map((provider) => provider.id).sort()).toEqual([
+      "cloudflare",
+      "github",
+      "neon",
+      "sentry",
+      "vercel",
+    ]);
+    const { resources } = listResources({ baseDir: dir });
+    expect(resources.filter((resource) => resource.provider === "neon")).toHaveLength(2);
+    expect(formatProvidersTable(providers)).toContain("Neon");
+    expect(formatResourcesTable(resources)).toContain("combie-app");
+  });
+
+  test("Neon ordering noise is idempotent and meaningful changes use generic history/context", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "neon", token: "neon" });
+    await syncProviders({ baseDir: dir });
+    expect(listChanges(dir).changes).toEqual([]);
+
+    globalThis.fetch = mockMultiProviderFetch({ neonReverseBranches: true });
+    await syncProviders({ baseDir: dir, providerId: "neon" });
+    expect(listChanges(dir).changes).toEqual([]);
+
+    globalThis.fetch = mockMultiProviderFetch({
+      neonReverseBranches: true,
+      neonProjectName: "combie-app-renamed",
+    });
+    await syncProviders({ baseDir: dir, providerId: "neon" });
+
+    const resourceId = "neon:project:steep-moon-132241";
+    const changes = listChanges(dir).changes;
+    expect(changes).toHaveLength(1);
+    expect(changes[0]!.resourceId).toBe(resourceId);
+    expect(getResourceHistory({ baseDir: dir, resourceRef: resourceId }).changes).toHaveLength(1);
+    const context = getResourceContext({ baseDir: dir, resourceRef: resourceId });
+    expect(context.resource.name).toBe("combie-app-renamed");
+    expect(context.related).toEqual([]);
+    expect(context.changes).toHaveLength(1);
+
+    globalThis.fetch = mockMultiProviderFetch({
+      neonEnrichmentFail: true,
+      neonProjectName: "combie-app-renamed",
+    });
+    const enrichmentFailure = await syncProviders({
+      baseDir: dir,
+      providerId: "neon",
+    });
+    expect(enrichmentFailure.ok).toBe(true);
+    expect(listChanges(dir).changes).toHaveLength(1);
+    const persisted = listResources({ baseDir: dir }).resources.find(
+      (resource) => resource.id === resourceId,
+    )!;
+    expect(Array.isArray(persisted.metadata.branches)).toBe(true);
+    expect(Array.isArray(persisted.metadata.databases)).toBe(true);
+    expect(Array.isArray(persisted.metadata.endpoints)).toBe(true);
+  });
+
+  test("Neon failure preserves successful providers and unrelated resources", async () => {
+    initCombie(dir);
+    for (const providerId of ["cloudflare", "github", "vercel", "sentry", "neon"]) {
+      await connectProvider({ baseDir: dir, providerId, token: `${providerId}-token` });
+    }
+    await syncProviders({ baseDir: dir });
+    const before = listResources({ baseDir: dir }).resources;
+    const unrelatedBefore = before
+      .filter((resource) => resource.provider !== "neon")
+      .map((resource) => resource.id)
+      .sort();
+
+    globalThis.fetch = mockMultiProviderFetch({ neonFail: true });
+    new CredentialsStore(dir).setCredential("neon", "bad-neon-token");
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(false);
+    expect(sync.results.filter((result) => result.ok)).toHaveLength(4);
+    const neon = sync.results.find((result) => result.providerId === "neon")!;
+    expect(neon.ok).toBe(false);
+    expect(neon.error).not.toContain("bad-neon-token");
+
+    const after = listResources({ baseDir: dir }).resources;
+    expect(
+      after
+        .filter((resource) => resource.provider !== "neon")
+        .map((resource) => resource.id)
+        .sort(),
+    ).toEqual(unrelatedBefore);
+    expect(after.filter((resource) => resource.provider === "neon")).toHaveLength(2);
   });
 });

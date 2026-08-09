@@ -19,6 +19,7 @@ export interface ConnectOptions {
    * GitHub: GITHUB_TOKEN or GH_TOKEN
    * Vercel: VERCEL_TOKEN
    * Sentry: SENTRY_AUTH_TOKEN or SENTRY_TOKEN
+   * Neon: NEON_API_KEY
    */
   useEnvToken?: boolean;
   /**
@@ -154,6 +155,28 @@ function resolveSentryToken(options: ConnectOptions): string {
   );
 }
 
+function resolveNeonToken(options: ConnectOptions): string {
+  if (options.token && options.token.trim().length > 0) {
+    return options.token.trim();
+  }
+  if (options.useEnvToken) {
+    const env = options.env ?? process.env;
+    const fromEnv = env.NEON_API_KEY?.trim();
+    if (fromEnv) return fromEnv;
+    throw new CombieError(
+      "MISSING_TOKEN",
+      "NEON_API_KEY is not set.\nExport an API key and run: combie connect neon --use-env",
+    );
+  }
+  throw new CombieError(
+    "MISSING_TOKEN",
+    "No Neon API key provided.\n" +
+      "Options:\n" +
+      "  1. Export NEON_API_KEY and run: combie connect neon --use-env\n" +
+      "  2. Run: combie connect neon --token <api-key>",
+  );
+}
+
 function resolveTokenFromGhCli(): string {
   let result: ReturnType<typeof spawnSync>;
   try {
@@ -213,6 +236,8 @@ function resolveToken(providerId: string, options: ConnectOptions): string {
       return resolveVercelToken(options);
     case "sentry":
       return resolveSentryToken(options);
+    case "neon":
+      return resolveNeonToken(options);
     default:
       throw unknownProvider(providerId);
   }

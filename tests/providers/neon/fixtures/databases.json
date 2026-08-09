@@ -1,0 +1,20 @@
+{
+  "databases": [
+    {
+      "id": 1000001,
+      "branch_id": "br-wild-fog-111111",
+      "name": "neondb",
+      "owner_name": "neondb_owner",
+      "created_at": "2025-01-15T10:00:00Z",
+      "updated_at": "2025-01-15T10:00:00Z"
+    },
+    {
+      "id": 1000002,
+      "branch_id": "br-wild-fog-111111",
+      "name": "appdb",
+      "owner_name": "app_owner",
+      "created_at": "2025-02-10T12:00:00Z",
+      "updated_at": "2025-02-10T12:00:00Z"
+    }
+  ]
+}

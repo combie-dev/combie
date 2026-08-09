@@ -115,6 +115,8 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("VERCEL_TOKEN");
     expect(result.stdout).toContain("sentry");
     expect(result.stdout).toContain("SENTRY_AUTH_TOKEN");
+    expect(result.stdout).toContain("neon");
+    expect(result.stdout).toContain("NEON_API_KEY");
     expect(result.stdout).toContain("relationships");
     expect(result.stdout).toContain("history");
     expect(result.stdout).toContain("context");

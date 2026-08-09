@@ -1,0 +1,33 @@
+{
+  "endpoints": [
+    {
+      "id": "ep-steep-moon-a1b2c3",
+      "host": "ep-steep-moon-a1b2c3.us-east-2.aws.neon.tech",
+      "branch_id": "br-wild-fog-111111",
+      "project_id": "steep-moon-132241",
+      "type": "read_write",
+      "current_state": "idle",
+      "autoscaling_limit_min_cu": 0.25,
+      "autoscaling_limit_max_cu": 2,
+      "region_id": "aws-us-east-2",
+      "pooler_enabled": true,
+      "pooler_mode": "transaction",
+      "created_at": "2025-01-15T10:00:00Z",
+      "updated_at": "2026-08-01T09:00:00Z"
+    },
+    {
+      "id": "ep-steep-moon-d4e5f6",
+      "host": "ep-steep-moon-d4e5f6-ro.us-east-2.aws.neon.tech",
+      "branch_id": "br-calm-dawn-222222",
+      "project_id": "steep-moon-132241",
+      "type": "read_only",
+      "current_state": "active",
+      "autoscaling_limit_min_cu": 0.25,
+      "autoscaling_limit_max_cu": 1,
+      "region_id": "aws-us-east-2",
+      "pooler_enabled": false,
+      "created_at": "2025-01-16T10:00:00Z",
+      "updated_at": "2026-07-31T09:00:00Z"
+    }
+  ]
+}
