@@ -37,6 +37,10 @@ function mockMultiProviderFetch(options?: {
   neonEnrichmentFail?: boolean;
   neonProjectName?: string;
   neonReverseBranches?: boolean;
+  planetscaleFail?: boolean;
+  planetscaleEnrichmentFail?: boolean;
+  planetscaleDatabaseName?: string;
+  planetscaleReverseBranches?: boolean;
 }): typeof fetch {
   return (async (input: string | URL | Request) => {
     const url =
@@ -45,6 +49,100 @@ function mockMultiProviderFetch(options?: {
         : input instanceof URL
           ? input.href
           : input.url;
+
+    // PlanetScale
+    if (url.includes("api.planetscale.com")) {
+      if (url.includes("/branches")) {
+        if (options?.planetscaleFail || options?.planetscaleEnrichmentFail) {
+          return Response.json(
+            { message: "branch enrichment failed" },
+            { status: 500 },
+          );
+        }
+        const branches = [
+          {
+            id: "br_main_prod_001",
+            name: "main",
+            kind: "mysql",
+            ready: true,
+            schema_ready: true,
+            production: true,
+            parent_branch: null,
+            region: { slug: "us-east" },
+          },
+          {
+            id: "br_dev_feature_xyz",
+            name: "feature-xyz",
+            kind: "mysql",
+            ready: true,
+            schema_ready: true,
+            production: false,
+            parent_branch: "main",
+            region: { slug: "us-east" },
+          },
+        ];
+        return Response.json({
+          type: "list",
+          current_page: 1,
+          per_page: 100,
+          next_page: null,
+          data: options?.planetscaleReverseBranches
+            ? [...branches].reverse()
+            : branches,
+        });
+      }
+      if (url.includes("/databases")) {
+        if (options?.planetscaleFail) {
+          return Response.json(
+            { message: "database list failed" },
+            { status: 500 },
+          );
+        }
+        return Response.json({
+          type: "list",
+          current_page: 1,
+          per_page: 100,
+          next_page: null,
+          data: [
+            {
+              id: "db_combie_app_001",
+              name: options?.planetscaleDatabaseName ?? "combie-app",
+              kind: "mysql",
+              ready: true,
+              default_branch: "main",
+              production_branches_count: 1,
+              development_branches_count: 1,
+              region: { slug: "us-east" },
+            },
+            {
+              id: "db_analytics_pg_002",
+              name: "analytics",
+              kind: "postgresql",
+              ready: true,
+              default_branch: "main",
+              production_branches_count: 1,
+              development_branches_count: 0,
+              region: { slug: "eu-west" },
+            },
+          ],
+        });
+      }
+      if (url.includes("/organizations")) {
+        if (options?.planetscaleFail) {
+          return Response.json(
+            { message: "Invalid service token" },
+            { status: 401 },
+          );
+        }
+        return Response.json({
+          type: "list",
+          current_page: 1,
+          per_page: 100,
+          next_page: null,
+          data: [{ id: "org_acme_ps_001", name: "acme" }],
+        });
+      }
+    }
 
     // Sentry
     if (url.includes("sentry.io")) {
@@ -1154,5 +1252,162 @@ describe("multi-provider connection", () => {
         .sort(),
     ).toEqual(unrelatedBefore);
     expect(after.filter((resource) => resource.provider === "neon")).toHaveLength(2);
+  });
+
+  test("connect PlanetScale via --use-env and sync six providers together", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "cloudflare", token: "cf" });
+    await connectProvider({ baseDir: dir, providerId: "github", token: "gh" });
+    await connectProvider({ baseDir: dir, providerId: "vercel", token: "vc" });
+    await connectProvider({ baseDir: dir, providerId: "sentry", token: "sn" });
+    await connectProvider({ baseDir: dir, providerId: "neon", token: "neon" });
+    const ps = await connectProvider({
+      baseDir: dir,
+      providerId: "planetscale",
+      useEnvToken: true,
+      env: {
+        PLANETSCALE_SERVICE_TOKEN_ID: "psid_env",
+        PLANETSCALE_SERVICE_TOKEN: "pssecret_env_value",
+      } as NodeJS.ProcessEnv,
+    });
+
+    expect(ps.accountId).toBe("org_acme_ps_001");
+    expect(ps.accountName).toBe("acme");
+    expect(ps.message).not.toContain("pssecret_env_value");
+    expect(ps.message).not.toContain("psid_env");
+
+    const credRaw = readFileSync(credentialsPath(dir), "utf8");
+    expect(credRaw).toContain("psid_env:pssecret_env_value");
+
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(true);
+    expect(sync.results).toHaveLength(6);
+    // CF4 + GH2 + Vercel2 + Sentry2 + Neon2 + PlanetScale2 = 14
+    expect(sync.totalResources).toBe(14);
+
+    const { providers } = listProviders(dir);
+    expect(providers.map((provider) => provider.id).sort()).toEqual([
+      "cloudflare",
+      "github",
+      "neon",
+      "planetscale",
+      "sentry",
+      "vercel",
+    ]);
+    const { resources } = listResources({ baseDir: dir });
+    const planetscale = resources.filter((r) => r.provider === "planetscale");
+    expect(planetscale).toHaveLength(2);
+    expect(planetscale.every((r) => r.kind === "database")).toBe(true);
+    expect(formatProvidersTable(providers)).toContain("PlanetScale");
+    expect(formatResourcesTable(resources)).toContain("combie-app");
+  });
+
+  test("PlanetScale ordering noise is idempotent and meaningful changes use generic history/context", async () => {
+    initCombie(dir);
+    await connectProvider({
+      baseDir: dir,
+      providerId: "planetscale",
+      tokenId: "psid",
+      token: "pssecret",
+    });
+    await syncProviders({ baseDir: dir });
+    expect(listChanges(dir).changes).toEqual([]);
+
+    globalThis.fetch = mockMultiProviderFetch({
+      planetscaleReverseBranches: true,
+    });
+    await syncProviders({ baseDir: dir, providerId: "planetscale" });
+    expect(listChanges(dir).changes).toEqual([]);
+
+    globalThis.fetch = mockMultiProviderFetch({
+      planetscaleReverseBranches: true,
+      planetscaleDatabaseName: "combie-app-renamed",
+    });
+    await syncProviders({ baseDir: dir, providerId: "planetscale" });
+
+    const resourceId = "planetscale:database:db_combie_app_001";
+    const changes = listChanges(dir).changes;
+    expect(changes).toHaveLength(1);
+    expect(changes[0]!.resourceId).toBe(resourceId);
+    expect(
+      getResourceHistory({ baseDir: dir, resourceRef: resourceId }).changes,
+    ).toHaveLength(1);
+    const context = getResourceContext({
+      baseDir: dir,
+      resourceRef: resourceId,
+    });
+    expect(context.resource.name).toBe("combie-app-renamed");
+    expect(context.related).toEqual([]);
+    expect(context.changes).toHaveLength(1);
+
+    globalThis.fetch = mockMultiProviderFetch({
+      planetscaleEnrichmentFail: true,
+      planetscaleDatabaseName: "combie-app-renamed",
+    });
+    const enrichmentFailure = await syncProviders({
+      baseDir: dir,
+      providerId: "planetscale",
+    });
+    expect(enrichmentFailure.ok).toBe(true);
+    expect(listChanges(dir).changes).toHaveLength(1);
+    const persisted = listResources({ baseDir: dir }).resources.find(
+      (resource) => resource.id === resourceId,
+    )!;
+    expect(Array.isArray(persisted.metadata.branches)).toBe(true);
+  });
+
+  test("PlanetScale failure preserves successful providers and unrelated resources", async () => {
+    initCombie(dir);
+    for (const providerId of [
+      "cloudflare",
+      "github",
+      "vercel",
+      "sentry",
+      "neon",
+    ]) {
+      await connectProvider({
+        baseDir: dir,
+        providerId,
+        token: `${providerId}-token`,
+      });
+    }
+    await connectProvider({
+      baseDir: dir,
+      providerId: "planetscale",
+      tokenId: "psid_ok",
+      token: "pssecret_ok",
+    });
+    await syncProviders({ baseDir: dir });
+    const before = listResources({ baseDir: dir }).resources;
+    const unrelatedBefore = before
+      .filter((resource) => resource.provider !== "planetscale")
+      .map((resource) => resource.id)
+      .sort();
+
+    globalThis.fetch = mockMultiProviderFetch({ planetscaleFail: true });
+    new CredentialsStore(dir).setCredential(
+      "planetscale",
+      "psid_bad:pssecret_bad_token_value",
+    );
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(false);
+    expect(sync.results.filter((result) => result.ok)).toHaveLength(5);
+    const planetscale = sync.results.find(
+      (result) => result.providerId === "planetscale",
+    )!;
+    expect(planetscale.ok).toBe(false);
+    expect(planetscale.error).not.toContain("pssecret_bad");
+    expect(planetscale.error).not.toContain("psid_bad");
+
+    const after = listResources({ baseDir: dir }).resources;
+    expect(
+      after
+        .filter((resource) => resource.provider !== "planetscale")
+        .map((resource) => resource.id)
+        .sort(),
+    ).toEqual(unrelatedBefore);
+    expect(
+      after.filter((resource) => resource.provider === "planetscale"),
+    ).toHaveLength(2);
   });
 });

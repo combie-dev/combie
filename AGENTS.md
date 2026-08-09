@@ -1,6 +1,6 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–002 implement the connection loop for **Cloudflare** and **GitHub**.
+Combie is the open engineering context layer. Sprints 001–014 implement the multi-provider connection loop through **Cloudflare**, **GitHub**, **Vercel**, **Sentry**, **Neon**, and **PlanetScale**.
 
 ## Mandatory reading order before any substantive change
 
@@ -22,20 +22,20 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–002 complete
+## Current baseline: Sprints 001–013 complete (014 adds PlanetScale)
 
 Multi-provider connection loop:
 
 ```text
 combie init
-  → connect cloudflare | github
+  → connect cloudflare | github | vercel | sentry | neon | planetscale
   → sync (all connected providers)
-  → providers | resources
+  → providers | resources | changes | history | context
 ```
 
-Supported resource kinds: `worker`, `database` (D1), `kv_namespace`, `zone`, `repository`.
+Supported resource kinds: `worker`, `database` (Cloudflare D1 / PlanetScale), `kv_namespace`, `zone`, `repository`, `project` (Vercel / Sentry / Neon).
 
-Providers: Cloudflare (infrastructure resources), GitHub (repositories).
+Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
 
 - **Anti-speculation rule:** build only what the active Sprint requires; no Investigation/Learning/Recommendation engines, MCP, AI layer, OTLP, execution policies, universal provider framework, or other roadmap concepts — not even as scaffolding.
 - Explicitly out of scope unless the active Sprint requires it: additional providers, Engineering Graph, memory, investigations, API server, SDK, hosted Combie.
@@ -48,9 +48,13 @@ src/
   app/                 Application services (init, connect, sync, list)
   domain/              Provider-independent Resource model
   provider/            Minimal provider contract + registry
-  providers/cloudflare Cloudflare adapter (HTTP client, normalize, errors)
-  providers/github     GitHub adapter (HTTP client, normalize, errors)
-  storage/             SQLite domain store + separate credentials file
+  providers/cloudflare  Cloudflare adapter (HTTP client, normalize, errors)
+  providers/github      GitHub adapter (HTTP client, normalize, errors)
+  providers/vercel      Vercel adapter
+  providers/sentry      Sentry adapter
+  providers/neon        Neon adapter
+  providers/planetscale PlanetScale adapter
+  storage/              SQLite domain store + separate credentials file
 tests/                 bun:test suites (no live provider credentials required)
 ```
 
@@ -62,6 +66,10 @@ tests/                 bun:test suites (no live provider credentials required)
 - Credentials: explicit authorization only.
   - Cloudflare: `--token` or `--use-env` with `CLOUDFLARE_API_TOKEN`
   - GitHub: `--token`, `--use-env` with `GITHUB_TOKEN`/`GH_TOKEN`, or `--use-gh` (`gh auth token`)
+  - Vercel: `--token` or `--use-env` with `VERCEL_TOKEN`
+  - Sentry: `--token` or `--use-env` with `SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN`
+  - Neon: `--token` or `--use-env` with `NEON_API_KEY`
+  - PlanetScale: `--use-env` with `PLANETSCALE_SERVICE_TOKEN_ID` + `PLANETSCALE_SERVICE_TOKEN`, or `--token-id` + `--token`; multi-org requires `--organization <slug>`
   - No filesystem/shell-history/`.env` scanning. Secrets never appear in logs, normal output, errors, or commits. Credentials file is mode `0600` and separate from the domain DB.
 - Errors must say what the user can do next and preserve provider context without leaking secrets.
 - Multi-provider sync attempts each connected provider, persists successes, reports failures, and exits non-zero if any provider fails.

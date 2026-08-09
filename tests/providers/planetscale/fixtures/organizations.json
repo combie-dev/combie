@@ -1,0 +1,31 @@
+{
+  "type": "list",
+  "current_page": 1,
+  "per_page": 25,
+  "next_page": null,
+  "next_page_url": null,
+  "prev_page": null,
+  "prev_page_url": null,
+  "data": [
+    {
+      "id": "org_acme_ps_001",
+      "name": "acme",
+      "billing_email": "billing@acme.example",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "plan": "scaler",
+      "valid_billing_info": true,
+      "sso": false,
+      "sso_directory": false,
+      "single_tenancy": false,
+      "managed_tenancy": false,
+      "database_count": 2,
+      "features": {},
+      "idp_managed_roles": false,
+      "invoice_budget_amount": "0",
+      "keyspace_shard_limit": 0,
+      "has_card": true,
+      "payment_info_required": false
+    }
+  ]
+}

@@ -105,7 +105,7 @@ describe("app vertical slice", () => {
     expect(sync1.ok).toBe(true);
     expect(sync1.results[0]!.total).toBe(6);
     expect(sync1.message).toContain("Worker");
-    expect(sync1.message).toContain("D1");
+    expect(sync1.message).toContain("database");
     expect(sync1.message).toContain("KV");
     expect(sync1.message).toContain("zone");
     expect(sync1.message).not.toContain(secret);

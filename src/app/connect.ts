@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { Store } from "../storage/store.ts";
 import { CredentialsStore } from "../storage/credentials.ts";
 import { getProvider } from "../provider/registry.ts";
+import { encodePlanetScaleCredential } from "../providers/planetscale/credentials.ts";
 import {
   notInitialized,
   unknownProvider,
@@ -14,12 +15,18 @@ export interface ConnectOptions {
   /** Explicit token from user (prompt or flag). */
   token?: string;
   /**
+   * PlanetScale only: service-token ID paired with `token` (the secret).
+   * Prefer --use-env with PLANETSCALE_SERVICE_TOKEN_ID + PLANETSCALE_SERVICE_TOKEN.
+   */
+  tokenId?: string;
+  /**
    * When true, use a provider-specific environment variable after user consent.
    * Cloudflare: CLOUDFLARE_API_TOKEN
    * GitHub: GITHUB_TOKEN or GH_TOKEN
    * Vercel: VERCEL_TOKEN
    * Sentry: SENTRY_AUTH_TOKEN or SENTRY_TOKEN
    * Neon: NEON_API_KEY
+   * PlanetScale: PLANETSCALE_SERVICE_TOKEN_ID + PLANETSCALE_SERVICE_TOKEN
    */
   useEnvToken?: boolean;
   /**
@@ -27,6 +34,11 @@ export interface ConnectOptions {
    * Does not parse private credential files.
    */
   useGh?: boolean;
+  /**
+   * PlanetScale (and similar multi-org providers): explicit organization slug
+   * when the credential can access more than one organization.
+   */
+  organization?: string;
   env?: NodeJS.ProcessEnv;
   /** Injected for tests: resolve a token from `gh auth token`. */
   ghTokenResolver?: () => string;
@@ -177,6 +189,52 @@ function resolveNeonToken(options: ConnectOptions): string {
   );
 }
 
+/**
+ * PlanetScale requires a service-token ID + secret pair. Stored as one opaque
+ * composite string (`id:secret`) so CredentialsStore stays single-token.
+ */
+function resolvePlanetScaleToken(options: ConnectOptions): string {
+  const explicitId = options.tokenId?.trim();
+  const explicitSecret = options.token?.trim();
+  if (explicitId || explicitSecret) {
+    if (!explicitId || !explicitSecret) {
+      throw new CombieError(
+        "MISSING_TOKEN",
+        "PlanetScale requires both the service-token ID and secret.\n" +
+          "Pass --token-id <id> together with --token <secret>, or use --use-env.",
+      );
+    }
+    return encodePlanetScaleCredential(explicitId, explicitSecret);
+  }
+
+  if (options.useEnvToken) {
+    const env = options.env ?? process.env;
+    const id = env.PLANETSCALE_SERVICE_TOKEN_ID?.trim();
+    const secret = env.PLANETSCALE_SERVICE_TOKEN?.trim();
+    if (id && secret) {
+      return encodePlanetScaleCredential(id, secret);
+    }
+    const missing: string[] = [];
+    if (!id) missing.push("PLANETSCALE_SERVICE_TOKEN_ID");
+    if (!secret) missing.push("PLANETSCALE_SERVICE_TOKEN");
+    throw new CombieError(
+      "MISSING_TOKEN",
+      `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set.\n` +
+        "Export both service-token values and run: combie connect planetscale --use-env",
+    );
+  }
+
+  throw new CombieError(
+    "MISSING_TOKEN",
+    "No PlanetScale service token provided.\n" +
+      "Options:\n" +
+      "  1. Export PLANETSCALE_SERVICE_TOKEN_ID and PLANETSCALE_SERVICE_TOKEN\n" +
+      "     then run: combie connect planetscale --use-env\n" +
+      "  2. Run: combie connect planetscale --token-id <id> --token <secret>\n" +
+      "When the token can access multiple organizations, add --organization <slug>.",
+  );
+}
+
 function resolveTokenFromGhCli(): string {
   let result: ReturnType<typeof spawnSync>;
   try {
@@ -238,6 +296,8 @@ function resolveToken(providerId: string, options: ConnectOptions): string {
       return resolveSentryToken(options);
     case "neon":
       return resolveNeonToken(options);
+    case "planetscale":
+      return resolvePlanetScaleToken(options);
     default:
       throw unknownProvider(providerId);
   }
@@ -264,7 +324,9 @@ export async function connectProvider(
 
     const token = resolveToken(providerId, options);
 
-    const auth = await provider.authenticate(token);
+    const auth = await provider.authenticate(token, {
+      organization: options.organization,
+    });
     if (!auth.ok) {
       throw new CombieError(
         "AUTH_FAILED",

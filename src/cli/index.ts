@@ -25,7 +25,7 @@ Usage:
 
 Commands:
   init                         Initialize local Combie state
-  connect <provider>           Connect a provider (cloudflare, github, vercel, sentry, neon)
+  connect <provider>           Connect a provider (cloudflare, github, vercel, sentry, neon, planetscale)
   sync [provider]              Discover and store resources
   providers                    List configured providers
   resources                    List discovered resources
@@ -38,12 +38,15 @@ Commands:
 
 Connect options:
   --token <token>              API token (avoid in shared shells; prefer --use-env / --use-gh)
+  --token-id <id>              PlanetScale service-token ID (use with --token secret)
+  --organization <slug>        PlanetScale organization when the token sees multiple orgs
   --use-env                    Use provider token from the environment
                                cloudflare: CLOUDFLARE_API_TOKEN
                                github: GITHUB_TOKEN or GH_TOKEN
                                vercel: VERCEL_TOKEN
                                sentry: SENTRY_AUTH_TOKEN
                                neon: NEON_API_KEY
+                               planetscale: PLANETSCALE_SERVICE_TOKEN_ID + PLANETSCALE_SERVICE_TOKEN
   --use-gh                     GitHub only: reuse authenticated GitHub CLI (\`gh auth token\`)
 
 Resources options:
@@ -65,6 +68,8 @@ Examples:
   combie connect vercel --use-env
   combie connect sentry --use-env
   combie connect neon --use-env
+  combie connect planetscale --use-env
+  combie connect planetscale --organization acme --use-env
   combie sync
   combie providers
   combie resources
@@ -148,12 +153,20 @@ async function main(argv: string[]): Promise<number> {
           return 1;
         }
         const token = typeof flags.token === "string" ? flags.token : undefined;
+        const tokenId =
+          typeof flags["token-id"] === "string" ? flags["token-id"] : undefined;
+        const organization =
+          typeof flags.organization === "string"
+            ? flags.organization
+            : undefined;
         const useEnvToken = flags["use-env"] === true;
         const useGh = flags["use-gh"] === true;
         const result = await connectProvider({
           baseDir,
           providerId,
           token,
+          tokenId,
+          organization,
           useEnvToken,
           useGh,
         });

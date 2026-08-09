@@ -117,9 +117,25 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("SENTRY_AUTH_TOKEN");
     expect(result.stdout).toContain("neon");
     expect(result.stdout).toContain("NEON_API_KEY");
+    expect(result.stdout).toContain("planetscale");
+    expect(result.stdout).toContain("PLANETSCALE_SERVICE_TOKEN_ID");
+    expect(result.stdout).toContain("PLANETSCALE_SERVICE_TOKEN");
+    expect(result.stdout).toContain("--organization");
+    expect(result.stdout).toContain("--token-id");
     expect(result.stdout).toContain("relationships");
     expect(result.stdout).toContain("history");
     expect(result.stdout).toContain("context");
+  });
+
+  test("connect planetscale without auth option fails with guidance", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() =>
+      main(["connect", "planetscale", "--dir", dir]),
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr.toLowerCase()).toMatch(
+      /token|use-env|planetscale|service/,
+    );
   });
 
   test("connect vercel without auth option fails with guidance", async () => {

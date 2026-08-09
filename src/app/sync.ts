@@ -74,6 +74,9 @@ function countByKind(resources: Resource[]): Partial<Record<ResourceKind, number
 function preserveMissingMetadataKeysFor(
   resource: Resource,
 ): string[] | undefined {
+  if (resource.provider === "planetscale" && resource.kind === "database") {
+    return ["branches"];
+  }
   if (resource.kind !== "project") return undefined;
   if (resource.provider === "vercel") return ["domains"];
   if (resource.provider === "neon") return ["branches", "databases", "endpoints"];
@@ -83,7 +86,8 @@ function preserveMissingMetadataKeysFor(
 function formatKindLabel(kind: ResourceKind, n: number): string {
   const labels: Record<ResourceKind, [string, string]> = {
     worker: ["Worker", "Workers"],
-    database: ["D1 database", "D1 databases"],
+    // Generic: Cloudflare D1 and PlanetScale both use kind `database`.
+    database: ["database", "databases"],
     kv_namespace: ["KV namespace", "KV namespaces"],
     zone: ["zone", "zones"],
     repository: ["repository", "repositories"],
