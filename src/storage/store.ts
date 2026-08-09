@@ -12,6 +12,10 @@ import type {
   RelationshipEvidence,
   RelationshipKind,
 } from "../domain/relationship.ts";
+import type {
+  VercelDeploymentEvidence,
+  VercelDeploymentRefresh,
+} from "../providers/vercel/deployment.ts";
 import { dbPath, stateDir } from "./paths.ts";
 
 export interface ProviderRecord {
@@ -75,6 +79,31 @@ CREATE INDEX IF NOT EXISTS changes_resource_observed_id_idx
 
 CREATE TABLE IF NOT EXISTS resource_change_baselines (
   resource_id TEXT PRIMARY KEY
+);
+
+CREATE TABLE IF NOT EXISTS vercel_deployments (
+  uid TEXT PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'vercel',
+  resource_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  ready_state TEXT,
+  state TEXT,
+  target TEXT,
+  created_at_ms INTEGER NOT NULL,
+  building_at_ms INTEGER,
+  ready_at_ms INTEGER,
+  observed_at TEXT NOT NULL,
+  source TEXT
+);
+
+CREATE INDEX IF NOT EXISTS vercel_deployments_resource_created_uid_idx
+  ON vercel_deployments(resource_id, created_at_ms DESC, uid DESC);
+
+CREATE TABLE IF NOT EXISTS vercel_deployment_refresh (
+  resource_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+  observed_at TEXT NOT NULL,
+  message TEXT
 );
 `;
 
@@ -521,6 +550,121 @@ export class Store {
     return deleted;
   }
 
+  /**
+   * Insert or update Vercel deployment evidence by stable deployment uid.
+   * Refreshes latest readyState/state/lifecycle times and Combie observedAt.
+   * Does not create Resource Changes.
+   */
+  upsertVercelDeployment(deployment: VercelDeploymentEvidence): void {
+    const db = this.getDb();
+    db.query(
+      `INSERT INTO vercel_deployments (
+         uid, provider, resource_id, project_id,
+         ready_state, state, target,
+         created_at_ms, building_at_ms, ready_at_ms,
+         observed_at, source
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(uid) DO UPDATE SET
+         provider = excluded.provider,
+         resource_id = excluded.resource_id,
+         project_id = excluded.project_id,
+         ready_state = excluded.ready_state,
+         state = excluded.state,
+         target = excluded.target,
+         created_at_ms = excluded.created_at_ms,
+         building_at_ms = excluded.building_at_ms,
+         ready_at_ms = excluded.ready_at_ms,
+         observed_at = excluded.observed_at,
+         source = excluded.source`,
+    ).run(
+      deployment.uid,
+      deployment.provider,
+      deployment.resourceId,
+      deployment.projectId,
+      deployment.readyState,
+      deployment.state,
+      deployment.target,
+      deployment.createdAtMs,
+      deployment.buildingAtMs,
+      deployment.readyAtMs,
+      deployment.observedAt,
+      deployment.source,
+    );
+  }
+
+  /**
+   * Newest-first deployment evidence for an exact Vercel project Resource.
+   * Ordering: provider created_at_ms DESC, uid DESC (stable tie-break).
+   */
+  listVercelDeploymentsForResource(
+    resourceId: string,
+  ): VercelDeploymentEvidence[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT uid, provider, resource_id, project_id,
+                ready_state, state, target,
+                created_at_ms, building_at_ms, ready_at_ms,
+                observed_at, source
+         FROM vercel_deployments
+         WHERE resource_id = ?
+         ORDER BY created_at_ms DESC, uid DESC`,
+      )
+      .all(resourceId) as VercelDeploymentRow[];
+    return rows.map(mapVercelDeployment);
+  }
+
+  countVercelDeployments(): number {
+    const row = this.getDb()
+      .query(`SELECT COUNT(*) AS n FROM vercel_deployments`)
+      .get() as { n: number };
+    return Number(row.n);
+  }
+
+  setVercelDeploymentRefresh(refresh: VercelDeploymentRefresh): void {
+    this.getDb()
+      .query(
+        `INSERT INTO vercel_deployment_refresh (
+           resource_id, status, observed_at, message
+         ) VALUES (?, ?, ?, ?)
+         ON CONFLICT(resource_id) DO UPDATE SET
+           status = excluded.status,
+           observed_at = excluded.observed_at,
+           message = excluded.message`,
+      )
+      .run(
+        refresh.resourceId,
+        refresh.status,
+        refresh.observedAt,
+        refresh.message,
+      );
+  }
+
+  getVercelDeploymentRefresh(
+    resourceId: string,
+  ): VercelDeploymentRefresh | null {
+    const row = this.getDb()
+      .query(
+        `SELECT resource_id, status, observed_at, message
+         FROM vercel_deployment_refresh
+         WHERE resource_id = ?`,
+      )
+      .get(resourceId) as
+      | {
+          resource_id: string;
+          status: string;
+          observed_at: string;
+          message: string | null;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      resourceId: row.resource_id,
+      status: row.status as "success" | "failure",
+      observedAt: row.observed_at,
+      message: row.message,
+    };
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
@@ -668,4 +812,36 @@ function preserveUnknownMetadata(
     }
   }
   return { ...incoming, metadata };
+}
+
+interface VercelDeploymentRow {
+  uid: string;
+  provider: string;
+  resource_id: string;
+  project_id: string;
+  ready_state: string | null;
+  state: string | null;
+  target: string | null;
+  created_at_ms: number;
+  building_at_ms: number | null;
+  ready_at_ms: number | null;
+  observed_at: string;
+  source: string | null;
+}
+
+function mapVercelDeployment(row: VercelDeploymentRow): VercelDeploymentEvidence {
+  return {
+    provider: "vercel",
+    uid: row.uid,
+    resourceId: row.resource_id,
+    projectId: row.project_id,
+    readyState: row.ready_state,
+    state: row.state,
+    target: row.target,
+    createdAtMs: row.created_at_ms,
+    buildingAtMs: row.building_at_ms,
+    readyAtMs: row.ready_at_ms,
+    observedAt: row.observed_at,
+    source: row.source,
+  };
 }

@@ -41,6 +41,8 @@ function change(
   return { id, resourceId, observedAt, kind: "updated", fields };
 }
 
+const NO_DEPLOYMENTS = { kind: "not_applicable" as const };
+
 function relationship(
   sourceResourceId: string,
   targetResourceId: string,
@@ -79,6 +81,7 @@ describe("Investigation timeline composition", () => {
       subject,
       subjectChanges: [subjectChange],
       related: [],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -121,8 +124,10 @@ describe("Investigation timeline composition", () => {
           direction: "inbound",
           resource: repository,
           changes: [repositoryChange],
+          deployments: NO_DEPLOYMENTS,
         },
       ],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const entry = composeInvestigationTimeline(context).entries[0]!;
@@ -165,6 +170,7 @@ describe("Investigation timeline composition", () => {
           changes: [
             change("repository-old", repository.id, "2026-08-08T10:03:00.000Z"),
           ],
+          deployments: NO_DEPLOYMENTS,
         },
         {
           relationship: usesDomain,
@@ -173,8 +179,10 @@ describe("Investigation timeline composition", () => {
           changes: [
             change("zone-new", zone.id, "2026-08-08T10:09:00.000Z"),
           ],
+          deployments: NO_DEPLOYMENTS,
         },
       ],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -208,8 +216,10 @@ describe("Investigation timeline composition", () => {
             change("change-z", repository.id, timestamp),
             change("change-m", repository.id, timestamp),
           ],
+          deployments: NO_DEPLOYMENTS,
         },
       ],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const first = composeInvestigationTimeline(context);
@@ -255,14 +265,17 @@ describe("Investigation timeline composition", () => {
           direction: "inbound",
           resource: neighbor,
           changes: [neighborChange],
+          deployments: NO_DEPLOYMENTS,
         },
         {
           relationship: usesDomain,
           direction: "outbound",
           resource: neighbor,
           changes: [neighborChange],
+          deployments: NO_DEPLOYMENTS,
         },
       ],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -314,14 +327,17 @@ describe("Investigation timeline composition", () => {
           direction: "inbound",
           resource: neighbor,
           changes: [neighborChange],
+          deployments: NO_DEPLOYMENTS,
         },
         {
           relationship: usesDomain,
           direction: "outbound",
           resource: neighbor,
           changes: [neighborChange],
+          deployments: NO_DEPLOYMENTS,
         },
       ],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const first = formatInvestigationContext(context);
@@ -374,14 +390,17 @@ describe("Investigation timeline composition", () => {
           direction: "outbound",
           resource: zeroChangeNeighbor,
           changes: [],
+          deployments: NO_DEPLOYMENTS,
         },
         {
           relationship: danglingEdge,
           direction: "inbound",
           resource: null,
           changes: [],
+          deployments: NO_DEPLOYMENTS,
         },
       ],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -414,8 +433,10 @@ describe("Investigation timeline composition", () => {
           direction: "outbound",
           resource: direct,
           changes: [directChange],
+          deployments: NO_DEPLOYMENTS,
         },
       ],
+      subjectDeployments: NO_DEPLOYMENTS,
     };
 
     const timeline = composeInvestigationTimeline(context);

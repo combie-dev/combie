@@ -4,6 +4,11 @@ import type {
   RelationshipEvidence,
 } from "../domain/relationship.ts";
 import type { Resource } from "../domain/resource.ts";
+import {
+  composeDeploymentAuthority,
+  type DeploymentEvidenceAuthority,
+  type VercelDeploymentEvidence,
+} from "../providers/vercel/deployment.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { getResourceHistoryForResource } from "./history.ts";
@@ -29,6 +34,11 @@ export interface InvestigationNeighbor {
   resource: Resource | null;
   /** Full Change history for the neighbor; empty when missing or zero history. */
   changes: Change[];
+  /**
+   * Vercel deployment evidence for a one-hop Vercel project neighbor.
+   * not_applicable for non-Vercel neighbors or dangling edges.
+   */
+  deployments: DeploymentEvidenceAuthority;
 }
 
 /**
@@ -39,6 +49,8 @@ export interface InvestigationContext {
   subject: Resource;
   subjectChanges: Change[];
   related: InvestigationNeighbor[];
+  /** Deployment evidence for the subject (Vercel projects only). */
+  subjectDeployments: DeploymentEvidenceAuthority;
 }
 
 export interface GetInvestigationContextOptions {
@@ -81,9 +93,31 @@ export function getInvestigationContext(
   }
 }
 
+function loadDeploymentAuthority(
+  store: Store,
+  resource: Resource | null,
+): DeploymentEvidenceAuthority {
+  if (!resource) {
+    return { kind: "not_applicable" };
+  }
+  if (resource.provider !== "vercel" || resource.kind !== "project") {
+    return { kind: "not_applicable" };
+  }
+  const refresh = store.getVercelDeploymentRefresh(resource.id);
+  const deployments = store.listVercelDeploymentsForResource(resource.id);
+  return composeDeploymentAuthority(
+    resource.id,
+    resource.provider,
+    resource.kind,
+    refresh,
+    deployments,
+  );
+}
+
 /**
  * Compose investigation context for an already-resolved subject Resource.
  * Reuses one-hop related-context and per-Resource history reads.
+ * Deployment evidence is read-only local state (no provider calls).
  */
 export function getInvestigationContextForResource(
   store: Store,
@@ -100,6 +134,7 @@ export function getInvestigationContextForResource(
       changes: neighbor.resource
         ? getResourceHistoryForResource(store, neighbor.resource).changes
         : [],
+      deployments: loadDeploymentAuthority(store, neighbor.resource),
     }),
   );
 
@@ -107,6 +142,7 @@ export function getInvestigationContextForResource(
     subject,
     subjectChanges: subjectHistory.changes,
     related,
+    subjectDeployments: loadDeploymentAuthority(store, subject),
   };
 }
 
@@ -178,6 +214,63 @@ function neighborId(item: InvestigationNeighbor): string {
     : item.relationship.sourceResourceId;
 }
 
+function formatProviderMs(ms: number): string {
+  return new Date(ms).toISOString();
+}
+
+function formatDeployment(d: VercelDeploymentEvidence): string {
+  const lines = [
+    `uid: ${d.uid}`,
+    `created at: ${formatProviderMs(d.createdAtMs)}`,
+  ];
+  if (d.buildingAtMs != null) {
+    lines.push(`building at: ${formatProviderMs(d.buildingAtMs)}`);
+  }
+  if (d.readyAtMs != null) {
+    lines.push(`ready at: ${formatProviderMs(d.readyAtMs)}`);
+  }
+  if (d.readyState) lines.push(`readyState: ${d.readyState}`);
+  if (d.state && d.state !== d.readyState) lines.push(`state: ${d.state}`);
+  if (d.target) lines.push(`target: ${d.target}`);
+  if (d.source) lines.push(`source: ${d.source}`);
+  lines.push(`observed by Combie at: ${d.observedAt}`);
+  return lines.join("\n");
+}
+
+function formatDeploymentsBlock(
+  authority: DeploymentEvidenceAuthority,
+): string {
+  if (authority.kind === "not_applicable") {
+    return "Deployment evidence does not apply to this resource.";
+  }
+  if (authority.kind === "unknown") {
+    const header =
+      "Deployment evidence has not been successfully refreshed.";
+    if (authority.message) {
+      // Message is already redacted at the provider boundary.
+      const stale =
+        authority.deployments.length > 0
+          ? `\n\nPrior recorded deployments (may be stale):\n\n${authority.deployments.map(formatDeployment).join("\n\n")}`
+          : "";
+      return `${header}\n(${authority.message})${stale}`;
+    }
+    if (authority.deployments.length > 0) {
+      return (
+        `${header}\n\nPrior recorded deployments (may be stale):\n\n` +
+        authority.deployments.map(formatDeployment).join("\n\n")
+      );
+    }
+    return header;
+  }
+  if (authority.kind === "empty") {
+    return (
+      `No deployments recorded for this project yet.\n` +
+      `Last successful refresh observed by Combie at: ${authority.observedAt}`
+    );
+  }
+  return authority.deployments.map(formatDeployment).join("\n\n");
+}
+
 function formatRelatedNeighbor(item: InvestigationNeighbor): string {
   const direction =
     item.direction === "outbound"
@@ -188,11 +281,16 @@ function formatRelatedNeighbor(item: InvestigationNeighbor): string {
     ? `${providerLabel(item.resource.provider)} ${item.resource.kind}: ${resourceDisplayName(item.resource)}`
     : id;
   const stableId = item.resource ? `\n${item.resource.id}` : "\n(missing resource)";
+  const deploymentSection =
+    item.deployments.kind === "not_applicable"
+      ? ""
+      : `\n\nDEPLOYMENTS (newest first)\n\n${formatDeploymentsBlock(item.deployments)}`;
   return (
     `${direction}\n` +
     `${identity}${stableId}\n` +
     `Evidence: ${formatEvidence(item.relationship.evidence)}\n\n` +
-    `CHANGES\n\n${formatChangesBlock(item.changes)}`
+    `CHANGES\n\n${formatChangesBlock(item.changes)}` +
+    deploymentSection
   );
 }
 
@@ -242,6 +340,11 @@ export function formatInvestigationContext(
   const subjectChanges =
     `SUBJECT CHANGES\n\n${formatChangesBlock(context.subjectChanges)}`;
 
+  const subjectDeployments =
+    context.subjectDeployments.kind === "not_applicable"
+      ? ""
+      : `\n\nDEPLOYMENTS (newest first)\n\n${formatDeploymentsBlock(context.subjectDeployments)}`;
+
   const related =
     context.related.length === 0
       ? "No relationships discovered."
@@ -249,7 +352,8 @@ export function formatInvestigationContext(
 
   return (
     `${header}\n\n` +
-    `${subjectChanges}\n\n` +
+    `${subjectChanges}` +
+    `${subjectDeployments}\n\n` +
     `RELATED CONTEXT\n\n${related}\n\n` +
     `TIMELINE (newest first)\n\n${formatTimeline(context)}`
   );

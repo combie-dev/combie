@@ -17,6 +17,7 @@ import {
   inferVercelCloudflareRelationships,
   isVercelCloudflareUsesDomainIn,
 } from "./infer-vercel-cloudflare.ts";
+import { syncVercelDeployments } from "./vercel-deployments.ts";
 
 export interface SyncOptions {
   baseDir: string;
@@ -178,6 +179,19 @@ async function syncOne(
     });
   }
 
+  // Vercel deployment evidence is separate from Resource metadata/Changes.
+  // Retrieval failure must not undo successful project discovery.
+  const deploymentLines: string[] = [];
+  if (providerId === "vercel") {
+    const deploymentSync = await syncVercelDeployments({
+      store,
+      token,
+      projects: discovered.resources,
+      observedAt: now,
+    });
+    deploymentLines.push(...deploymentSync.lines);
+  }
+
   store.setLastSync(providerId, now);
 
   const counts = countByKind(discovered.resources);
@@ -190,10 +204,16 @@ async function syncOne(
       ? `Discovered:\n${lines.map((l) => `  ${l}`).join("\n")}`
       : "Discovered:\n  (no supported resources found)";
 
+  const deploymentBlock =
+    deploymentLines.length > 0
+      ? `\n${deploymentLines.map((l) => `  ${l}`).join("\n")}`
+      : "";
+
   const message =
     `Syncing ${provider.name}...\n` +
     `✓ ${discovered.resources.length} resource${discovered.resources.length === 1 ? "" : "s"}\n` +
-    `${discoveredBlock}`;
+    `${discoveredBlock}` +
+    deploymentBlock;
 
   return {
     provider: provider.name,

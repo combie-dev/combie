@@ -223,6 +223,18 @@ function mockMultiProviderFetch(options?: {
           user: { id: "vercel_user_1", email: "test@example.com", username: "test-vercel-user" },
         });
       }
+      if (url.includes("/v7/deployments")) {
+        if (options?.vercelFail) {
+          return Response.json(
+            { error: { message: "Forbidden", code: "forbidden" } },
+            { status: 403 },
+          );
+        }
+        return Response.json({
+          deployments: [],
+          pagination: { count: 0, next: null, prev: null },
+        });
+      }
       if (url.includes("/v9/projects")) {
         if (options?.vercelFail) {
           return Response.json(
@@ -728,6 +740,12 @@ describe("multi-provider connection", () => {
             username: "sgr0691",
             name: "Sergio",
           },
+        });
+      }
+      if (url.includes("api.vercel.com") && url.includes("/v7/deployments")) {
+        return Response.json({
+          deployments: [],
+          pagination: { count: 0, next: null, prev: null },
         });
       }
       if (url.includes("api.vercel.com") && url.includes("/v9/projects")) {

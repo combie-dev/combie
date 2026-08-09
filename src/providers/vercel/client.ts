@@ -88,6 +88,40 @@ export interface VercelProjectDomainsResponse {
   };
 }
 
+/**
+ * Deployment list item from GET /v7/deployments.
+ * Only investigation-relevant fields are typed; other payload fields are ignored.
+ */
+export interface VercelDeploymentListItem {
+  uid?: string;
+  projectId?: string;
+  name?: string;
+  url?: string | null;
+  created?: number;
+  createdAt?: number;
+  buildingAt?: number;
+  ready?: number;
+  readyState?: string;
+  state?: string;
+  target?: string | null;
+  source?: string;
+  creator?: unknown;
+  meta?: unknown;
+  inspectorUrl?: string | null;
+  errorMessage?: string | null;
+  errorCode?: string;
+  deleted?: number;
+}
+
+export interface VercelDeploymentsResponse {
+  deployments: VercelDeploymentListItem[];
+  pagination?: {
+    count?: number;
+    next?: number | string | null;
+    prev?: number | string | null;
+  };
+}
+
 export interface VercelClientOptions {
   token: string;
   fetch?: FetchLike;
@@ -184,6 +218,50 @@ export class VercelClient {
       const paginationNext: string | number | null | undefined =
         response.pagination?.next;
       if (paginationNext == null || response.domains.length === 0) {
+        break;
+      }
+      next = paginationNext;
+    }
+
+    return all;
+  }
+
+  /**
+   * List deployments for one exact Vercel project via GET /v7/deployments.
+   *
+   * Filters by projectId so each item's project association is authoritative.
+   * Walks pagination.next timestamps with `until` (same family as projects).
+   * Does not invent since/watermark incremental sync.
+   */
+  async listDeploymentsForProject(
+    projectId: string,
+  ): Promise<VercelDeploymentListItem[]> {
+    const all: VercelDeploymentListItem[] = [];
+    const basePath = `/v7/deployments?projectId=${encodeURIComponent(projectId)}&limit=100`;
+    let next: string | number | null = null;
+
+    for (let page = 0; page < 100; page++) {
+      const path: string =
+        next != null
+          ? `${basePath}&until=${encodeURIComponent(String(next))}`
+          : basePath;
+      const response: VercelDeploymentsResponse =
+        await this.getJson<VercelDeploymentsResponse>(
+          path,
+          `List deployments for Vercel project ${projectId}`,
+        );
+      if (!Array.isArray(response?.deployments)) {
+        throw new VercelApiError({
+          message: `List deployments for Vercel project ${projectId}: response did not contain a deployments array. Try again.`,
+          status: 200,
+          endpoint: "/v7/deployments",
+        });
+      }
+      all.push(...response.deployments);
+
+      const paginationNext: string | number | null | undefined =
+        response.pagination?.next;
+      if (paginationNext == null || response.deployments.length === 0) {
         break;
       }
       next = paginationNext;
