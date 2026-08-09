@@ -30,7 +30,7 @@ Multi-provider connection loop:
 combie init
   → connect cloudflare | github | vercel | sentry | neon | planetscale
   → sync (all connected providers)
-  → providers | resources | changes | history | context
+  → providers | resources | changes | history | context | investigate
 ```
 
 Supported resource kinds: `worker`, `database` (Cloudflare D1 / PlanetScale), `kv_namespace`, `zone`, `repository`, `project` (Vercel / Sentry / Neon).

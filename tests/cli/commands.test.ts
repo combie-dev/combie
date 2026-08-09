@@ -125,6 +125,7 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("relationships");
     expect(result.stdout).toContain("history");
     expect(result.stdout).toContain("context");
+    expect(result.stdout).toContain("investigate");
   });
 
   test("connect planetscale without auth option fails with guidance", async () => {
@@ -388,6 +389,95 @@ describe("CLI commands", () => {
     expect(unknown.code).not.toBe(0);
     expect(unknown.stderr).toContain("Resource not found");
     expect(unknown.stderr).toContain("combie resources");
+  });
+
+  test("investigate requires initialization and an exact Resource id", async () => {
+    const uninitialized = await capture(() =>
+      main(["investigate", "vercel:project:1", "--dir", dir]),
+    );
+    expect(uninitialized.code).not.toBe(0);
+    expect(uninitialized.stderr).toContain("combie init");
+
+    await capture(() => main(["init", "--dir", dir]));
+    const missingArgument = await capture(() =>
+      main(["investigate", "--dir", dir]),
+    );
+    expect(missingArgument.code).not.toBe(0);
+    expect(missingArgument.stderr).toContain(
+      "Usage: combie investigate <resource-id>",
+    );
+
+    const unknown = await capture(() =>
+      main(["investigate", "vercel:project:missing", "--dir", dir]),
+    );
+    expect(unknown.code).not.toBe(0);
+    expect(unknown.stderr).toContain("Resource not found");
+    expect(unknown.stderr).toContain("combie resources");
+  });
+
+  test("investigate renders subject, related histories, and evidence offline", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.isInitialized();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "cli_repo",
+      kind: "repository",
+      name: "cli-repo",
+      metadata: { fullName: "user/cli-repo" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "cli_prj",
+      kind: "project",
+      name: "cli-app",
+      metadata: {},
+    });
+    store.applyResource(repository, {
+      id: "cli-repo-base",
+      observedAt: "2026-08-08T08:00:00.000Z",
+    });
+    store.applyResource(project, {
+      id: "cli-prj-base",
+      observedAt: "2026-08-08T08:00:00.000Z",
+    });
+    store.applyResource(
+      { ...project, name: "cli-app-renamed" },
+      { id: "cli-prj-change", observedAt: "2026-08-08T09:00:00.000Z" },
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "user/cli-repo",
+        },
+      }),
+    );
+    store.close();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("investigate must not call a provider");
+    }) as unknown as typeof fetch;
+    try {
+      const result = await capture(() =>
+        main(["investigate", project.id, "--dir", dir]),
+      );
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("SUBJECT");
+      expect(result.stdout).toContain("cli-app-renamed");
+      expect(result.stdout).toContain("SUBJECT CHANGES");
+      expect(result.stdout).toContain("← source_for");
+      expect(result.stdout).toContain(repository.id);
+      expect(result.stdout).toContain("RELATED CONTEXT");
+      expect(result.stdout).toContain("git_repository_reference");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("context renders empty, related-only, and history-only states", async () => {

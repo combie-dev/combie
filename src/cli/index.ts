@@ -17,6 +17,10 @@ import {
 import { getRelatedContext, formatRelatedContext } from "../app/related.ts";
 import { getResourceHistory, formatResourceHistory } from "../app/history.ts";
 import { getResourceContext, formatResourceContext } from "../app/context.ts";
+import {
+  getInvestigationContext,
+  formatInvestigationContext,
+} from "../app/investigate.ts";
 
 const HELP = `combie — engineering context layer
 
@@ -34,6 +38,7 @@ Commands:
   history <resource-id>        Show current state and observed history
   related <resource-id>        Show one-hop related context for a resource
   context <resource-id>        Compose current, related, and Change context
+  investigate <resource-id>    Compose one-hop investigation context around a resource
   help                         Show this help
 
 Connect options:
@@ -78,6 +83,7 @@ Examples:
   combie history github:repository:1001
   combie related github:repository:1001
   combie context github:repository:1001
+  combie investigate vercel:project:prj_abc
 `;
 
 interface ParsedArgs {
@@ -238,6 +244,21 @@ async function main(argv: string[]): Promise<number> {
         }
         const context = getResourceContext({ baseDir, resourceRef });
         console.log(formatResourceContext(context));
+        return 0;
+      }
+      case "investigate": {
+        const resourceRef = positionals[0];
+        if (!resourceRef) {
+          console.error(
+            "Usage: combie investigate <resource-id>\nExample: combie investigate vercel:project:prj_abc\nList ids: combie resources",
+          );
+          return 1;
+        }
+        const investigation = getInvestigationContext({
+          baseDir,
+          resourceRef,
+        });
+        console.log(formatInvestigationContext(investigation));
         return 0;
       }
       default:
