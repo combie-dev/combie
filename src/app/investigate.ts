@@ -12,6 +12,10 @@ import {
   type RelatedDirection,
   type RelatedNeighbor,
 } from "./related.ts";
+import {
+  composeInvestigationTimeline,
+  type InvestigationTimelineEntry,
+} from "./timeline.ts";
 
 /**
  * One-hop neighbor under investigation: the canonical Relationship, direction
@@ -192,6 +196,35 @@ function formatRelatedNeighbor(item: InvestigationNeighbor): string {
   );
 }
 
+function formatTimelineEntry(entry: InvestigationTimelineEntry): string {
+  const identity = `${providerLabel(entry.resource.provider)} ${entry.resource.kind}: ${resourceDisplayName(entry.resource)}`;
+  const role = `Role: ${entry.role}`;
+  const provenance = entry.relationships
+    .map(
+      ({ relationship, direction }) =>
+        `Relationship: ${relationship.kind} (${direction})\n` +
+        `Relationship ID: ${relationship.id}\n` +
+        `Evidence: ${formatEvidence(relationship.evidence)}`,
+    )
+    .join("\n");
+  const relationshipBlock = provenance ? `\n${provenance}` : "";
+  return (
+    `${identity}\n` +
+    `ID: ${entry.resource.id}\n` +
+    `${role}${relationshipBlock}\n` +
+    `Change ID: ${entry.change.id}\n` +
+    `${formatChange(entry.change)}`
+  );
+}
+
+function formatTimeline(context: InvestigationContext): string {
+  const timeline = composeInvestigationTimeline(context);
+  if (timeline.entries.length === 0) {
+    return "No changes recorded in this context yet.";
+  }
+  return timeline.entries.map(formatTimelineEntry).join("\n\n");
+}
+
 /** Deterministic CLI presentation of investigation context. */
 export function formatInvestigationContext(
   context: InvestigationContext,
@@ -217,6 +250,7 @@ export function formatInvestigationContext(
   return (
     `${header}\n\n` +
     `${subjectChanges}\n\n` +
-    `RELATED CONTEXT\n\n${related}`
+    `RELATED CONTEXT\n\n${related}\n\n` +
+    `TIMELINE (newest first)\n\n${formatTimeline(context)}`
   );
 }

@@ -475,6 +475,9 @@ describe("CLI commands", () => {
       expect(result.stdout).toContain(repository.id);
       expect(result.stdout).toContain("RELATED CONTEXT");
       expect(result.stdout).toContain("git_repository_reference");
+      expect(result.stdout).toContain("TIMELINE (newest first)");
+      expect(result.stdout).toContain("Role: subject");
+      expect(result.stdout).toContain("Observed: 2026-08-08T09:00:00.000Z");
     } finally {
       globalThis.fetch = originalFetch;
     }

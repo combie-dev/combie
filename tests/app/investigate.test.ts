@@ -9,6 +9,7 @@ import {
   formatInvestigationContext,
   getInvestigationContext,
 } from "../../src/app/investigate.ts";
+import { composeInvestigationTimeline } from "../../src/app/timeline.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { CredentialStore } from "../../src/storage/credentials.ts";
@@ -227,6 +228,8 @@ describe("Investigation context composition", () => {
     expect(output).toContain("Sentry project: lonely");
     expect(output).toContain("No relationships discovered.");
     expect(output).toContain("No changes recorded yet.");
+    expect(output).toContain("TIMELINE (newest first)");
+    expect(output).toContain("No changes recorded in this context yet.");
   });
 
   test("subject changes only without relationships", () => {
@@ -257,6 +260,10 @@ describe("Investigation context composition", () => {
     expect(ctx.subjectChanges[0]!.fields).toEqual([
       { path: "name", before: "before", after: "after" },
     ]);
+    const timeline = composeInvestigationTimeline(ctx);
+    expect(timeline.entries).toHaveLength(1);
+    expect(timeline.entries[0]!.role).toBe("subject");
+    expect(timeline.entries[0]!.relationships).toEqual([]);
   });
 
   test("outbound and inbound relationships with complete evidence and histories", () => {
@@ -337,6 +344,10 @@ describe("Investigation context composition", () => {
   test("investigating source includes target but not recursive second hop", () => {
     const store = openStore(dir);
     const { repository, project, zone } = seedHub(store);
+    store.applyResource(
+      { ...zone, metadata: { status: "pending" } },
+      { id: "zone-second-hop-change", observedAt: "2026-08-08T10:30:00.000Z" },
+    );
     store.close();
 
     // A = repository → B = project → C = zone
@@ -350,6 +361,11 @@ describe("Investigation context composition", () => {
     expect(fromRepo.related[0]!.resource?.id).toBe(project.id);
     expect(
       fromRepo.related.some((item) => item.resource?.id === zone.id),
+    ).toBe(false);
+    expect(
+      composeInvestigationTimeline(fromRepo).entries.some(
+        (entry) => entry.change.id === "zone-second-hop-change",
+      ),
     ).toBe(false);
 
     // Investigating C includes B (inbound) but not A
