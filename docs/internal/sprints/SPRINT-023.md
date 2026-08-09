@@ -1655,7 +1655,7 @@ Do not scaffold beyond that vertical slice.
 | Test code changes | **none** |
 | Secret scan | no secrets introduced (docs-only Sprint) |
 | Diff / whitespace | Sprint doc only |
-| Worktree after commit | clean expected after Sprint 023 commit |
+| Worktree after commit | clean (`217e320`) |
 
 ### Live / Fixture Evidence
 
@@ -1769,8 +1769,8 @@ Do not implement Sprint 024 in this Sprint.
 -   [x] diff/whitespace checks clean
 -   [x] completion notes updated
 -   [x] Canon changes recorded or None
--   [ ] Sprint 023 committed separately
--   [ ] worktree clean
+-   [x] Sprint 023 committed separately (`217e320`)
+-   [x] worktree clean
 -   [x] Sprint 024 not started
 
 ------------------------------------------------------------------------
