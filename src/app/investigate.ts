@@ -28,6 +28,11 @@ import {
   type RelatedNeighbor,
 } from "./related.ts";
 import {
+  composeProviderActivityChronology,
+  nativeEvidenceId,
+  type ProviderActivityEntry,
+} from "./provider-activity.ts";
+import {
   composeInvestigationTimeline,
   type InvestigationTimelineEntry,
 } from "./timeline.ts";
@@ -486,12 +491,71 @@ function formatTimelineEntry(entry: InvestigationTimelineEntry): string {
   );
 }
 
-function formatTimeline(context: InvestigationContext): string {
+/** Combie observation-time surface (Resource Changes). Formerly TIMELINE. */
+function formatCombieObservations(context: InvestigationContext): string {
   const timeline = composeInvestigationTimeline(context);
   if (timeline.entries.length === 0) {
     return "No changes recorded in this context yet.";
   }
   return timeline.entries.map(formatTimelineEntry).join("\n\n");
+}
+
+function formatActivityAuthority(entry: ProviderActivityEntry): string {
+  if (entry.authority === "unknown") {
+    return "Authority: unknown (may be stale)";
+  }
+  if (entry.authority === "empty") {
+    return "Authority: empty (previously recorded)";
+  }
+  return "Authority: populated";
+}
+
+function formatProviderActivityEntry(entry: ProviderActivityEntry): string {
+  const id = nativeEvidenceId(entry);
+  let title: string;
+  let detail: string;
+  if (entry.family === "vercel_deployment") {
+    title = `Vercel deployment: ${id}`;
+    detail = formatDeployment(entry.evidence);
+  } else if (entry.family === "github_workflow_run") {
+    title = `GitHub workflow run: ${id}`;
+    detail = formatWorkflowRun(entry.evidence);
+  } else {
+    title = `Neon operation: ${id}`;
+    detail = formatNeonOperation(entry.evidence);
+  }
+
+  const role = `Role: ${entry.role}`;
+  const provenance = entry.relationships
+    .map(
+      ({ relationship, direction }) =>
+        `Relationship: ${relationship.kind} (${direction})\n` +
+        `Relationship ID: ${relationship.id}\n` +
+        `Evidence: ${formatEvidence(relationship.evidence)}`,
+    )
+    .join("\n");
+  const relationshipBlock = provenance ? `\n${provenance}` : "";
+
+  return (
+    `${title}\n` +
+    `Resource: ${entry.resourceId}\n` +
+    `${role}${relationshipBlock}\n` +
+    `${formatActivityAuthority(entry)}\n` +
+    `primary time field: ${entry.primaryTimeField}\n` +
+    detail
+  );
+}
+
+/**
+ * Ephemeral provider-activity chronology (Sprint 024). Incomplete by design:
+ * what Combie currently knows from local provider evidence only.
+ */
+function formatProviderActivity(context: InvestigationContext): string {
+  const chronology = composeProviderActivityChronology(context);
+  if (chronology.entries.length === 0) {
+    return "No provider activity known for this investigation.";
+  }
+  return chronology.entries.map(formatProviderActivityEntry).join("\n\n");
 }
 
 /** Deterministic CLI presentation of investigation context. */
@@ -531,6 +595,8 @@ export function formatInvestigationContext(
       ? "No relationships discovered."
       : context.related.map(formatRelatedNeighbor).join("\n\n");
 
+  // Chronology supplements detailed sections (DEPLOYMENTS / WORKFLOW RUNS /
+  // OPERATIONS) and stays separate from Resource Change observations.
   return (
     `${header}\n\n` +
     `${subjectChanges}` +
@@ -538,6 +604,9 @@ export function formatInvestigationContext(
     `${subjectWorkflowRuns}` +
     `${subjectOperations}\n\n` +
     `RELATED CONTEXT\n\n${related}\n\n` +
-    `TIMELINE (newest first)\n\n${formatTimeline(context)}`
+    `KNOWN PROVIDER ACTIVITY (newest first; incomplete)\n\n` +
+    `${formatProviderActivity(context)}\n\n` +
+    `COMBIE OBSERVATIONS (newest first)\n\n` +
+    `${formatCombieObservations(context)}`
   );
 }

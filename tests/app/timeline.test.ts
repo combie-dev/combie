@@ -374,7 +374,7 @@ describe("Investigation timeline composition", () => {
     const second = formatInvestigationContext(context);
 
     expect(first).toBe(second);
-    expect(first).toContain("TIMELINE (newest first)");
+    expect(first).toContain("COMBIE OBSERVATIONS (newest first)");
     expect(first).toContain(`Change ID: ${neighborChange.id}`);
     expect(first).toContain(`Observed: ${observedAt}`);
     expect(first).toContain('"nextjs" → (absent)');

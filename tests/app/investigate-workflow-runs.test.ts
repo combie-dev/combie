@@ -124,11 +124,11 @@ describe("investigate workflow runs (Sprint 021)", () => {
       expect(output).toContain("started at: ");
       expect(output).toContain("observed by Combie at: ");
       expect(output).toContain("head sha: ");
-      expect(output).toContain("TIMELINE (newest first)");
+      expect(output).toContain("COMBIE OBSERVATIONS (newest first)");
       expect(output).not.toContain("triggered");
       expect(output).not.toContain("caused");
       expect(output.indexOf("WORKFLOW RUNS (newest first)")).toBeLessThan(
-        output.indexOf("TIMELINE (newest first)"),
+        output.indexOf("COMBIE OBSERVATIONS (newest first)"),
       );
       expect(output.indexOf("run id: 3")).toBeLessThan(
         output.indexOf("run id: 1"),

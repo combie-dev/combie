@@ -123,11 +123,11 @@ describe("investigate deployments (Sprint 020)", () => {
       expect(output).toContain("observed by Combie at: 2026-08-09T12:00:00.000Z");
       expect(output).toContain("readyState: READY");
       // TIMELINE remains Change-only; no deployment merge language.
-      expect(output).toContain("TIMELINE (newest first)");
+      expect(output).toContain("COMBIE OBSERVATIONS (newest first)");
       expect(output).not.toContain("triggered deployment");
       expect(output).not.toContain("caused by");
       expect(output.indexOf("DEPLOYMENTS (newest first)")).toBeLessThan(
-        output.indexOf("TIMELINE (newest first)"),
+        output.indexOf("COMBIE OBSERVATIONS (newest first)"),
       );
       // Ordering: dpl_new before dpl_old
       expect(output.indexOf("uid: dpl_new")).toBeLessThan(
@@ -298,7 +298,7 @@ describe("investigate deployments (Sprint 020)", () => {
     );
     expect(timeline.entries.map((e) => e.change.id)).toEqual(["name-change"]);
     const output = formatInvestigationContext(ctx);
-    expect(output).toContain("TIMELINE (newest first)");
+    expect(output).toContain("COMBIE OBSERVATIONS (newest first)");
     expect(output).toContain("Change ID: name-change");
     expect(output).toContain("DEPLOYMENTS (newest first)");
   });

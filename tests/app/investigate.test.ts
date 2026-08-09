@@ -228,7 +228,7 @@ describe("Investigation context composition", () => {
     expect(output).toContain("Sentry project: lonely");
     expect(output).toContain("No relationships discovered.");
     expect(output).toContain("No changes recorded yet.");
-    expect(output).toContain("TIMELINE (newest first)");
+    expect(output).toContain("COMBIE OBSERVATIONS (newest first)");
     expect(output).toContain("No changes recorded in this context yet.");
   });
 
