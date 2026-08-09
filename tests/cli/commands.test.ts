@@ -117,6 +117,7 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("SENTRY_AUTH_TOKEN");
     expect(result.stdout).toContain("relationships");
     expect(result.stdout).toContain("history");
+    expect(result.stdout).toContain("context");
   });
 
   test("connect vercel without auth option fails with guidance", async () => {
@@ -344,6 +345,269 @@ describe("CLI commands", () => {
     expect(reopened.listResources()).toEqual(resourcesBefore);
     expect(reopened.listChanges()).toEqual(changesBefore);
     expect(reopened.listRelationships()).toEqual(relationshipsBefore);
+    reopened.close();
+  });
+
+  test("context requires initialization and an exact Resource id", async () => {
+    const uninitialized = await capture(() =>
+      main(["context", "github:repository:1", "--dir", dir]),
+    );
+    expect(uninitialized.code).not.toBe(0);
+    expect(uninitialized.stderr).toContain("combie init");
+
+    await capture(() => main(["init", "--dir", dir]));
+    const missingArgument = await capture(() =>
+      main(["context", "--dir", dir]),
+    );
+    expect(missingArgument.code).not.toBe(0);
+    expect(missingArgument.stderr).toContain(
+      "Usage: combie context <resource-id>",
+    );
+
+    const unknown = await capture(() =>
+      main(["context", "github:repository:missing", "--dir", dir]),
+    );
+    expect(unknown.code).not.toBe(0);
+    expect(unknown.stderr).toContain("Resource not found");
+    expect(unknown.stderr).toContain("combie resources");
+  });
+
+  test("context renders empty, related-only, and history-only states", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.isInitialized();
+    const empty = createResource({
+      provider: "cloudflare",
+      providerResourceId: "empty-context",
+      kind: "zone",
+      name: "empty.example",
+      metadata: {},
+    });
+    const relatedOnly = createResource({
+      provider: "github",
+      providerResourceId: "related-context",
+      kind: "repository",
+      name: "related",
+      metadata: { fullName: "acme/related" },
+    });
+    const neighbor = createResource({
+      provider: "vercel",
+      providerResourceId: "related-neighbor",
+      kind: "project",
+      name: "neighbor",
+      metadata: {},
+    });
+    const historyOnly = createResource({
+      provider: "sentry",
+      providerResourceId: "history-context",
+      kind: "project",
+      name: "before",
+      metadata: {},
+    });
+    for (const [resource, id] of [
+      [empty, "empty-initial"],
+      [relatedOnly, "related-initial"],
+      [neighbor, "neighbor-initial"],
+      [historyOnly, "history-initial"],
+    ] as const) {
+      store.applyResource(resource, {
+        id,
+        observedAt: "2026-08-08T08:00:00.000Z",
+      });
+    }
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: relatedOnly.id,
+        targetResourceId: neighbor.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/related",
+        },
+      }),
+    );
+    store.applyResource(
+      { ...historyOnly, name: "after" },
+      { id: "history-change", observedAt: "2026-08-08T09:00:00.000Z" },
+    );
+    store.close();
+
+    const emptyResult = await capture(() =>
+      main(["context", empty.id, "--dir", dir]),
+    );
+    expect(emptyResult.code).toBe(0);
+    expect(emptyResult.stdout).toContain("No relationships discovered yet.");
+    expect(emptyResult.stdout).toContain("No changes recorded yet.");
+
+    const relatedResult = await capture(() =>
+      main(["context", relatedOnly.id, "--dir", dir]),
+    );
+    expect(relatedResult.code).toBe(0);
+    expect(relatedResult.stdout).toContain("source_for →");
+    expect(relatedResult.stdout).toContain(neighbor.id);
+    expect(relatedResult.stdout).toContain("git_repository_reference");
+    expect(relatedResult.stdout).toContain("No changes recorded yet.");
+
+    const historyResult = await capture(() =>
+      main(["context", historyOnly.id, "--dir", dir]),
+    );
+    expect(historyResult.code).toBe(0);
+    expect(historyResult.stdout).toContain("No relationships discovered yet.");
+    expect(historyResult.stdout).toContain("2026-08-08T09:00:00.000Z");
+    expect(historyResult.stdout).toContain('"before" → "after"');
+  });
+
+  test("context composes both directions and target history offline without mutation", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.isInitialized();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "context-repository",
+      kind: "repository",
+      name: "web",
+      metadata: { fullName: "acme/web" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "context-project",
+      kind: "project",
+      name: "before",
+      metadata: { domains: [], framework: "nextjs" },
+    });
+    const zone = createResource({
+      provider: "cloudflare",
+      providerResourceId: "context-zone",
+      kind: "zone",
+      name: "example.com",
+      metadata: {},
+    });
+    for (const [resource, id] of [
+      [repository, "repository-initial"],
+      [project, "project-initial"],
+      [zone, "zone-initial"],
+    ] as const) {
+      store.applyResource(resource, {
+        id,
+        observedAt: "2026-08-08T08:00:00.000Z",
+      });
+    }
+    store.applyResource(
+      { ...repository, name: "related-history-must-not-render" },
+      {
+        id: "related-history-sentinel",
+        observedAt: "2026-08-08T11:00:00.000Z",
+      },
+    );
+    store.applyResource(
+      {
+        ...project,
+        name: "middle",
+        metadata: { domains: ["preview.example.com"] },
+      },
+      { id: "older", observedAt: "2026-08-08T09:00:00.000Z" },
+    );
+    store.applyResource(
+      {
+        ...project,
+        name: "current",
+        metadata: { domains: ["app.example.com"], region: "iad1" },
+      },
+      { id: "newer", observedAt: "2026-08-08T10:00:00.000Z" },
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/web",
+        },
+      }),
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: project.id,
+        targetResourceId: zone.id,
+        kind: "uses_domain_in",
+        evidence: {
+          source: "vercel",
+          mechanism: "custom_domain_apex",
+          apexName: "example.com",
+          hostnames: ["app.example.com"],
+        },
+      }),
+    );
+    const providersBefore = store.listProviders();
+    const resourcesBefore = store.listResources();
+    const relationshipsBefore = store.listRelationships();
+    const changesBefore = store.listChanges();
+    store.close();
+
+    const envKeys = [
+      "CLOUDFLARE_API_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_TOKEN",
+      "VERCEL_TOKEN",
+      "SENTRY_AUTH_TOKEN",
+    ] as const;
+    const previousEnv = new Map(
+      envKeys.map((key) => [key, process.env[key]] as const),
+    );
+    for (const key of envKeys) delete process.env[key];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("context must not call a provider");
+    }) as unknown as typeof fetch;
+    let first;
+    let second;
+    try {
+      first = await capture(() =>
+        main(["context", project.id, "--dir", dir]),
+      );
+      second = await capture(() =>
+        main(["context", project.id, "--dir", dir]),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const key of envKeys) {
+        const value = previousEnv.get(key);
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+
+    expect(first.code).toBe(0);
+    expect(second).toEqual(first);
+    expect(first.stdout).toContain("Vercel project: current");
+    expect(first.stdout).toContain("← source_for");
+    expect(first.stdout).toContain(repository.id);
+    expect(first.stdout).toContain("uses_domain_in →");
+    expect(first.stdout).toContain(zone.id);
+    expect(first.stdout).toContain("custom_domain_apex");
+    expect(first.stdout).toContain('hostnames=["app.example.com"]');
+    expect(first.stdout).toContain("2026-08-08T10:00:00.000Z");
+    expect(first.stdout).toContain("2026-08-08T09:00:00.000Z");
+    expect(first.stdout.match(/Observed:/g)).toHaveLength(2);
+    expect(first.stdout.indexOf("2026-08-08T10:00:00.000Z")).toBeLessThan(
+      first.stdout.indexOf("2026-08-08T09:00:00.000Z"),
+    );
+    expect(first.stdout).toContain(
+      '["preview.example.com"] → ["app.example.com"]',
+    );
+    expect(first.stdout).toContain("(absent) → \"iad1\"");
+    expect(first.stdout).not.toContain("related-history-must-not-render");
+    expect(first.stdout).not.toContain("related-history-sentinel");
+
+    const reopened = new Store(dir);
+    reopened.isInitialized();
+    expect(reopened.listProviders()).toEqual(providersBefore);
+    expect(reopened.listResources()).toEqual(resourcesBefore);
+    expect(reopened.listRelationships()).toEqual(relationshipsBefore);
+    expect(reopened.listChanges()).toEqual(changesBefore);
     reopened.close();
   });
 

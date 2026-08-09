@@ -16,6 +16,7 @@ import {
 } from "../app/list.ts";
 import { getRelatedContext, formatRelatedContext } from "../app/related.ts";
 import { getResourceHistory, formatResourceHistory } from "../app/history.ts";
+import { getResourceContext, formatResourceContext } from "../app/context.ts";
 
 const HELP = `combie — engineering context layer
 
@@ -32,6 +33,7 @@ Commands:
   changes                      List observed Resource changes
   history <resource-id>        Show current state and observed history
   related <resource-id>        Show one-hop related context for a resource
+  context <resource-id>        Compose current, related, and Change context
   help                         Show this help
 
 Connect options:
@@ -68,6 +70,7 @@ Examples:
   combie changes
   combie history github:repository:1001
   combie related github:repository:1001
+  combie context github:repository:1001
 `;
 
 interface ParsedArgs {
@@ -208,6 +211,18 @@ async function main(argv: string[]): Promise<number> {
         }
         const ctx = getRelatedContext({ baseDir, resourceRef });
         console.log(formatRelatedContext(ctx));
+        return 0;
+      }
+      case "context": {
+        const resourceRef = positionals[0];
+        if (!resourceRef) {
+          console.error(
+            "Usage: combie context <resource-id>\nExample: combie context github:repository:1001\nList ids: combie resources",
+          );
+          return 1;
+        }
+        const context = getResourceContext({ baseDir, resourceRef });
+        console.log(formatResourceContext(context));
         return 0;
       }
       default:

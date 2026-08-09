@@ -32,6 +32,39 @@ export interface GetRelatedContextOptions {
   resourceRef: string;
 }
 
+/** Compose already-resolved current state with its canonical one-hop edges. */
+export function getRelatedContextForResource(
+  store: Store,
+  resource: Resource,
+): RelatedResourceContext {
+  const relationships = store.listRelationshipsForResource(resource.id);
+  const related: RelatedNeighbor[] = [];
+
+  for (const relationship of relationships) {
+    let direction: RelatedDirection;
+    let neighborId: string;
+
+    if (relationship.sourceResourceId === resource.id) {
+      direction = "outbound";
+      neighborId = relationship.targetResourceId;
+    } else if (relationship.targetResourceId === resource.id) {
+      direction = "inbound";
+      neighborId = relationship.sourceResourceId;
+    } else {
+      // Defensive: query should only return touching edges
+      continue;
+    }
+
+    related.push({
+      relationship,
+      direction,
+      resource: store.getResource(neighborId),
+    });
+  }
+
+  return { resource, related };
+}
+
 /**
  * Resolve one Resource and its directly related neighbors (one hop).
  * Reads local state only — no provider network calls.
@@ -61,32 +94,7 @@ export function getRelatedContext(
       );
     }
 
-    const relationships = store.listRelationshipsForResource(resource.id);
-    const related: RelatedNeighbor[] = [];
-
-    for (const relationship of relationships) {
-      let direction: RelatedDirection;
-      let neighborId: string;
-
-      if (relationship.sourceResourceId === resource.id) {
-        direction = "outbound";
-        neighborId = relationship.targetResourceId;
-      } else if (relationship.targetResourceId === resource.id) {
-        direction = "inbound";
-        neighborId = relationship.sourceResourceId;
-      } else {
-        // Defensive: query should only return touching edges
-        continue;
-      }
-
-      related.push({
-        relationship,
-        direction,
-        resource: store.getResource(neighborId),
-      });
-    }
-
-    return { resource, related };
+    return getRelatedContextForResource(store, resource);
   } finally {
     store.close();
   }

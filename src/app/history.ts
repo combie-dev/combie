@@ -14,6 +14,17 @@ export interface GetResourceHistoryOptions {
   resourceRef: string;
 }
 
+/** Compose an already-resolved current Resource with its ordered Changes. */
+export function getResourceHistoryForResource(
+  store: Store,
+  resource: Resource,
+): ResourceHistory {
+  return {
+    resource,
+    changes: store.listChangesForResource(resource.id),
+  };
+}
+
 /** Read current Resource state and its observed Changes from local persistence. */
 export function getResourceHistory(
   options: GetResourceHistoryOptions,
@@ -40,10 +51,7 @@ export function getResourceHistory(
       );
     }
 
-    return {
-      resource,
-      changes: store.listChangesForResource(resource.id),
-    };
+    return getResourceHistoryForResource(store, resource);
   } finally {
     store.close();
   }
