@@ -400,6 +400,9 @@ function mockMultiProviderFetch(options?: {
           name: "Test User",
         });
       }
+      if (url.includes("/actions/runs")) {
+        return Response.json({ total_count: 0, workflow_runs: [] });
+      }
       if (url.includes("/user/repos") || url.includes("/repos")) {
         if (options?.githubFail) {
           return Response.json({ message: "Bad credentials" }, { status: 401 });

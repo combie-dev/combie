@@ -17,6 +17,7 @@ import {
   inferVercelCloudflareRelationships,
   isVercelCloudflareUsesDomainIn,
 } from "./infer-vercel-cloudflare.ts";
+import { syncGitHubWorkflowRuns } from "./github-workflow-runs.ts";
 import { syncVercelDeployments } from "./vercel-deployments.ts";
 
 export interface SyncOptions {
@@ -179,9 +180,9 @@ async function syncOne(
     });
   }
 
-  // Vercel deployment evidence is separate from Resource metadata/Changes.
-  // Retrieval failure must not undo successful project discovery.
-  const deploymentLines: string[] = [];
+  // Provider-native historical evidence is separate from Resource metadata/Changes.
+  // Retrieval failure must not undo successful Resource discovery.
+  const evidenceLines: string[] = [];
   if (providerId === "vercel") {
     const deploymentSync = await syncVercelDeployments({
       store,
@@ -189,7 +190,16 @@ async function syncOne(
       projects: discovered.resources,
       observedAt: now,
     });
-    deploymentLines.push(...deploymentSync.lines);
+    evidenceLines.push(...deploymentSync.lines);
+  }
+  if (providerId === "github") {
+    const workflowSync = await syncGitHubWorkflowRuns({
+      store,
+      token,
+      repositories: discovered.resources,
+      observedAt: now,
+    });
+    evidenceLines.push(...workflowSync.lines);
   }
 
   store.setLastSync(providerId, now);
@@ -204,16 +214,16 @@ async function syncOne(
       ? `Discovered:\n${lines.map((l) => `  ${l}`).join("\n")}`
       : "Discovered:\n  (no supported resources found)";
 
-  const deploymentBlock =
-    deploymentLines.length > 0
-      ? `\n${deploymentLines.map((l) => `  ${l}`).join("\n")}`
+  const evidenceBlock =
+    evidenceLines.length > 0
+      ? `\n${evidenceLines.map((l) => `  ${l}`).join("\n")}`
       : "";
 
   const message =
     `Syncing ${provider.name}...\n` +
     `✓ ${discovered.resources.length} resource${discovered.resources.length === 1 ? "" : "s"}\n` +
     `${discoveredBlock}` +
-    deploymentBlock;
+    evidenceBlock;
 
   return {
     provider: provider.name,

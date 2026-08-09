@@ -529,7 +529,10 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
             : input.url;
 
       if (url.includes("api.github.com")) {
-        if (url.includes("/user/repos") || url.includes("/repos")) {
+        if (url.includes("/actions/runs")) {
+        return Response.json({ total_count: 0, workflow_runs: [] });
+      }
+      if (url.includes("/user/repos") || url.includes("/repos")) {
           return Response.json([
             {
               id: 1001,

@@ -42,6 +42,7 @@ function change(
 }
 
 const NO_DEPLOYMENTS = { kind: "not_applicable" as const };
+const NO_WORKFLOWS = { kind: "not_applicable" as const };
 
 function relationship(
   sourceResourceId: string,
@@ -82,6 +83,7 @@ describe("Investigation timeline composition", () => {
       subjectChanges: [subjectChange],
       related: [],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -125,9 +127,11 @@ describe("Investigation timeline composition", () => {
           resource: repository,
           changes: [repositoryChange],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const entry = composeInvestigationTimeline(context).entries[0]!;
@@ -171,6 +175,7 @@ describe("Investigation timeline composition", () => {
             change("repository-old", repository.id, "2026-08-08T10:03:00.000Z"),
           ],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
         {
           relationship: usesDomain,
@@ -180,9 +185,11 @@ describe("Investigation timeline composition", () => {
             change("zone-new", zone.id, "2026-08-08T10:09:00.000Z"),
           ],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -217,9 +224,11 @@ describe("Investigation timeline composition", () => {
             change("change-m", repository.id, timestamp),
           ],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const first = composeInvestigationTimeline(context);
@@ -266,6 +275,7 @@ describe("Investigation timeline composition", () => {
           resource: neighbor,
           changes: [neighborChange],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
         {
           relationship: usesDomain,
@@ -273,9 +283,11 @@ describe("Investigation timeline composition", () => {
           resource: neighbor,
           changes: [neighborChange],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -328,6 +340,7 @@ describe("Investigation timeline composition", () => {
           resource: neighbor,
           changes: [neighborChange],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
         {
           relationship: usesDomain,
@@ -335,9 +348,11 @@ describe("Investigation timeline composition", () => {
           resource: neighbor,
           changes: [neighborChange],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const first = formatInvestigationContext(context);
@@ -391,6 +406,7 @@ describe("Investigation timeline composition", () => {
           resource: zeroChangeNeighbor,
           changes: [],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
         {
           relationship: danglingEdge,
@@ -398,9 +414,11 @@ describe("Investigation timeline composition", () => {
           resource: null,
           changes: [],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -434,9 +452,11 @@ describe("Investigation timeline composition", () => {
           resource: direct,
           changes: [directChange],
           deployments: NO_DEPLOYMENTS,
+          workflowRuns: NO_WORKFLOWS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
+      subjectWorkflowRuns: NO_WORKFLOWS,
     };
 
     const timeline = composeInvestigationTimeline(context);

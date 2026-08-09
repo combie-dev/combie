@@ -5,6 +5,11 @@ import type {
 } from "../domain/relationship.ts";
 import type { Resource } from "../domain/resource.ts";
 import {
+  composeWorkflowRunAuthority,
+  type GitHubWorkflowRunEvidence,
+  type WorkflowRunEvidenceAuthority,
+} from "../providers/github/workflow-run.ts";
+import {
   composeDeploymentAuthority,
   type DeploymentEvidenceAuthority,
   type VercelDeploymentEvidence,
@@ -39,6 +44,11 @@ export interface InvestigationNeighbor {
    * not_applicable for non-Vercel neighbors or dangling edges.
    */
   deployments: DeploymentEvidenceAuthority;
+  /**
+   * GitHub workflow-run evidence for a one-hop GitHub repository neighbor.
+   * not_applicable for non-GitHub neighbors or dangling edges.
+   */
+  workflowRuns: WorkflowRunEvidenceAuthority;
 }
 
 /**
@@ -51,6 +61,8 @@ export interface InvestigationContext {
   related: InvestigationNeighbor[];
   /** Deployment evidence for the subject (Vercel projects only). */
   subjectDeployments: DeploymentEvidenceAuthority;
+  /** Workflow-run evidence for the subject (GitHub repositories only). */
+  subjectWorkflowRuns: WorkflowRunEvidenceAuthority;
 }
 
 export interface GetInvestigationContextOptions {
@@ -114,10 +126,30 @@ function loadDeploymentAuthority(
   );
 }
 
+function loadWorkflowRunAuthority(
+  store: Store,
+  resource: Resource | null,
+): WorkflowRunEvidenceAuthority {
+  if (!resource) {
+    return { kind: "not_applicable" };
+  }
+  if (resource.provider !== "github" || resource.kind !== "repository") {
+    return { kind: "not_applicable" };
+  }
+  const refresh = store.getGitHubWorkflowRunRefresh(resource.id);
+  const runs = store.listGitHubWorkflowRunsForResource(resource.id);
+  return composeWorkflowRunAuthority(
+    resource.provider,
+    resource.kind,
+    refresh,
+    runs,
+  );
+}
+
 /**
  * Compose investigation context for an already-resolved subject Resource.
  * Reuses one-hop related-context and per-Resource history reads.
- * Deployment evidence is read-only local state (no provider calls).
+ * Provider evidence is read-only local state (no provider calls).
  */
 export function getInvestigationContextForResource(
   store: Store,
@@ -135,6 +167,7 @@ export function getInvestigationContextForResource(
         ? getResourceHistoryForResource(store, neighbor.resource).changes
         : [],
       deployments: loadDeploymentAuthority(store, neighbor.resource),
+      workflowRuns: loadWorkflowRunAuthority(store, neighbor.resource),
     }),
   );
 
@@ -143,6 +176,7 @@ export function getInvestigationContextForResource(
     subjectChanges: subjectHistory.changes,
     related,
     subjectDeployments: loadDeploymentAuthority(store, subject),
+    subjectWorkflowRuns: loadWorkflowRunAuthority(store, subject),
   };
 }
 
@@ -271,6 +305,57 @@ function formatDeploymentsBlock(
   return authority.deployments.map(formatDeployment).join("\n\n");
 }
 
+function formatWorkflowRun(run: GitHubWorkflowRunEvidence): string {
+  const lines = [`run id: ${run.runId}`];
+  if (run.name) lines.push(`workflow: ${run.name}`);
+  if (run.workflowId != null) lines.push(`workflow id: ${run.workflowId}`);
+  if (run.runNumber != null) lines.push(`run number: ${run.runNumber}`);
+  if (run.runAttempt != null) lines.push(`run attempt: ${run.runAttempt}`);
+  if (run.event) lines.push(`event: ${run.event}`);
+  if (run.status) lines.push(`status: ${run.status}`);
+  if (run.conclusion) lines.push(`conclusion: ${run.conclusion}`);
+  if (run.headBranch) lines.push(`head branch: ${run.headBranch}`);
+  if (run.headSha) lines.push(`head sha: ${run.headSha}`);
+  lines.push(`created at: ${run.createdAt}`);
+  if (run.runStartedAt) lines.push(`started at: ${run.runStartedAt}`);
+  if (run.updatedAt) lines.push(`updated at: ${run.updatedAt}`);
+  lines.push(`observed by Combie at: ${run.observedAt}`);
+  return lines.join("\n");
+}
+
+function formatWorkflowRunsBlock(
+  authority: WorkflowRunEvidenceAuthority,
+): string {
+  if (authority.kind === "not_applicable") {
+    return "Workflow run evidence does not apply to this resource.";
+  }
+  if (authority.kind === "unknown") {
+    const header =
+      "Workflow run evidence has not been successfully refreshed.";
+    if (authority.message) {
+      const stale =
+        authority.runs.length > 0
+          ? `\n\nPrior recorded workflow runs (may be stale):\n\n${authority.runs.map(formatWorkflowRun).join("\n\n")}`
+          : "";
+      return `${header}\n(${authority.message})${stale}`;
+    }
+    if (authority.runs.length > 0) {
+      return (
+        `${header}\n\nPrior recorded workflow runs (may be stale):\n\n` +
+        authority.runs.map(formatWorkflowRun).join("\n\n")
+      );
+    }
+    return header;
+  }
+  if (authority.kind === "empty") {
+    return (
+      `No workflow runs recorded for this repository yet.\n` +
+      `Last successful refresh observed by Combie at: ${authority.observedAt}`
+    );
+  }
+  return authority.runs.map(formatWorkflowRun).join("\n\n");
+}
+
 function formatRelatedNeighbor(item: InvestigationNeighbor): string {
   const direction =
     item.direction === "outbound"
@@ -285,12 +370,17 @@ function formatRelatedNeighbor(item: InvestigationNeighbor): string {
     item.deployments.kind === "not_applicable"
       ? ""
       : `\n\nDEPLOYMENTS (newest first)\n\n${formatDeploymentsBlock(item.deployments)}`;
+  const workflowSection =
+    item.workflowRuns.kind === "not_applicable"
+      ? ""
+      : `\n\nWORKFLOW RUNS (newest first)\n\n${formatWorkflowRunsBlock(item.workflowRuns)}`;
   return (
     `${direction}\n` +
     `${identity}${stableId}\n` +
     `Evidence: ${formatEvidence(item.relationship.evidence)}\n\n` +
     `CHANGES\n\n${formatChangesBlock(item.changes)}` +
-    deploymentSection
+    deploymentSection +
+    workflowSection
   );
 }
 
@@ -345,6 +435,11 @@ export function formatInvestigationContext(
       ? ""
       : `\n\nDEPLOYMENTS (newest first)\n\n${formatDeploymentsBlock(context.subjectDeployments)}`;
 
+  const subjectWorkflowRuns =
+    context.subjectWorkflowRuns.kind === "not_applicable"
+      ? ""
+      : `\n\nWORKFLOW RUNS (newest first)\n\n${formatWorkflowRunsBlock(context.subjectWorkflowRuns)}`;
+
   const related =
     context.related.length === 0
       ? "No relationships discovered."
@@ -353,7 +448,8 @@ export function formatInvestigationContext(
   return (
     `${header}\n\n` +
     `${subjectChanges}` +
-    `${subjectDeployments}\n\n` +
+    `${subjectDeployments}` +
+    `${subjectWorkflowRuns}\n\n` +
     `RELATED CONTEXT\n\n${related}\n\n` +
     `TIMELINE (newest first)\n\n${formatTimeline(context)}`
   );

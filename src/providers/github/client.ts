@@ -27,6 +27,42 @@ export interface GitHubRepository {
   visibility?: string;
 }
 
+/**
+ * Workflow-run list item from GET /repos/{owner}/{repo}/actions/runs.
+ * Only investigation-relevant fields are typed; other payload is ignored.
+ */
+export interface GitHubWorkflowRunListItem {
+  id?: number;
+  name?: string | null;
+  workflow_id?: number;
+  run_number?: number;
+  run_attempt?: number;
+  event?: string;
+  status?: string | null;
+  conclusion?: string | null;
+  head_branch?: string | null;
+  head_sha?: string;
+  created_at?: string;
+  run_started_at?: string;
+  updated_at?: string;
+  repository?: {
+    id?: number;
+    name?: string;
+    full_name?: string;
+  } | null;
+  actor?: unknown;
+  triggering_actor?: unknown;
+  head_commit?: unknown;
+  logs_url?: string;
+  jobs_url?: string;
+  html_url?: string;
+}
+
+export interface GitHubWorkflowRunsResponse {
+  total_count?: number;
+  workflow_runs: GitHubWorkflowRunListItem[];
+}
+
 export interface GitHubClientOptions {
   token: string;
   fetch?: FetchLike;
@@ -74,6 +110,45 @@ export class GitHubClient {
       page += 1;
       // Safety cap against runaway pagination
       if (page > 100) {
+        break;
+      }
+    }
+
+    return all;
+  }
+
+  /**
+   * List workflow runs for one repository via
+   * GET /repos/{owner}/{repo}/actions/runs.
+   *
+   * Explicit bound: at most `maxPages` pages of `perPage` (default 1×100).
+   * Not complete lifetime history. Uses existing API version headers.
+   */
+  async listWorkflowRuns(
+    owner: string,
+    repo: string,
+    options?: { perPage?: number; maxPages?: number },
+  ): Promise<GitHubWorkflowRunListItem[]> {
+    const perPage = options?.perPage ?? 100;
+    const maxPages = options?.maxPages ?? 1;
+    const all: GitHubWorkflowRunListItem[] = [];
+    const endpoint = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs`;
+
+    for (let page = 1; page <= maxPages; page++) {
+      const path = `${endpoint}?per_page=${perPage}&page=${page}`;
+      const response = await this.getJson<GitHubWorkflowRunsResponse>(
+        path,
+        `List workflow runs for ${owner}/${repo}`,
+      );
+      if (!Array.isArray(response?.workflow_runs)) {
+        throw new GitHubApiError({
+          message: `List workflow runs for ${owner}/${repo}: response did not contain a workflow_runs array. Try again.`,
+          status: 200,
+          endpoint,
+        });
+      }
+      all.push(...response.workflow_runs);
+      if (response.workflow_runs.length < perPage) {
         break;
       }
     }

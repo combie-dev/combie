@@ -13,6 +13,10 @@ import type {
   RelationshipKind,
 } from "../domain/relationship.ts";
 import type {
+  GitHubWorkflowRunEvidence,
+  GitHubWorkflowRunRefresh,
+} from "../providers/github/workflow-run.ts";
+import type {
   VercelDeploymentEvidence,
   VercelDeploymentRefresh,
 } from "../providers/vercel/deployment.ts";
@@ -100,6 +104,36 @@ CREATE INDEX IF NOT EXISTS vercel_deployments_resource_created_uid_idx
   ON vercel_deployments(resource_id, created_at_ms DESC, uid DESC);
 
 CREATE TABLE IF NOT EXISTS vercel_deployment_refresh (
+  resource_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+  observed_at TEXT NOT NULL,
+  message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS github_workflow_runs (
+  run_id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'github',
+  resource_id TEXT NOT NULL,
+  repository_id TEXT NOT NULL,
+  workflow_id INTEGER,
+  name TEXT,
+  run_number INTEGER,
+  run_attempt INTEGER,
+  event TEXT,
+  status TEXT,
+  conclusion TEXT,
+  head_branch TEXT,
+  head_sha TEXT,
+  created_at TEXT NOT NULL,
+  run_started_at TEXT,
+  updated_at TEXT,
+  observed_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS github_workflow_runs_resource_created_id_idx
+  ON github_workflow_runs(resource_id, created_at DESC, run_id DESC);
+
+CREATE TABLE IF NOT EXISTS github_workflow_run_refresh (
   resource_id TEXT PRIMARY KEY,
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
@@ -665,6 +699,132 @@ export class Store {
     };
   }
 
+  /**
+   * Insert or update GitHub workflow-run evidence by stable run id.
+   * Reruns update run_attempt/status/conclusion on the same row.
+   * Does not create Resource Changes.
+   */
+  upsertGitHubWorkflowRun(run: GitHubWorkflowRunEvidence): void {
+    this.getDb()
+      .query(
+        `INSERT INTO github_workflow_runs (
+           run_id, provider, resource_id, repository_id,
+           workflow_id, name, run_number, run_attempt, event,
+           status, conclusion, head_branch, head_sha,
+           created_at, run_started_at, updated_at, observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(run_id) DO UPDATE SET
+           provider = excluded.provider,
+           resource_id = excluded.resource_id,
+           repository_id = excluded.repository_id,
+           workflow_id = excluded.workflow_id,
+           name = excluded.name,
+           run_number = excluded.run_number,
+           run_attempt = excluded.run_attempt,
+           event = excluded.event,
+           status = excluded.status,
+           conclusion = excluded.conclusion,
+           head_branch = excluded.head_branch,
+           head_sha = excluded.head_sha,
+           created_at = excluded.created_at,
+           run_started_at = excluded.run_started_at,
+           updated_at = excluded.updated_at,
+           observed_at = excluded.observed_at`,
+      )
+      .run(
+        run.runId,
+        run.provider,
+        run.resourceId,
+        run.repositoryId,
+        run.workflowId,
+        run.name,
+        run.runNumber,
+        run.runAttempt,
+        run.event,
+        run.status,
+        run.conclusion,
+        run.headBranch,
+        run.headSha,
+        run.createdAt,
+        run.runStartedAt,
+        run.updatedAt,
+        run.observedAt,
+      );
+  }
+
+  /**
+   * Newest-first workflow runs for an exact GitHub repository Resource.
+   * Ordering: created_at DESC, run_id DESC.
+   */
+  listGitHubWorkflowRunsForResource(
+    resourceId: string,
+  ): GitHubWorkflowRunEvidence[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT run_id, provider, resource_id, repository_id,
+                workflow_id, name, run_number, run_attempt, event,
+                status, conclusion, head_branch, head_sha,
+                created_at, run_started_at, updated_at, observed_at
+         FROM github_workflow_runs
+         WHERE resource_id = ?
+         ORDER BY created_at DESC, run_id DESC`,
+      )
+      .all(resourceId) as GitHubWorkflowRunRow[];
+    return rows.map(mapGitHubWorkflowRun);
+  }
+
+  countGitHubWorkflowRuns(): number {
+    const row = this.getDb()
+      .query(`SELECT COUNT(*) AS n FROM github_workflow_runs`)
+      .get() as { n: number };
+    return Number(row.n);
+  }
+
+  setGitHubWorkflowRunRefresh(refresh: GitHubWorkflowRunRefresh): void {
+    this.getDb()
+      .query(
+        `INSERT INTO github_workflow_run_refresh (
+           resource_id, status, observed_at, message
+         ) VALUES (?, ?, ?, ?)
+         ON CONFLICT(resource_id) DO UPDATE SET
+           status = excluded.status,
+           observed_at = excluded.observed_at,
+           message = excluded.message`,
+      )
+      .run(
+        refresh.resourceId,
+        refresh.status,
+        refresh.observedAt,
+        refresh.message,
+      );
+  }
+
+  getGitHubWorkflowRunRefresh(
+    resourceId: string,
+  ): GitHubWorkflowRunRefresh | null {
+    const row = this.getDb()
+      .query(
+        `SELECT resource_id, status, observed_at, message
+         FROM github_workflow_run_refresh
+         WHERE resource_id = ?`,
+      )
+      .get(resourceId) as
+      | {
+          resource_id: string;
+          status: string;
+          observed_at: string;
+          message: string | null;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      resourceId: row.resource_id,
+      status: row.status as "success" | "failure",
+      observedAt: row.observed_at,
+      message: row.message,
+    };
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
@@ -843,5 +1003,49 @@ function mapVercelDeployment(row: VercelDeploymentRow): VercelDeploymentEvidence
     readyAtMs: row.ready_at_ms,
     observedAt: row.observed_at,
     source: row.source,
+  };
+}
+
+interface GitHubWorkflowRunRow {
+  run_id: number;
+  provider: string;
+  resource_id: string;
+  repository_id: string;
+  workflow_id: number | null;
+  name: string | null;
+  run_number: number | null;
+  run_attempt: number | null;
+  event: string | null;
+  status: string | null;
+  conclusion: string | null;
+  head_branch: string | null;
+  head_sha: string | null;
+  created_at: string;
+  run_started_at: string | null;
+  updated_at: string | null;
+  observed_at: string;
+}
+
+function mapGitHubWorkflowRun(
+  row: GitHubWorkflowRunRow,
+): GitHubWorkflowRunEvidence {
+  return {
+    provider: "github",
+    runId: row.run_id,
+    resourceId: row.resource_id,
+    repositoryId: row.repository_id,
+    workflowId: row.workflow_id,
+    name: row.name,
+    runNumber: row.run_number,
+    runAttempt: row.run_attempt,
+    event: row.event,
+    status: row.status,
+    conclusion: row.conclusion,
+    headBranch: row.head_branch,
+    headSha: row.head_sha,
+    createdAt: row.created_at,
+    runStartedAt: row.run_started_at,
+    updatedAt: row.updated_at,
+    observedAt: row.observed_at,
   };
 }
