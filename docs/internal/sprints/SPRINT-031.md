@@ -2036,17 +2036,17 @@ docs(sprint): complete Sprint 031 attention semantics research
 - [x] committed separately
 - [x] worktree clean
 - [x] Sprint 032 not started
-- [ ] no causality
-- [ ] no AI
-- [ ] full tests pass
-- [ ] typecheck passes
-- [ ] secret scan clean
-- [ ] diff/whitespace checks clean
-- [ ] completion notes updated
-- [ ] Canon changes recorded or None
-- [ ] Sprint 031 committed separately
-- [ ] worktree clean
-- [ ] Sprint 032 not started
+- [x] no causality
+- [x] no AI
+- [x] full tests pass
+- [x] typecheck passes
+- [x] secret scan clean
+- [x] diff/whitespace checks clean
+- [x] completion notes updated
+- [x] Canon changes recorded or None
+- [x] Sprint 031 committed separately
+- [x] worktree clean
+- [x] Sprint 032 not started
 
 ---
 
