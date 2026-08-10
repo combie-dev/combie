@@ -39,6 +39,10 @@ import {
   type InvestigationFactStateGroup,
 } from "./investigation-facts.ts";
 import {
+  composeMissingContext,
+  formatMissingContextItem,
+} from "./missing-context.ts";
+import {
   composeInvestigationTimeline,
   type InvestigationTimelineEntry,
 } from "./timeline.ts";
@@ -876,6 +880,14 @@ function formatKnownFacts(context: InvestigationContext): string {
   return facts.map((fact) => `- ${formatInvestigationFact(fact)}`).join("\n");
 }
 
+function formatMissingContext(context: InvestigationContext): string {
+  const items = composeMissingContext(context);
+  if (items.length === 0) {
+    return "No missing or untrusted context is currently known for the supported investigation scope.";
+  }
+  return items.map((item) => `- ${formatMissingContextItem(item)}`).join("\n");
+}
+
 /** Deterministic CLI presentation of investigation context. */
 export function formatInvestigationContext(
   context: InvestigationContext,
@@ -894,6 +906,7 @@ export function formatInvestigationContext(
     `SUBJECT CHANGES\n\n${formatChangesBlock(context.subjectChanges)}`;
 
   const knownFacts = `KNOWN FACTS\n\n${formatKnownFacts(context)}`;
+  const missingContext = `MISSING CONTEXT\n\n${formatMissingContext(context)}`;
 
   const subjectDeployments =
     context.subjectDeployments.kind === "not_applicable"
@@ -917,9 +930,12 @@ export function formatInvestigationContext(
 
   // Chronology supplements detailed sections (DEPLOYMENTS / WORKFLOW RUNS /
   // OPERATIONS) and stays separate from Resource Change observations.
+  // MISSING CONTEXT sits after KNOWN FACTS so trust boundaries appear before
+  // detailed evidence scanning — without ranking or recommendations.
   return (
     `${header}\n\n` +
     `${knownFacts}\n\n` +
+    `${missingContext}\n\n` +
     `${subjectChanges}` +
     `${subjectDeployments}` +
     `${subjectWorkflowRuns}` +
