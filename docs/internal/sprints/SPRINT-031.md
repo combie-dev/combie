@@ -1979,10 +1979,9 @@ None
 ## Commit
 
 ```text
+a5b525913831c6f16b7c9ab38d64d204f25341d7
 docs(sprint): complete Sprint 031 attention semantics research
 ```
-
-Exact SHA after commit.
 
 ---
 
