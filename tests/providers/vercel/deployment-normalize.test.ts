@@ -155,6 +155,7 @@ describe("composeDeploymentAuthority", () => {
         observedAt: OBSERVED,
         message: null,
       resultCount: null,
+      lastSuccessfulObservedAt: null,
       },
       [],
     );
@@ -172,6 +173,7 @@ describe("composeDeploymentAuthority", () => {
         observedAt: OBSERVED,
         message: null,
       resultCount: null,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -192,6 +194,7 @@ describe("composeDeploymentAuthority", () => {
         observedAt: OBSERVED,
         message: "List deployments failed",
       resultCount: null,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -199,6 +202,29 @@ describe("composeDeploymentAuthority", () => {
     if (auth.kind === "unknown") {
       expect(auth.deployments).toHaveLength(1);
       expect(auth.message).toContain("List deployments failed");
+    }
+  });
+
+  test("Sprint 028: failure preserves lastSuccessAt while latest attempt advances", () => {
+    const auth = composeDeploymentAuthority(
+      resourceId,
+      "vercel",
+      "project",
+      {
+        resourceId,
+        status: "failure",
+        observedAt: "2026-08-09T12:30:00.000Z",
+        message: "timeout",
+        resultCount: 3,
+        lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+      },
+      [base],
+    );
+    expect(auth.kind).toBe("unknown");
+    if (auth.kind === "unknown") {
+      expect(auth.latestAttemptObservedAt).toBe("2026-08-09T12:30:00.000Z");
+      expect(auth.lastSuccessAt).toBe("2026-08-09T12:00:00.000Z");
+      expect(auth.resultCount).toBe(3);
     }
   });
 
@@ -213,6 +239,7 @@ describe("composeDeploymentAuthority", () => {
         observedAt: OBSERVED,
         message: null,
         resultCount: 0,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -232,6 +259,7 @@ describe("composeDeploymentAuthority", () => {
         observedAt: OBSERVED,
         message: null,
         resultCount: 1,
+      lastSuccessfulObservedAt: null,
       },
       [base, { ...base, uid: "dpl_2" }],
     );
@@ -251,6 +279,7 @@ describe("composeDeploymentAuthority", () => {
         observedAt: OBSERVED,
         message: "timeout",
         resultCount: 2,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -271,6 +300,7 @@ describe("composeDeploymentAuthority", () => {
         observedAt: OBSERVED,
         message: null,
         resultCount: null,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );

@@ -132,6 +132,7 @@ describe("Store github workflow-run persistence", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.setGitHubWorkflowRunRefresh({
       resourceId: "github:repository:1",
@@ -139,6 +140,7 @@ describe("Store github workflow-run persistence", () => {
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "403",
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     expect(store.getGitHubWorkflowRunRefresh("github:repository:1")?.status).toBe(
       "failure",
@@ -211,6 +213,7 @@ describe("Store github workflow-run persistence", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
       resultCount: 0,
+    lastSuccessfulObservedAt: null,
     });
     expect(store.getGitHubWorkflowRunRefresh("github:repository:1")?.resultCount).toBe(
       0,
@@ -222,6 +225,7 @@ describe("Store github workflow-run persistence", () => {
       observedAt: "2026-08-09T12:30:00.000Z",
       message: null,
       resultCount: 100,
+    lastSuccessfulObservedAt: null,
     });
     expect(store.getGitHubWorkflowRunRefresh("github:repository:1")?.resultCount).toBe(
       100,
@@ -233,6 +237,7 @@ describe("Store github workflow-run persistence", () => {
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "403",
       resultCount: 100,
+    lastSuccessfulObservedAt: null,
     });
     expect(store.getGitHubWorkflowRunRefresh("github:repository:1")).toEqual({
       resourceId: "github:repository:1",
@@ -240,6 +245,7 @@ describe("Store github workflow-run persistence", () => {
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "403",
       resultCount: 100,
+    lastSuccessfulObservedAt: null,
     });
     expect(JSON.stringify(store.getGitHubWorkflowRunRefresh("github:repository:1")))
       .not.toMatch(/ghp_|token|secret/i);

@@ -95,6 +95,7 @@ export async function syncVercelDeployments(
         observedAt: options.observedAt,
         message: null,
         resultCount: normalized.length,
+        lastSuccessfulObservedAt: options.observedAt,
       });
       refreshed += 1;
     } catch (err) {
@@ -105,7 +106,7 @@ export async function syncVercelDeployments(
           : err instanceof Error
             ? err.message
             : "deployment retrieval failed";
-      // Preserve prior successful result-count provenance; failure is not empty.
+      // Preserve prior successful provenance; failure is not empty.
       const prior = options.store.getVercelDeploymentRefresh(project.id);
       options.store.setVercelDeploymentRefresh({
         resourceId: project.id,
@@ -113,6 +114,7 @@ export async function syncVercelDeployments(
         observedAt: options.observedAt,
         message,
         resultCount: prior?.resultCount ?? null,
+        lastSuccessfulObservedAt: prior?.lastSuccessfulObservedAt ?? null,
       });
       // Intentionally do not delete prior deployment rows.
     }

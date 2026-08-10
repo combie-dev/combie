@@ -186,7 +186,7 @@ describe("syncGitHubWorkflowRuns", () => {
     });
     expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(100);
 
-    // Permission failure preserves last success count
+    // Permission failure preserves last success count and time
     await syncGitHubWorkflowRuns({
       store,
       token: "token",
@@ -199,9 +199,15 @@ describe("syncGitHubWorkflowRuns", () => {
         )) as unknown as typeof fetch,
     });
     expect(store.getGitHubWorkflowRunRefresh(repo.id)?.status).toBe("failure");
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.observedAt).toBe(
+      "2026-08-09T13:00:00.000Z",
+    );
     expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(100);
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.lastSuccessfulObservedAt).toBe(
+      "2026-08-09T12:45:00.000Z",
+    );
 
-    // Transient failure also preserves
+    // Transient failure also preserves last success provenance
     await syncGitHubWorkflowRuns({
       store,
       token: "token",
@@ -214,6 +220,12 @@ describe("syncGitHubWorkflowRuns", () => {
         )) as unknown as typeof fetch,
     });
     expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(100);
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.lastSuccessfulObservedAt).toBe(
+      "2026-08-09T12:45:00.000Z",
+    );
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.observedAt).toBe(
+      "2026-08-09T13:15:00.000Z",
+    );
 
     // Idempotent recovery
     await syncGitHubWorkflowRuns({
@@ -229,6 +241,7 @@ describe("syncGitHubWorkflowRuns", () => {
       observedAt: "2026-08-09T13:30:00.000Z",
       message: null,
       resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T13:30:00.000Z",
     });
     store.close();
   });

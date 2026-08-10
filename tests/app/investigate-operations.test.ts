@@ -101,6 +101,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
       resultCount: 2,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -140,6 +141,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
       resultCount: 0,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
     let context = getInvestigationContext({ baseDir: dir, resourceRef: project.id });
@@ -164,6 +166,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "Neon operation refresh failed: request forbidden.",
       resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store3.close();
     context = getInvestigationContext({ baseDir: dir, resourceRef: project.id });
@@ -188,6 +191,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
       resultCount: 1,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -247,6 +251,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
       resultCount: 1,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -276,6 +281,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
       resultCount: 1,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
     const before = dbHash();

@@ -78,6 +78,12 @@ export interface InvestigationFactAuthorityRef {
    * from locallyHeldNativeIds.length.
    */
   lastSuccessfulResultCount: number | null;
+  /**
+   * Combie observation time of the latest successful refresh from persisted
+   * provenance. Null when unknown (including pre-Sprint-028 failure history).
+   * Not a provider event time.
+   */
+  lastSuccessfulObservedAt: string | null;
 }
 
 export type InvestigationFactReportableAuthorityRef =
@@ -170,6 +176,7 @@ interface MutableAuthoritySource {
   authority: InvestigationFactAuthority;
   locallyHeldNativeIds: string[];
   lastSuccessfulResultCount: number | null;
+  lastSuccessfulObservedAt: string | null;
 }
 
 function compareAscending(left: string, right: string): number {
@@ -251,6 +258,7 @@ function authorityRef(
     authority: source.authority,
     locallyHeldNativeIds: [...source.locallyHeldNativeIds],
     lastSuccessfulResultCount: source.lastSuccessfulResultCount,
+    lastSuccessfulObservedAt: source.lastSuccessfulObservedAt,
   };
 }
 
@@ -286,6 +294,13 @@ function resultCountFromDeployment(
   return authority.resultCount;
 }
 
+function lastSuccessAtFromDeployment(
+  authority: Exclude<DeploymentEvidenceAuthority, { kind: "not_applicable" }>,
+): string | null {
+  if (authority.kind === "unknown") return authority.lastSuccessAt;
+  return authority.observedAt;
+}
+
 function authorityFromRuns(
   authority: Exclude<WorkflowRunEvidenceAuthority, { kind: "not_applicable" }>,
 ): InvestigationFactAuthority {
@@ -299,6 +314,13 @@ function resultCountFromRuns(
   authority: Exclude<WorkflowRunEvidenceAuthority, { kind: "not_applicable" }>,
 ): number | null {
   return authority.resultCount;
+}
+
+function lastSuccessAtFromRuns(
+  authority: Exclude<WorkflowRunEvidenceAuthority, { kind: "not_applicable" }>,
+): string | null {
+  if (authority.kind === "unknown") return authority.lastSuccessAt;
+  return authority.observedAt;
 }
 
 function authorityFromOperations(
@@ -322,6 +344,13 @@ function resultCountFromOperations(
     return null;
   }
   return null;
+}
+
+function lastSuccessAtFromOperations(
+  authority: Exclude<NeonOperationEvidenceAuthority, { kind: "not_applicable" }>,
+): string | null {
+  if (authority.kind === "unknown") return authority.lastSuccessAt;
+  return authority.observedAt;
 }
 
 function deploymentIds(
@@ -361,6 +390,7 @@ function collectAuthoritySources(
     authority: InvestigationFactAuthority,
     locallyHeldNativeIds: string[],
     lastSuccessfulResultCount: number | null,
+    lastSuccessfulObservedAt: string | null,
   ): void {
     const key = sourceKey(family, resourceId);
     const existing = sources.get(key);
@@ -376,6 +406,7 @@ function collectAuthoritySources(
       authority,
       locallyHeldNativeIds,
       lastSuccessfulResultCount,
+      lastSuccessfulObservedAt,
     });
   }
 
@@ -396,6 +427,7 @@ function collectAuthoritySources(
         authorityFromDeployment(deployments),
         deploymentIds(deployments),
         resultCountFromDeployment(deployments),
+        lastSuccessAtFromDeployment(deployments),
       );
     }
     if (runs.kind !== "not_applicable") {
@@ -407,6 +439,7 @@ function collectAuthoritySources(
         authorityFromRuns(runs),
         runIds(runs),
         resultCountFromRuns(runs),
+        lastSuccessAtFromRuns(runs),
       );
     }
     if (operations.kind !== "not_applicable") {
@@ -418,6 +451,7 @@ function collectAuthoritySources(
         authorityFromOperations(operations),
         operationIds(operations),
         resultCountFromOperations(operations),
+        lastSuccessAtFromOperations(operations),
       );
     }
   }

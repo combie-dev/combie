@@ -119,6 +119,7 @@ describe("Store Neon operation persistence", () => {
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "Operation refresh failed (HTTP 403).",
       resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     expect(store.getNeonOperationRefresh("neon:project:p1")?.status).toBe("failure");
     expect(store.listNeonOperationsForResource("neon:project:p1")).toHaveLength(1);

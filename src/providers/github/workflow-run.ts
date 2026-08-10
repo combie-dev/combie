@@ -47,6 +47,10 @@ export interface GitHubWorkflowRunEvidence {
 export interface GitHubWorkflowRunRefresh {
   resourceId: string;
   status: "success" | "failure";
+  /**
+   * Combie observation time of the latest refresh attempt (success or failure).
+   * Distinct from lastSuccessfulObservedAt.
+   */
   observedAt: string;
   message: string | null;
   /**
@@ -58,6 +62,13 @@ export interface GitHubWorkflowRunRefresh {
    * exactly 100 workflow runs total. Survives a later failed refresh.
    */
   resultCount: number | null;
+  /**
+   * Combie observation time of the latest successful bounded refresh for this
+   * exact repository Resource. Null when never successfully refreshed with
+   * provenance. Survives a later failed refresh. Not a provider event time
+   * and not proof of complete workflow history.
+   */
+  lastSuccessfulObservedAt: string | null;
 }
 
 export type WorkflowRunEvidenceAuthority =
@@ -65,6 +76,8 @@ export type WorkflowRunEvidenceAuthority =
   | {
       kind: "unknown";
       runs: GitHubWorkflowRunEvidence[];
+      /** Latest refresh attempt observation time when a refresh row exists. */
+      latestAttemptObservedAt: string | null;
       lastSuccessAt: string | null;
       /**
        * Last successful bounded response cardinality when known.
@@ -202,12 +215,15 @@ export function composeWorkflowRunAuthority(
   }
 
   if (refresh?.status === "success") {
+    // On success, observedAt is both latest attempt and last success.
+    const successAt =
+      refresh.lastSuccessfulObservedAt ?? refresh.observedAt;
     // Prefer persisted result-count provenance. Never infer empty/populated
     // solely from retained local rows when provenance exists.
     if (refresh.resultCount === 0) {
       return {
         kind: "empty",
-        observedAt: refresh.observedAt,
+        observedAt: successAt,
         resultCount: 0,
         runs,
       };
@@ -215,7 +231,7 @@ export function composeWorkflowRunAuthority(
     if (refresh.resultCount != null && refresh.resultCount > 0) {
       return {
         kind: "populated",
-        observedAt: refresh.observedAt,
+        observedAt: successAt,
         resultCount: refresh.resultCount,
         runs,
       };
@@ -224,14 +240,14 @@ export function composeWorkflowRunAuthority(
     if (runs.length === 0) {
       return {
         kind: "empty",
-        observedAt: refresh.observedAt,
+        observedAt: successAt,
         resultCount: null,
         runs: [],
       };
     }
     return {
       kind: "populated",
-      observedAt: refresh.observedAt,
+      observedAt: successAt,
       resultCount: null,
       runs,
     };
@@ -240,7 +256,8 @@ export function composeWorkflowRunAuthority(
   return {
     kind: "unknown",
     runs,
-    lastSuccessAt: null,
+    latestAttemptObservedAt: refresh?.observedAt ?? null,
+    lastSuccessAt: refresh?.lastSuccessfulObservedAt ?? null,
     resultCount: refresh?.resultCount ?? null,
     message: refresh?.status === "failure" ? refresh.message : null,
   };

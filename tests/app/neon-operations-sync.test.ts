@@ -121,6 +121,44 @@ describe("syncNeonOperations", () => {
     }
   });
 
+  test("Sprint 028: failure preserves lastSuccessfulObservedAt; result_count still nulls", async () => {
+    const store = new Store(dir);
+    store.init();
+    const resource = project();
+    await syncNeonOperations({
+      store,
+      token: "key",
+      projects: [resource],
+      observedAt: "2026-08-09T12:00:00.000Z",
+      fetch: fetchJson({ operations: operationsFixture.operations }),
+      baseUrl: "https://example.test/api/v2",
+    });
+    expect(store.getNeonOperationRefresh(resource.id)).toMatchObject({
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      resultCount: 2,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+
+    await syncNeonOperations({
+      store,
+      token: "key",
+      projects: [resource],
+      observedAt: "2026-08-09T12:30:00.000Z",
+      fetch: (async () =>
+        Response.json({ message: "forbidden" }, { status: 403 })) as unknown as typeof fetch,
+      baseUrl: "https://example.test/api/v2",
+    });
+    const failed = store.getNeonOperationRefresh(resource.id);
+    expect(failed?.status).toBe("failure");
+    expect(failed?.observedAt).toBe("2026-08-09T12:30:00.000Z");
+    // Neon result_count remains null on failure (unchanged Sprint 022/027 semantics).
+    expect(failed?.resultCount).toBeNull();
+    expect(failed?.lastSuccessfulObservedAt).toBe("2026-08-09T12:00:00.000Z");
+    expect(store.listNeonOperationsForResource(resource.id).length).toBeGreaterThan(0);
+    store.close();
+  });
+
   test("repeated refresh updates one lifecycle row without duplicates", async () => {
     const store = new Store(dir);
     store.init();

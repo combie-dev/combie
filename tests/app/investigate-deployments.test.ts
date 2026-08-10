@@ -93,6 +93,7 @@ describe("investigate deployments (Sprint 020)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -148,6 +149,7 @@ describe("investigate deployments (Sprint 020)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -194,6 +196,7 @@ describe("investigate deployments (Sprint 020)", () => {
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "List deployments failed (HTTP 500)",
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -246,6 +249,7 @@ describe("investigate deployments (Sprint 020)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -290,6 +294,7 @@ describe("investigate deployments (Sprint 020)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -320,6 +325,7 @@ describe("investigate deployments (Sprint 020)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 

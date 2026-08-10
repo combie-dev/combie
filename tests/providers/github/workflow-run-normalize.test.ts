@@ -162,6 +162,7 @@ describe("composeWorkflowRunAuthority", () => {
           observedAt: OBSERVED,
           message: null,
         resultCount: null,
+        lastSuccessfulObservedAt: null,
         },
         [],
       ).kind,
@@ -176,6 +177,7 @@ describe("composeWorkflowRunAuthority", () => {
         observedAt: OBSERVED,
         message: null,
       resultCount: null,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -190,6 +192,7 @@ describe("composeWorkflowRunAuthority", () => {
         observedAt: OBSERVED,
         message: "403 forbidden",
       resultCount: null,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -210,6 +213,7 @@ describe("composeWorkflowRunAuthority", () => {
         observedAt: OBSERVED,
         message: null,
         resultCount: 0,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -228,6 +232,7 @@ describe("composeWorkflowRunAuthority", () => {
         observedAt: OBSERVED,
         message: null,
         resultCount: 100,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );
@@ -247,6 +252,7 @@ describe("composeWorkflowRunAuthority", () => {
         observedAt: OBSERVED,
         message: "rate limited",
         resultCount: 3,
+      lastSuccessfulObservedAt: null,
       },
       [base],
     );

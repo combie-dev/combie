@@ -235,7 +235,7 @@ describe("syncVercelDeployments", () => {
       1,
     );
 
-    // Failure preserves last successful result count
+    // Failure preserves last successful result count and time
     await syncVercelDeployments({
       store,
       token: "token",
@@ -249,7 +249,9 @@ describe("syncVercelDeployments", () => {
     });
     const failed = store.getVercelDeploymentRefresh(project.id);
     expect(failed?.status).toBe("failure");
+    expect(failed?.observedAt).toBe("2026-08-09T13:00:00.000Z");
     expect(failed?.resultCount).toBe(1);
+    expect(failed?.lastSuccessfulObservedAt).toBe("2026-08-09T12:45:00.000Z");
 
     // Idempotent success rewrite
     await syncVercelDeployments({
@@ -265,6 +267,7 @@ describe("syncVercelDeployments", () => {
       observedAt: "2026-08-09T13:30:00.000Z",
       message: null,
       resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T13:30:00.000Z",
     });
     store.close();
   });

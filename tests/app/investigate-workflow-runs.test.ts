@@ -98,6 +98,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -148,6 +149,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -167,6 +169,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "403 forbidden",
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store2.upsertGitHubWorkflowRun(run({ runId: 9, name: "stale" }));
     store2.close();
@@ -214,6 +217,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -244,6 +248,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 
@@ -272,6 +277,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
     resultCount: null,
+    lastSuccessfulObservedAt: null,
     });
     store.close();
 

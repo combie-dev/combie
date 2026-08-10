@@ -34,10 +34,20 @@ export interface NeonOperationEvidence {
 export interface NeonOperationRefresh {
   resourceId: string;
   status: "success" | "failure";
+  /**
+   * Combie observation time of the latest refresh attempt (success or failure).
+   * Distinct from lastSuccessfulObservedAt.
+   */
   observedAt: string;
   message: string | null;
   /** Number returned by the last successful complete page walk; null on failure. */
   resultCount: number | null;
+  /**
+   * Combie observation time of the latest successful operation refresh for this
+   * exact project Resource. Null when never successfully refreshed with
+   * provenance. Survives a later failed refresh. Not a provider event time.
+   */
+  lastSuccessfulObservedAt: string | null;
 }
 
 export type NeonOperationEvidenceAuthority =
@@ -45,6 +55,8 @@ export type NeonOperationEvidenceAuthority =
   | {
       kind: "unknown";
       operations: NeonOperationEvidence[];
+      /** Latest refresh attempt observation time when a refresh row exists. */
+      latestAttemptObservedAt: string | null;
       lastSuccessAt: string | null;
       message: string | null;
     }
@@ -202,16 +214,18 @@ export function composeNeonOperationAuthority(
   }
 
   if (refresh?.status === "success") {
+    const successAt =
+      refresh.lastSuccessfulObservedAt ?? refresh.observedAt;
     if (refresh.resultCount === 0) {
       return {
         kind: "empty",
-        observedAt: refresh.observedAt,
+        observedAt: successAt,
         operations,
       };
     }
     return {
       kind: "populated",
-      observedAt: refresh.observedAt,
+      observedAt: successAt,
       operations,
     };
   }
@@ -219,7 +233,8 @@ export function composeNeonOperationAuthority(
   return {
     kind: "unknown",
     operations,
-    lastSuccessAt: null,
+    latestAttemptObservedAt: refresh?.observedAt ?? null,
+    lastSuccessAt: refresh?.lastSuccessfulObservedAt ?? null,
     message: refresh?.status === "failure" ? refresh.message : null,
   };
 }

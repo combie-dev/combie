@@ -142,6 +142,7 @@ function unknownDeployments(
   return {
     kind: "unknown",
     deployments: items,
+    latestAttemptObservedAt: null,
     lastSuccessAt: null,
     resultCount: null,
     message: null,
@@ -157,7 +158,7 @@ function populatedRuns(
 function unknownRuns(
   items: GitHubWorkflowRunEvidence[],
 ): WorkflowRunEvidenceAuthority {
-  return { kind: "unknown", runs: items, lastSuccessAt: null, resultCount: null, message: null };
+  return { kind: "unknown", runs: items, latestAttemptObservedAt: null, lastSuccessAt: null, resultCount: null, message: null };
 }
 
 function populatedOperations(
@@ -172,6 +173,7 @@ function unknownOperations(
   return {
     kind: "unknown",
     operations: items,
+    latestAttemptObservedAt: null,
     lastSuccessAt: null,
     message: null,
   };
@@ -843,11 +845,41 @@ describe("known facts formatting", () => {
     );
 
     expect(output).toContain(
-      "- The latest successful Neon operation refresh for neon:project:db returned no current operations; 2 previously recorded operations are retained.",
+      "- The latest successful Neon operation refresh at 2026-08-09T12:00:00.000Z for neon:project:db returned no current operations; 2 previously recorded operations are retained.",
     );
     expect(output).toContain(
       "- Among 2 previously recorded Neon operations, 1 has last recorded status: failed and 1 has last recorded status: finished.",
     );
+  });
+
+  test("Sprint 028: unknown authority facts include last successful refresh time", () => {
+    const output = formatInvestigationContext(
+      context({
+        subject: resource("github", "repository", "101"),
+        subjectWorkflowRuns: {
+          kind: "unknown",
+          runs: [
+            workflowRun({ runId: 1 }),
+            workflowRun({ runId: 2 }),
+            workflowRun({ runId: 3 }),
+            workflowRun({ runId: 4 }),
+            workflowRun({ runId: 5 }),
+            workflowRun({ runId: 6 }),
+            workflowRun({ runId: 7 }),
+          ],
+          latestAttemptObservedAt: "2026-08-09T12:30:00.000Z",
+          lastSuccessAt: "2026-08-09T12:00:00.000Z",
+          resultCount: 3,
+          message: "timeout",
+        },
+      }),
+    );
+    expect(output).toContain(
+      "GitHub workflow-run evidence for github:repository:101 is currently unknown; the last successful refresh at 2026-08-09T12:00:00.000Z returned 3 workflow runs, and 7 previously recorded workflow runs remain retained locally.",
+    );
+    expect(output).not.toContain("provider activity was current at");
+    expect(output).not.toContain("very stale");
+    expect(output).not.toContain("high confidence");
   });
 
   test("Sprint 027: result-count authority facts distinguish latest success from retained memory", () => {
@@ -866,7 +898,7 @@ describe("known facts formatting", () => {
       }),
     );
     expect(githubEmptyRetained).toContain(
-      "The latest successful GitHub workflow-run refresh for github:repository:101 returned no workflow runs; 2 previously recorded workflow runs remain retained locally.",
+      "The latest successful GitHub workflow-run refresh at 2026-08-09T12:00:00.000Z for github:repository:101 returned no workflow runs; 2 previously recorded workflow runs remain retained locally.",
     );
 
     const vercelUnknownPrior = formatInvestigationContext(
@@ -881,14 +913,15 @@ describe("known facts formatting", () => {
             deployment({ uid: "dpl_4" }),
             deployment({ uid: "dpl_5" }),
           ],
-          lastSuccessAt: null,
+          latestAttemptObservedAt: "2026-08-09T13:00:00.000Z",
+          lastSuccessAt: "2026-08-09T12:00:00.000Z",
           resultCount: 2,
           message: "timeout",
         },
       }),
     );
     expect(vercelUnknownPrior).toContain(
-      "Vercel deployment evidence for vercel:project:prj_app is currently unknown; the last successful refresh returned 2 deployments, and 5 previously recorded deployments remain retained locally.",
+      "Vercel deployment evidence for vercel:project:prj_app is currently unknown; the last successful refresh at 2026-08-09T12:00:00.000Z returned 2 deployments, and 5 previously recorded deployments remain retained locally.",
     );
 
     const githubPopulatedDivergence = formatInvestigationContext(
@@ -911,7 +944,7 @@ describe("known facts formatting", () => {
       }),
     );
     expect(githubPopulatedDivergence).toContain(
-      "The latest successful GitHub workflow-run refresh for github:repository:101 returned 3 workflow runs; Combie currently retains 7 workflow runs for this repository.",
+      "The latest successful GitHub workflow-run refresh at 2026-08-09T12:00:00.000Z for github:repository:101 returned 3 workflow runs; Combie currently retains 7 workflow runs for this repository.",
     );
     expect(githubPopulatedDivergence).not.toContain("exactly 3");
     expect(githubPopulatedDivergence).not.toContain("GitHub has 3");
@@ -928,7 +961,7 @@ describe("known facts formatting", () => {
       }),
     );
     expect(githubBounded).toContain(
-      "The latest successful bounded GitHub workflow-run refresh for github:repository:101 returned 100 workflow runs; Combie currently retains 1 workflow run for this repository.",
+      "The latest successful bounded GitHub workflow-run refresh at 2026-08-09T12:00:00.000Z for github:repository:101 returned 100 workflow runs; Combie currently retains 1 workflow run for this repository.",
     );
     expect(githubBounded).not.toContain("exactly 100 workflow runs");
 
@@ -998,10 +1031,10 @@ describe("known facts formatting", () => {
     );
 
     expect(github).toContain(
-      "- The latest successful GitHub workflow-run refresh for github:repository:101 returned no workflow runs.",
+      "- The latest successful GitHub workflow-run refresh at 2026-08-09T12:00:00.000Z for github:repository:101 returned no workflow runs.",
     );
     expect(vercel).toContain(
-      "- The latest successful Vercel deployment refresh for vercel:project:prj_app returned no deployments.",
+      "- The latest successful Vercel deployment refresh at 2026-08-09T12:00:00.000Z for vercel:project:prj_app returned no deployments.",
     );
     expect(github).not.toContain("all GitHub evidence is current");
     expect(vercel).not.toContain("all Vercel evidence is current");

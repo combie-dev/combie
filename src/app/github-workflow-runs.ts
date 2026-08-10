@@ -72,6 +72,7 @@ export async function syncGitHubWorkflowRuns(
         message:
           "Workflow run retrieval skipped: repository lacks owner/fullName for API path.",
         resultCount: prior?.resultCount ?? null,
+        lastSuccessfulObservedAt: prior?.lastSuccessfulObservedAt ?? null,
       });
       continue;
     }
@@ -107,6 +108,7 @@ export async function syncGitHubWorkflowRuns(
         observedAt: options.observedAt,
         message: null,
         resultCount: normalized.length,
+        lastSuccessfulObservedAt: options.observedAt,
       });
       refreshed += 1;
     } catch (err) {
@@ -117,7 +119,7 @@ export async function syncGitHubWorkflowRuns(
           : err instanceof Error
             ? err.message
             : "workflow run retrieval failed";
-      // Preserve prior successful result-count provenance; failure is not empty.
+      // Preserve prior successful provenance; failure is not empty.
       const prior = options.store.getGitHubWorkflowRunRefresh(repository.id);
       options.store.setGitHubWorkflowRunRefresh({
         resourceId: repository.id,
@@ -125,6 +127,7 @@ export async function syncGitHubWorkflowRuns(
         observedAt: options.observedAt,
         message,
         resultCount: prior?.resultCount ?? null,
+        lastSuccessfulObservedAt: prior?.lastSuccessfulObservedAt ?? null,
       });
       // Intentionally do not delete prior workflow-run rows.
     }

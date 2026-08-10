@@ -141,6 +141,7 @@ describe("composeNeonOperationAuthority", () => {
           observedAt: OBSERVED,
           message: null,
           resultCount: 0,
+        lastSuccessfulObservedAt: null,
         },
         [],
       ).kind,
@@ -155,6 +156,7 @@ describe("composeNeonOperationAuthority", () => {
           observedAt: OBSERVED,
           message: null,
           resultCount: 1,
+        lastSuccessfulObservedAt: null,
         },
         [operation],
       ).kind,
@@ -168,6 +170,7 @@ describe("composeNeonOperationAuthority", () => {
         observedAt: OBSERVED,
         message: "403 forbidden",
         resultCount: null,
+      lastSuccessfulObservedAt: null,
       },
       [operation],
     );

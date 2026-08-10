@@ -38,7 +38,10 @@ export interface VercelDeploymentRefresh {
   resourceId: string;
   /** Last refresh outcome for this project. */
   status: "success" | "failure";
-  /** Combie observation time of that outcome. */
+  /**
+   * Combie observation time of the latest refresh attempt (success or failure).
+   * Distinct from lastSuccessfulObservedAt.
+   */
   observedAt: string;
   /** User-safe failure detail; never secrets. */
   message: string | null;
@@ -49,6 +52,13 @@ export interface VercelDeploymentRefresh {
    * of rows currently retained locally. Survives a later failed refresh.
    */
   resultCount: number | null;
+  /**
+   * Combie observation time of the latest successful refresh for this exact
+   * project Resource. Null when never successfully refreshed with provenance
+   * (including pre-Sprint-028 failure rows and unknown history). Survives a
+   * later failed refresh. Not a provider event time.
+   */
+  lastSuccessfulObservedAt: string | null;
 }
 
 export type DeploymentEvidenceAuthority =
@@ -59,6 +69,9 @@ export type DeploymentEvidenceAuthority =
       /** Refresh never succeeded, or last refresh failed. */
       kind: "unknown";
       deployments: VercelDeploymentEvidence[];
+      /** Latest refresh attempt observation time when a refresh row exists. */
+      latestAttemptObservedAt: string | null;
+      /** Last successful refresh observation time when known. */
       lastSuccessAt: string | null;
       /**
        * Last successful normalized response cardinality when known.
@@ -202,12 +215,15 @@ export function composeDeploymentAuthority(
   }
 
   if (refresh?.status === "success") {
+    // On success, observedAt is both latest attempt and last success.
+    const successAt =
+      refresh.lastSuccessfulObservedAt ?? refresh.observedAt;
     // Prefer persisted result-count provenance. Never infer empty/populated
     // solely from retained local rows when provenance exists.
     if (refresh.resultCount === 0) {
       return {
         kind: "empty",
-        observedAt: refresh.observedAt,
+        observedAt: successAt,
         resultCount: 0,
         deployments,
       };
@@ -215,7 +231,7 @@ export function composeDeploymentAuthority(
     if (refresh.resultCount != null && refresh.resultCount > 0) {
       return {
         kind: "populated",
-        observedAt: refresh.observedAt,
+        observedAt: successAt,
         resultCount: refresh.resultCount,
         deployments,
       };
@@ -225,14 +241,14 @@ export function composeDeploymentAuthority(
     if (deployments.length === 0) {
       return {
         kind: "empty",
-        observedAt: refresh.observedAt,
+        observedAt: successAt,
         resultCount: null,
         deployments: [],
       };
     }
     return {
       kind: "populated",
-      observedAt: refresh.observedAt,
+      observedAt: successAt,
       resultCount: null,
       deployments,
     };
@@ -241,7 +257,8 @@ export function composeDeploymentAuthority(
   return {
     kind: "unknown",
     deployments,
-    lastSuccessAt: null,
+    latestAttemptObservedAt: refresh?.observedAt ?? null,
+    lastSuccessAt: refresh?.lastSuccessfulObservedAt ?? null,
     resultCount: refresh?.resultCount ?? null,
     message: refresh?.status === "failure" ? refresh.message : null,
   };

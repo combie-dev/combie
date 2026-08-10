@@ -112,7 +112,8 @@ CREATE TABLE IF NOT EXISTS vercel_deployment_refresh (
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
   message TEXT,
-  result_count INTEGER
+  result_count INTEGER,
+  last_success_observed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS github_workflow_runs (
@@ -143,7 +144,8 @@ CREATE TABLE IF NOT EXISTS github_workflow_run_refresh (
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
   message TEXT,
-  result_count INTEGER
+  result_count INTEGER,
+  last_success_observed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS neon_operations (
@@ -171,7 +173,8 @@ CREATE TABLE IF NOT EXISTS neon_operation_refresh (
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
   message TEXT,
-  result_count INTEGER
+  result_count INTEGER,
+  last_success_observed_at TEXT
 );
 `;
 
@@ -206,6 +209,7 @@ export class Store {
   private applySchema(db: Database): void {
     db.exec(SCHEMA);
     this.ensureRefreshResultCountColumns(db);
+    this.ensureRefreshLastSuccessObservedAtColumns(db);
   }
 
   /**
@@ -216,6 +220,35 @@ export class Store {
   private ensureRefreshResultCountColumns(db: Database): void {
     this.ensureNullableIntegerColumn(db, "vercel_deployment_refresh", "result_count");
     this.ensureNullableIntegerColumn(db, "github_workflow_run_refresh", "result_count");
+  }
+
+  /**
+   * Additive upgrade: pre-028 refresh tables lack last_success_observed_at.
+   * Safe backfill only when status='success' (observed_at is then proven to
+   * be a successful refresh time). Failure rows stay NULL — never invent
+   * authority history by copying latest-attempt observed_at.
+   */
+  private ensureRefreshLastSuccessObservedAtColumns(db: Database): void {
+    const tables = [
+      "vercel_deployment_refresh",
+      "github_workflow_run_refresh",
+      "neon_operation_refresh",
+    ] as const;
+    for (const table of tables) {
+      const added = this.ensureNullableTextColumn(
+        db,
+        table,
+        "last_success_observed_at",
+      );
+      if (!added) continue;
+      // Only backfill rows whose current status proves a successful refresh.
+      db.exec(
+        `UPDATE ${table}
+         SET last_success_observed_at = observed_at
+         WHERE status = 'success'
+           AND last_success_observed_at IS NULL`,
+      );
+    }
   }
 
   private ensureNullableIntegerColumn(
@@ -230,6 +263,21 @@ export class Store {
     if (rows.length === 0) return;
     if (rows.some((row) => row.name === column)) return;
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} INTEGER`);
+  }
+
+  /** Returns true when the column was newly added. */
+  private ensureNullableTextColumn(
+    db: Database,
+    table: string,
+    column: string,
+  ): boolean {
+    const rows = db
+      .query(`PRAGMA table_info(${table})`)
+      .all() as Array<{ name: string }>;
+    if (rows.length === 0) return false;
+    if (rows.some((row) => row.name === column)) return false;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+    return true;
   }
 
   /** Baseline only Resources that existed before Change detection was enabled. */
@@ -717,13 +765,15 @@ export class Store {
     this.getDb()
       .query(
         `INSERT INTO vercel_deployment_refresh (
-           resource_id, status, observed_at, message, result_count
-         ) VALUES (?, ?, ?, ?, ?)
+           resource_id, status, observed_at, message, result_count,
+           last_success_observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(resource_id) DO UPDATE SET
            status = excluded.status,
            observed_at = excluded.observed_at,
            message = excluded.message,
-           result_count = excluded.result_count`,
+           result_count = excluded.result_count,
+           last_success_observed_at = excluded.last_success_observed_at`,
       )
       .run(
         refresh.resourceId,
@@ -731,6 +781,7 @@ export class Store {
         refresh.observedAt,
         refresh.message,
         refresh.resultCount,
+        refresh.lastSuccessfulObservedAt,
       );
   }
 
@@ -739,7 +790,8 @@ export class Store {
   ): VercelDeploymentRefresh | null {
     const row = this.getDb()
       .query(
-        `SELECT resource_id, status, observed_at, message, result_count
+        `SELECT resource_id, status, observed_at, message, result_count,
+                last_success_observed_at
          FROM vercel_deployment_refresh
          WHERE resource_id = ?`,
       )
@@ -750,6 +802,7 @@ export class Store {
           observed_at: string;
           message: string | null;
           result_count: number | null;
+          last_success_observed_at: string | null;
         }
       | null;
     if (!row) return null;
@@ -759,6 +812,7 @@ export class Store {
       observedAt: row.observed_at,
       message: row.message,
       resultCount: row.result_count,
+      lastSuccessfulObservedAt: row.last_success_observed_at,
     };
   }
 
@@ -847,13 +901,15 @@ export class Store {
     this.getDb()
       .query(
         `INSERT INTO github_workflow_run_refresh (
-           resource_id, status, observed_at, message, result_count
-         ) VALUES (?, ?, ?, ?, ?)
+           resource_id, status, observed_at, message, result_count,
+           last_success_observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(resource_id) DO UPDATE SET
            status = excluded.status,
            observed_at = excluded.observed_at,
            message = excluded.message,
-           result_count = excluded.result_count`,
+           result_count = excluded.result_count,
+           last_success_observed_at = excluded.last_success_observed_at`,
       )
       .run(
         refresh.resourceId,
@@ -861,6 +917,7 @@ export class Store {
         refresh.observedAt,
         refresh.message,
         refresh.resultCount,
+        refresh.lastSuccessfulObservedAt,
       );
   }
 
@@ -869,7 +926,8 @@ export class Store {
   ): GitHubWorkflowRunRefresh | null {
     const row = this.getDb()
       .query(
-        `SELECT resource_id, status, observed_at, message, result_count
+        `SELECT resource_id, status, observed_at, message, result_count,
+                last_success_observed_at
          FROM github_workflow_run_refresh
          WHERE resource_id = ?`,
       )
@@ -880,6 +938,7 @@ export class Store {
           observed_at: string;
           message: string | null;
           result_count: number | null;
+          last_success_observed_at: string | null;
         }
       | null;
     if (!row) return null;
@@ -889,6 +948,7 @@ export class Store {
       observedAt: row.observed_at,
       message: row.message,
       resultCount: row.result_count,
+      lastSuccessfulObservedAt: row.last_success_observed_at,
     };
   }
 
@@ -961,13 +1021,15 @@ export class Store {
     this.getDb()
       .query(
         `INSERT INTO neon_operation_refresh (
-           resource_id, status, observed_at, message, result_count
-         ) VALUES (?, ?, ?, ?, ?)
+           resource_id, status, observed_at, message, result_count,
+           last_success_observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(resource_id) DO UPDATE SET
            status = excluded.status,
            observed_at = excluded.observed_at,
            message = excluded.message,
-           result_count = excluded.result_count`,
+           result_count = excluded.result_count,
+           last_success_observed_at = excluded.last_success_observed_at`,
       )
       .run(
         refresh.resourceId,
@@ -975,13 +1037,15 @@ export class Store {
         refresh.observedAt,
         refresh.message,
         refresh.resultCount,
+        refresh.lastSuccessfulObservedAt,
       );
   }
 
   getNeonOperationRefresh(resourceId: string): NeonOperationRefresh | null {
     const row = this.getDb()
       .query(
-        `SELECT resource_id, status, observed_at, message, result_count
+        `SELECT resource_id, status, observed_at, message, result_count,
+                last_success_observed_at
          FROM neon_operation_refresh
          WHERE resource_id = ?`,
       )
@@ -992,6 +1056,7 @@ export class Store {
           observed_at: string;
           message: string | null;
           result_count: number | null;
+          last_success_observed_at: string | null;
         }
       | null;
     if (!row) return null;
@@ -1001,6 +1066,7 @@ export class Store {
       observedAt: row.observed_at,
       message: row.message,
       resultCount: row.result_count,
+      lastSuccessfulObservedAt: row.last_success_observed_at,
     };
   }
 

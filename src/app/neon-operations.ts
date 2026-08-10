@@ -87,16 +87,21 @@ export async function syncNeonOperations(
         observedAt: options.observedAt,
         message: null,
         resultCount: normalized.length,
+        lastSuccessfulObservedAt: options.observedAt,
       });
       refreshed += 1;
     } catch (error) {
       failed += 1;
+      // Neon still nulls result_count on failure (Sprint 022/027 semantics).
+      // Last successful observation time is preserved (Sprint 028).
+      const prior = options.store.getNeonOperationRefresh(project.id);
       options.store.setNeonOperationRefresh({
         resourceId: project.id,
         status: "failure",
         observedAt: options.observedAt,
         message: safeOperationRefreshMessage(error),
         resultCount: null,
+        lastSuccessfulObservedAt: prior?.lastSuccessfulObservedAt ?? null,
       });
       // List absence and failed refreshes are never deletion authority.
     }

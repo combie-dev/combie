@@ -680,19 +680,38 @@ function formatInvestigationFact(fact: InvestigationFact): string {
     const retained = source.locallyHeldNativeIds.length;
     const retainedNoun = providerEvidenceNoun(source.family, retained);
     const resultCount = source.lastSuccessfulResultCount;
+    const lastSuccessAt = source.lastSuccessfulObservedAt;
+    const atClause = lastSuccessAt != null ? ` at ${lastSuccessAt}` : "";
 
     if (source.authority.kind === "unknown") {
       if (resultCount != null) {
         const returnedNoun = providerEvidenceNoun(source.family, resultCount);
+        const refreshLabel =
+          source.family === "github_workflow_run" && resultCount === 100
+            ? "last successful bounded refresh"
+            : "last successful refresh";
         if (retained === 0) {
           return (
             `${family} evidence for ${source.scope.resourceId} is currently unknown; ` +
-            `the last successful refresh returned ${resultCount} ${returnedNoun}.`
+            `the ${refreshLabel}${atClause} returned ${resultCount} ${returnedNoun}.`
           );
         }
         return (
           `${family} evidence for ${source.scope.resourceId} is currently unknown; ` +
-          `the last successful refresh returned ${resultCount} ${returnedNoun}, ` +
+          `the ${refreshLabel}${atClause} returned ${resultCount} ${returnedNoun}, ` +
+          `and ${retained} previously recorded ${retainedNoun} remain retained locally.`
+        );
+      }
+      if (lastSuccessAt != null) {
+        if (retained === 0) {
+          return (
+            `${family} evidence for ${source.scope.resourceId} is currently unknown; ` +
+            `the last successful refresh was observed by Combie at ${lastSuccessAt}.`
+          );
+        }
+        return (
+          `${family} evidence for ${source.scope.resourceId} is currently unknown; ` +
+          `the last successful refresh was observed by Combie at ${lastSuccessAt}, ` +
           `and ${retained} previously recorded ${retainedNoun} remain retained locally.`
         );
       }
@@ -708,17 +727,17 @@ function formatInvestigationFact(fact: InvestigationFact): string {
     if (source.authority.kind === "empty") {
       if (source.family === "neon_operation") {
         return retained === 0
-          ? `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations.`
-          : `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations; ${retained} previously recorded ${retainedNoun} ${retained === 1 ? "is" : "are"} retained.`;
+          ? `The latest successful Neon operation refresh${atClause} for ${source.scope.resourceId} returned no current operations.`
+          : `The latest successful Neon operation refresh${atClause} for ${source.scope.resourceId} returned no current operations; ${retained} previously recorded ${retainedNoun} ${retained === 1 ? "is" : "are"} retained.`;
       }
       if (retained === 0) {
         return (
-          `The latest successful ${family} refresh for ${source.scope.resourceId} ` +
+          `The latest successful ${family} refresh${atClause} for ${source.scope.resourceId} ` +
           `returned no ${providerEvidenceNoun(source.family, 0)}.`
         );
       }
       return (
-        `The latest successful ${family} refresh for ${source.scope.resourceId} returned no ${providerEvidenceNoun(source.family, 0)}; ` +
+        `The latest successful ${family} refresh${atClause} for ${source.scope.resourceId} returned no ${providerEvidenceNoun(source.family, 0)}; ` +
         `${retained} previously recorded ${retainedNoun} remain retained locally.`
       );
     }
@@ -732,12 +751,12 @@ function formatInvestigationFact(fact: InvestigationFact): string {
           ? "bounded GitHub workflow-run refresh"
           : "GitHub workflow-run refresh";
       return (
-        `The latest successful ${bound} for ${source.scope.resourceId} returned ${returned} ${returnedNoun}; ` +
+        `The latest successful ${bound}${atClause} for ${source.scope.resourceId} returned ${returned} ${returnedNoun}; ` +
         `Combie currently retains ${retained} ${retainedNoun} for this repository.`
       );
     }
     return (
-      `The latest successful ${family} refresh for ${source.scope.resourceId} returned ${returned} ${returnedNoun}; ` +
+      `The latest successful ${family} refresh${atClause} for ${source.scope.resourceId} returned ${returned} ${returnedNoun}; ` +
       `Combie currently retains ${retained} ${retainedNoun} for this resource.`
     );
   }

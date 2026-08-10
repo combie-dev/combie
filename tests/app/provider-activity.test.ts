@@ -585,6 +585,7 @@ describe("provider activity chronology composition", () => {
       subjectDeployments: {
         kind: "unknown",
         deployments: [stale],
+        latestAttemptObservedAt: null,
         lastSuccessAt: null,
         resultCount: null,
         message: "refresh failed",
