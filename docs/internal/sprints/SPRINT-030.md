@@ -1598,10 +1598,9 @@ docs/internal/sprints/SPRINT-030.md
 ## Commit
 
 ```text
+c6255b253a5608f9bd36d0791ca12449df63fbd7
 feat(investigate): add deterministic missing context inventory
 ```
-
-Exact SHA after commit.
 
 ---
 
