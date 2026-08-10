@@ -2041,12 +2041,13 @@ Generic correlation architecture → NOT introduced
 - [x] typecheck / secret scan / offline / read-only
 - [x] completion notes
 - [x] Canon None
-- [ ] commit (pending)
-- [ ] worktree clean (pending)
+- [x] commit `137ad9d5675f746d7b7968b54a0cb45b1b4d1e81`
+- [x] worktree clean
 - [x] Sprint 036 not started
 
 ## Commit
 
 ```text
-(pending)
+137ad9d5675f746d7b7968b54a0cb45b1b4d1e81
+feat(investigate): shared Git commit context for workflow runs and deployments
 ```
