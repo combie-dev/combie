@@ -1430,27 +1430,27 @@ feat(cli): compact investigate provider activity index
 - [x] committed separately
 - [x] worktree clean
 - [x] Sprint 033 not started
-- [ ] no provider contract changes
-- [ ] no provider API changes
-- [ ] no new provider evidence
-- [ ] no Attention surface
-- [ ] no ranking
-- [ ] no scoring
-- [ ] no recommendations
-- [ ] no correlation
-- [ ] no causality
-- [ ] no AI
-- [ ] focused tests added
-- [ ] full tests pass
-- [ ] typecheck passes
-- [ ] secret scan clean
-- [ ] diff/whitespace checks clean
-- [ ] offline/read-only behavior preserved
-- [ ] completion notes updated
-- [ ] Canon changes recorded or None
-- [ ] Sprint 032 committed separately
-- [ ] worktree clean
-- [ ] Sprint 033 not started
+- [x] no provider contract changes
+- [x] no provider API changes
+- [x] no new provider evidence
+- [x] no Attention surface
+- [x] no ranking
+- [x] no scoring
+- [x] no recommendations
+- [x] no correlation
+- [x] no causality
+- [x] no AI
+- [x] focused tests added
+- [x] full tests pass
+- [x] typecheck passes
+- [x] secret scan clean
+- [x] diff/whitespace checks clean
+- [x] offline/read-only behavior preserved
+- [x] completion notes updated
+- [x] Canon changes recorded or None
+- [x] Sprint 032 committed separately
+- [x] worktree clean
+- [x] Sprint 033 not started
 
 ---
 
