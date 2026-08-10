@@ -31,6 +31,40 @@ export interface VercelDeploymentEvidence {
   observedAt: string;
   /** Compact deployment source label when present (cli, git, …). */
   source: string | null;
+  /**
+   * Exact full Git commit SHA when present on deployment meta.githubCommitSha.
+   * Canonicalized (trim + lowercase); short/malformed values are null.
+   * Evidence metadata only — not deployment identity. Never stores messages/meta.
+   */
+  gitCommitSha: string | null;
+}
+
+/**
+ * Canonicalize a provider-supplied Git object id for exact identity matching.
+ *
+ * Accepts only full hex shapes (40 SHA-1 or 64 SHA-256). Rejects short SHAs,
+ * prefixes, non-hex, empty, and non-strings. Does not invent identity.
+ */
+export function canonicalizeFullGitCommitSha(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const canonical = value.trim().toLowerCase();
+  if (
+    !/^[0-9a-f]{40}$/.test(canonical) &&
+    !/^[0-9a-f]{64}$/.test(canonical)
+  ) {
+    return null;
+  }
+  return canonical;
+}
+
+/** Extract allowlisted commit identity from Vercel deployment meta only. */
+export function extractGitCommitShaFromMeta(meta: unknown): string | null {
+  if (meta == null || typeof meta !== "object" || Array.isArray(meta)) {
+    return null;
+  }
+  return canonicalizeFullGitCommitSha(
+    (meta as Record<string, unknown>).githubCommitSha,
+  );
 }
 
 /** Per-project deployment refresh authority (not deletion authority). */
@@ -161,6 +195,8 @@ export function normalizeDeployment(
     state?: unknown;
     target?: unknown;
     source?: unknown;
+    /** Untyped provider meta bag; only githubCommitSha is allowlisted. */
+    meta?: unknown;
   },
   expectedProjectId: string,
   observedAt: string,
@@ -182,6 +218,8 @@ export function normalizeDeployment(
   const source = asNonEmptyString(raw.source);
   const buildingAtMs = asFiniteNumber(raw.buildingAt);
   const readyAtMs = asFiniteNumber(raw.ready);
+  // Allowlist only meta.githubCommitSha. Never persist messages/authors/raw meta.
+  const gitCommitSha = extractGitCommitShaFromMeta(raw.meta);
 
   return {
     provider: "vercel",
@@ -196,6 +234,7 @@ export function normalizeDeployment(
     readyAtMs,
     observedAt,
     source,
+    gitCommitSha,
   };
 }
 

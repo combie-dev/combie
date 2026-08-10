@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS vercel_deployments (
   building_at_ms INTEGER,
   ready_at_ms INTEGER,
   observed_at TEXT NOT NULL,
-  source TEXT
+  source TEXT,
+  git_commit_sha TEXT
 );
 
 CREATE INDEX IF NOT EXISTS vercel_deployments_resource_created_uid_idx
@@ -210,6 +211,8 @@ export class Store {
     db.exec(SCHEMA);
     this.ensureRefreshResultCountColumns(db);
     this.ensureRefreshLastSuccessObservedAtColumns(db);
+    // Sprint 035: pre-035 vercel_deployments lack git_commit_sha (nullable).
+    this.ensureNullableTextColumn(db, "vercel_deployments", "git_commit_sha");
   }
 
   /**
@@ -703,8 +706,8 @@ export class Store {
          uid, provider, resource_id, project_id,
          ready_state, state, target,
          created_at_ms, building_at_ms, ready_at_ms,
-         observed_at, source
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         observed_at, source, git_commit_sha
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(uid) DO UPDATE SET
          provider = excluded.provider,
          resource_id = excluded.resource_id,
@@ -716,7 +719,8 @@ export class Store {
          building_at_ms = excluded.building_at_ms,
          ready_at_ms = excluded.ready_at_ms,
          observed_at = excluded.observed_at,
-         source = excluded.source`,
+         source = excluded.source,
+         git_commit_sha = excluded.git_commit_sha`,
     ).run(
       deployment.uid,
       deployment.provider,
@@ -730,6 +734,7 @@ export class Store {
       deployment.readyAtMs,
       deployment.observedAt,
       deployment.source,
+      deployment.gitCommitSha,
     );
   }
 
@@ -745,7 +750,7 @@ export class Store {
         `SELECT uid, provider, resource_id, project_id,
                 ready_state, state, target,
                 created_at_ms, building_at_ms, ready_at_ms,
-                observed_at, source
+                observed_at, source, git_commit_sha
          FROM vercel_deployments
          WHERE resource_id = ?
          ORDER BY created_at_ms DESC, uid DESC`,
@@ -1232,6 +1237,7 @@ interface VercelDeploymentRow {
   ready_at_ms: number | null;
   observed_at: string;
   source: string | null;
+  git_commit_sha: string | null;
 }
 
 function mapVercelDeployment(row: VercelDeploymentRow): VercelDeploymentEvidence {
@@ -1248,6 +1254,7 @@ function mapVercelDeployment(row: VercelDeploymentRow): VercelDeploymentEvidence
     readyAtMs: row.ready_at_ms,
     observedAt: row.observed_at,
     source: row.source,
+    gitCommitSha: row.git_commit_sha,
   };
 }
 

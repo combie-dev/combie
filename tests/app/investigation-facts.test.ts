@@ -57,6 +57,7 @@ function deployment(
     readyAtMs: null,
     observedAt: OBSERVED_AT,
     source: "git",
+    gitCommitSha: null,
     ...overrides,
   };
 }

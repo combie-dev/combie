@@ -45,6 +45,7 @@ function deployment(
     readyAtMs: Date.parse("2026-08-09T10:01:00.000Z"),
     observedAt: "2026-08-09T12:00:00.000Z",
     source: "git",
+    gitCommitSha: null,
     ...overrides,
   };
 }

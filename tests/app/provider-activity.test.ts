@@ -79,6 +79,7 @@ function deployment(
     readyAtMs: 1754733900000,
     observedAt: "2026-08-09T12:00:00.000Z",
     source: "git",
+    gitCommitSha: null,
     ...overrides,
   };
 }

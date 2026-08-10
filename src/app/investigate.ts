@@ -46,6 +46,10 @@ import {
   composeInvestigationTimeline,
   type InvestigationTimelineEntry,
 } from "./timeline.ts";
+import {
+  composeSharedCommitContext,
+  type GitCommitEvidenceGroup,
+} from "./shared-commit-context.ts";
 
 /**
  * One-hop neighbor under investigation: the canonical Relationship, direction
@@ -312,6 +316,7 @@ function formatDeployment(d: VercelDeploymentEvidence): string {
   if (d.state && d.state !== d.readyState) lines.push(`state: ${d.state}`);
   if (d.target) lines.push(`target: ${d.target}`);
   if (d.source) lines.push(`source: ${d.source}`);
+  if (d.gitCommitSha) lines.push(`git commit sha: ${d.gitCommitSha}`);
   lines.push(`observed by Combie at: ${d.observedAt}`);
   return lines.join("\n");
 }
@@ -961,6 +966,60 @@ function formatMissingContext(context: InvestigationContext): string {
   return items.map((item) => `- ${formatMissingContextItem(item)}`).join("\n");
 }
 
+/**
+ * Compact SHARED COMMIT CONTEXT section.
+ * Omitted entirely when no eligible groups exist (supplemental surface).
+ * Never implies lineage, trigger, or current latest-response membership.
+ */
+export function formatSharedCommitContext(
+  groups: GitCommitEvidenceGroup[],
+): string {
+  if (groups.length === 0) return "";
+
+  const blocks = groups.map((group) => {
+    const lines: string[] = [`Commit ${group.commitSha}`];
+    if (group.includesUnknownAuthority) {
+      lines.push(
+        "(among held evidence; not proven latest-response membership; some rows may be stale)",
+      );
+    } else {
+      lines.push(
+        "(among held evidence; not proven latest-response membership)",
+      );
+    }
+
+    lines.push("");
+    lines.push("GitHub workflow runs");
+    for (const member of group.workflowRuns) {
+      const run = member.evidence;
+      const parts = [`• ${run.runId}`];
+      if (run.name) parts.push(run.name);
+      if (run.conclusion) parts.push(`conclusion=${run.conclusion}`);
+      else if (run.status) parts.push(`status=${run.status}`);
+      lines.push(parts.join(" · "));
+    }
+
+    lines.push("");
+    lines.push("Vercel deployments");
+    for (const member of group.deployments) {
+      const d = member.evidence;
+      const parts = [`• ${d.uid}`];
+      if (d.readyState) parts.push(`readyState=${d.readyState}`);
+      lines.push(parts.join(" · "));
+    }
+
+    lines.push("");
+    lines.push("Basis");
+    lines.push("• exact Git commit SHA");
+    lines.push(
+      `• ${group.sourceResourceId} source_for ${group.targetResourceId}`,
+    );
+    return lines.join("\n");
+  });
+
+  return `SHARED COMMIT CONTEXT\n\n${blocks.join("\n\n")}`;
+}
+
 /** Deterministic CLI presentation of investigation context. */
 export function formatInvestigationContext(
   context: InvestigationContext,
@@ -1001,10 +1060,17 @@ export function formatInvestigationContext(
       ? "No relationships discovered."
       : context.related.map(formatRelatedNeighbor).join("\n\n");
 
+  const sharedCommitGroups = composeSharedCommitContext(context);
+  const sharedCommitSection = formatSharedCommitContext(sharedCommitGroups);
+  const sharedCommitBlock =
+    sharedCommitSection === "" ? "" : `\n\n${sharedCommitSection}`;
+
   // Chronology supplements detailed sections (DEPLOYMENTS / WORKFLOW RUNS /
   // OPERATIONS) and stays separate from Resource Change observations.
   // MISSING CONTEXT sits after KNOWN FACTS so trust boundaries appear before
   // detailed evidence scanning — without ranking or recommendations.
+  // SHARED COMMIT CONTEXT is supplemental identity context after RELATED;
+  // omitted when empty. Not lineage and not a chronology merge.
   return (
     `${header}\n\n` +
     `${knownFacts}\n\n` +
@@ -1013,7 +1079,8 @@ export function formatInvestigationContext(
     `${subjectDeployments}` +
     `${subjectWorkflowRuns}` +
     `${subjectOperations}\n\n` +
-    `RELATED CONTEXT\n\n${related}\n\n` +
+    `RELATED CONTEXT\n\n${related}` +
+    `${sharedCommitBlock}\n\n` +
     `KNOWN PROVIDER ACTIVITY (newest first; incomplete)\n\n` +
     `${formatProviderActivity(context)}\n\n` +
     `COMBIE OBSERVATIONS (newest first)\n\n` +

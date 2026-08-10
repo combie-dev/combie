@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canonicalizeFullGitCommitSha,
   composeDeploymentAuthority,
+  extractGitCommitShaFromMeta,
   normalizeDeployment,
   vercelProjectResourceId,
 } from "../../../src/providers/vercel/deployment.ts";
@@ -8,6 +10,41 @@ import deploymentsFixture from "./fixtures/deployments.json";
 
 const OBSERVED = "2026-08-09T12:00:00.000Z";
 const PROJECT_ID = "prj_demo_hub";
+const FULL_SHA = "abc123def4567890abc123def4567890abc123de";
+const FULL_SHA_64 =
+  "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
+describe("canonicalizeFullGitCommitSha", () => {
+  test("accepts full 40 and 64 hex, lowercases and trims", () => {
+    expect(canonicalizeFullGitCommitSha(FULL_SHA)).toBe(FULL_SHA);
+    expect(
+      canonicalizeFullGitCommitSha(FULL_SHA.toUpperCase()),
+    ).toBe(FULL_SHA);
+    expect(canonicalizeFullGitCommitSha(`  ${FULL_SHA}  `)).toBe(FULL_SHA);
+    expect(canonicalizeFullGitCommitSha(FULL_SHA_64)).toBe(FULL_SHA_64);
+  });
+
+  test("rejects short, prefix, malformed, empty, non-string", () => {
+    expect(canonicalizeFullGitCommitSha("abc123def456")).toBeNull();
+    expect(canonicalizeFullGitCommitSha(FULL_SHA.slice(0, 7))).toBeNull();
+    expect(canonicalizeFullGitCommitSha("g".repeat(40))).toBeNull();
+    expect(canonicalizeFullGitCommitSha("")).toBeNull();
+    expect(canonicalizeFullGitCommitSha("   ")).toBeNull();
+    expect(canonicalizeFullGitCommitSha(null)).toBeNull();
+    expect(canonicalizeFullGitCommitSha(123)).toBeNull();
+  });
+});
+
+describe("extractGitCommitShaFromMeta", () => {
+  test("reads only githubCommitSha and rejects raw meta bags without it", () => {
+    expect(
+      extractGitCommitShaFromMeta({ githubCommitSha: FULL_SHA }),
+    ).toBe(FULL_SHA);
+    expect(extractGitCommitShaFromMeta({ githubCommitMessage: "x" })).toBeNull();
+    expect(extractGitCommitShaFromMeta(null)).toBeNull();
+    expect(extractGitCommitShaFromMeta("not-object")).toBeNull();
+  });
+});
 
 describe("normalizeDeployment", () => {
   test("maps stable identity, exact Resource association, and provider times", () => {
@@ -27,6 +64,7 @@ describe("normalizeDeployment", () => {
     expect(evidence!.target).toBe("production");
     expect(evidence!.source).toBe("git");
     expect(evidence!.observedAt).toBe(OBSERVED);
+    expect(evidence!.gitCommitSha).toBe(FULL_SHA);
   });
 
   test("preserves optional absence of buildingAt/ready without inventing times", () => {
@@ -73,7 +111,7 @@ describe("normalizeDeployment", () => {
     ).toBeNull();
   });
 
-  test("excludes secrets, creator, meta, urls, env from compact evidence", () => {
+  test("excludes secrets, creator, raw meta, urls, env from compact evidence", () => {
     const raw = deploymentsFixture.deployments[0]!;
     const evidence = normalizeDeployment(raw, PROJECT_ID, OBSERVED)!;
     const json = JSON.stringify(evidence);
@@ -83,12 +121,14 @@ describe("normalizeDeployment", () => {
     expect(json).not.toContain("demo-hub-abc.vercel.app");
     expect(json).not.toContain("inspectorUrl");
     expect(json).not.toContain("githubCommitMessage");
+    expect(json).not.toContain("Secret Author");
     expect(json).not.toContain("DATABASE_URL");
-    // No url/creator/meta fields on the evidence object.
+    // Allowlisted commit SHA only — not raw meta bag.
     expect(Object.keys(evidence).sort()).toEqual(
       [
         "buildingAtMs",
         "createdAtMs",
+        "gitCommitSha",
         "observedAt",
         "projectId",
         "provider",
@@ -101,6 +141,66 @@ describe("normalizeDeployment", () => {
         "uid",
       ].sort(),
     );
+  });
+
+  test("Sprint 035: gitCommitSha allowlist and rejection paths", () => {
+    const base = {
+      uid: "dpl_sha",
+      projectId: PROJECT_ID,
+      created: 1000,
+      readyState: "READY",
+    };
+    expect(
+      normalizeDeployment(
+        {
+          ...base,
+          meta: { githubCommitSha: FULL_SHA.toUpperCase() },
+        },
+        PROJECT_ID,
+        OBSERVED,
+      )!.gitCommitSha,
+    ).toBe(FULL_SHA);
+    expect(
+      normalizeDeployment(
+        { ...base, meta: { githubCommitSha: FULL_SHA_64 } },
+        PROJECT_ID,
+        OBSERVED,
+      )!.gitCommitSha,
+    ).toBe(FULL_SHA_64);
+    expect(
+      normalizeDeployment(
+        { ...base, meta: { githubCommitSha: "  " + FULL_SHA + "  " } },
+        PROJECT_ID,
+        OBSERVED,
+      )!.gitCommitSha,
+    ).toBe(FULL_SHA);
+    expect(
+      normalizeDeployment(
+        { ...base, meta: { githubCommitSha: "abc123def456" } },
+        PROJECT_ID,
+        OBSERVED,
+      )!.gitCommitSha,
+    ).toBeNull();
+    expect(
+      normalizeDeployment(
+        { ...base, meta: { githubCommitSha: FULL_SHA.slice(0, 12) } },
+        PROJECT_ID,
+        OBSERVED,
+      )!.gitCommitSha,
+    ).toBeNull();
+    expect(
+      normalizeDeployment({ ...base }, PROJECT_ID, OBSERVED)!.gitCommitSha,
+    ).toBeNull();
+    expect(
+      normalizeDeployment(
+        { ...base, meta: { githubCommitMessage: "no sha" } },
+        PROJECT_ID,
+        OBSERVED,
+      )!.gitCommitSha,
+    ).toBeNull();
+    // CLI fixture row has no meta.
+    const cli = deploymentsFixture.deployments[1]!;
+    expect(normalizeDeployment(cli, PROJECT_ID, OBSERVED)!.gitCommitSha).toBeNull();
   });
 });
 
@@ -119,6 +219,7 @@ describe("composeDeploymentAuthority", () => {
     readyAtMs: 200,
     observedAt: OBSERVED,
     source: "git",
+    gitCommitSha: null,
   };
 
   test("not_applicable for non-Vercel resources", () => {

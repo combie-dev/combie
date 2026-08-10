@@ -34,6 +34,7 @@ function evidence(
     readyAtMs: null,
     observedAt: "2026-08-09T10:00:00.000Z",
     source: "git",
+    gitCommitSha: null,
     ...overrides,
   };
 }
@@ -79,6 +80,74 @@ describe("Store vercel deployment persistence", () => {
     expect(list[0]!.observedAt).toBe("2026-08-09T11:00:00.000Z");
     expect(store.countVercelDeployments()).toBe(1);
     store.close();
+  });
+
+  test("Sprint 035: git_commit_sha persists and updates to null on later upsert", () => {
+    const sha = "abc123def4567890abc123def4567890abc123de";
+    const store = new Store(dir);
+    store.init();
+    store.upsertVercelDeployment(evidence({ gitCommitSha: sha }));
+    let list = store.listVercelDeploymentsForResource("vercel:project:prj_a");
+    expect(list[0]!.gitCommitSha).toBe(sha);
+    expect(list[0]!.uid).toBe("dpl_1");
+    // Later successful normalize without valid SHA updates to null.
+    store.upsertVercelDeployment(evidence({ gitCommitSha: null }));
+    list = store.listVercelDeploymentsForResource("vercel:project:prj_a");
+    expect(list[0]!.gitCommitSha).toBeNull();
+    store.close();
+  });
+
+  test("Sprint 035: pre-035 vercel_deployments upgrades with nullable git_commit_sha", () => {
+    const sha = "abc123def4567890abc123def4567890abc123de";
+    const path = dbPath(dir);
+    const raw = new Database(path);
+    raw.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL,
+        last_sync_at TEXT, config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE resources (
+        id TEXT PRIMARY KEY, provider TEXT NOT NULL,
+        provider_resource_id TEXT NOT NULL, kind TEXT NOT NULL,
+        name TEXT NOT NULL, metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(provider, kind, provider_resource_id)
+      );
+      CREATE TABLE vercel_deployments (
+        uid TEXT PRIMARY KEY, provider TEXT NOT NULL DEFAULT 'vercel',
+        resource_id TEXT NOT NULL, project_id TEXT NOT NULL,
+        ready_state TEXT, state TEXT, target TEXT,
+        created_at_ms INTEGER NOT NULL, building_at_ms INTEGER,
+        ready_at_ms INTEGER, observed_at TEXT NOT NULL, source TEXT
+      );
+      INSERT INTO vercel_deployments (
+        uid, resource_id, project_id, ready_state, state, target,
+        created_at_ms, observed_at, source
+      ) VALUES (
+        'dpl_old', 'vercel:project:prj_a', 'prj_a', 'READY', 'READY', 'production',
+        1000, '2026-08-09T11:00:00.000Z', 'git'
+      );
+    `);
+    raw.close();
+
+    const upgraded = new Store(dir);
+    expect(upgraded.isInitialized()).toBe(true);
+    const old = upgraded.listVercelDeploymentsForResource(
+      "vercel:project:prj_a",
+    );
+    expect(old).toHaveLength(1);
+    expect(old[0]!.gitCommitSha).toBeNull();
+    expect(old[0]!.uid).toBe("dpl_old");
+    upgraded.upsertVercelDeployment(
+      evidence({ uid: "dpl_old", gitCommitSha: sha }),
+    );
+    expect(
+      upgraded.listVercelDeploymentsForResource("vercel:project:prj_a")[0]!
+        .gitCommitSha,
+    ).toBe(sha);
+    upgraded.close();
   });
 
   test("exact Resource association scopes reads", () => {
