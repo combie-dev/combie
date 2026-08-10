@@ -336,7 +336,7 @@ describe("Investigation context composition", () => {
     expect(output).toContain("custom_domain_apex");
     expect(output).toContain("SUBJECT CHANGES");
     expect(output).toContain("RELATED CONTEXT");
-    expect(output).toContain("No changes recorded yet."); // zone
+    expect(output).toContain("changes=0"); // zone
     expect(output).not.toContain(neon.id);
     expect(output).not.toContain("analytics-db");
   });

@@ -547,37 +547,157 @@ function formatNeonOperationsBlock(
   return `${marker}\n\n${authority.operations.map(formatNeonOperation).join("\n\n")}`;
 }
 
-function formatRelatedNeighbor(item: InvestigationNeighbor): string {
-  const direction =
-    item.direction === "outbound"
-      ? `${item.relationship.kind} →`
-      : `← ${item.relationship.kind}`;
-  const id = neighborId(item);
-  const identity = item.resource
-    ? `${providerLabel(item.resource.provider)} ${item.resource.kind}: ${resourceDisplayName(item.resource)}`
-    : id;
-  const stableId = item.resource ? `\n${item.resource.id}` : "\n(missing resource)";
-  const deploymentSection =
-    item.deployments.kind === "not_applicable"
-      ? ""
-      : `\n\nDEPLOYMENTS (newest first)\n\n${formatDeploymentsBlock(item.deployments)}`;
-  const workflowSection =
-    item.workflowRuns.kind === "not_applicable"
-      ? ""
-      : `\n\nWORKFLOW RUNS (newest first)\n\n${formatWorkflowRunsBlock(item.workflowRuns)}`;
-  const operationSection =
-    item.operations.kind === "not_applicable"
-      ? ""
-      : `\n\nOPERATIONS (newest first)\n\n${formatNeonOperationsBlock(item.operations)}`;
-  return (
-    `${direction}\n` +
-    `${identity}${stableId}\n` +
-    `Evidence: ${formatEvidence(item.relationship.evidence)}\n\n` +
-    `CHANGES\n\n${formatChangesBlock(item.changes)}` +
-    deploymentSection +
-    workflowSection +
-    operationSection
-  );
+/**
+ * Group one-hop Relationship entries by neighbor Resource id.
+ * Preserves first-appearance (store canonical) order; no ranking.
+ */
+function groupRelatedNeighbors(
+  related: InvestigationNeighbor[],
+): InvestigationNeighbor[][] {
+  const groups: InvestigationNeighbor[][] = [];
+  const byId = new Map<string, InvestigationNeighbor[]>();
+  for (const item of related) {
+    const id = neighborId(item);
+    let group = byId.get(id);
+    if (!group) {
+      group = [];
+      byId.set(id, group);
+      groups.push(group);
+    }
+    group.push(item);
+  }
+  return groups;
+}
+
+function relatedDirectionLine(item: InvestigationNeighbor): string {
+  return item.direction === "outbound"
+    ? `${item.relationship.kind} →`
+    : `← ${item.relationship.kind}`;
+}
+
+/**
+ * Compact truth marker for one neighbor evidence family.
+ * Counts mean "Combie currently retains N rows" — never latest-response
+ * membership. Omitted for families that do not apply or when nothing is
+ * known and nothing is retained (Missing Context owns that gap).
+ */
+function formatRelatedFamilyToken(
+  label: string,
+  kind: "not_applicable" | "unknown" | "empty" | "populated",
+  retained: number,
+): string | null {
+  if (kind === "not_applicable") return null;
+  if (kind === "populated") return `${label}=${retained} · authority=populated`;
+  if (kind === "empty") {
+    return retained === 0
+      ? `${label}=0 · authority=empty`
+      : `${label}=${retained} retained · authority=empty`;
+  }
+  return retained === 0 ? null : `${label}=${retained} retained · authority=unknown`;
+}
+
+/**
+ * Compact per-neighbor summary: Change count + applicable evidence family
+ * tokens. A plain count, not significance or ranking.
+ */
+function formatRelatedSummary(item: InvestigationNeighbor): string {
+  const parts = [`changes=${item.changes.length}`];
+  const tokens = [
+    formatRelatedFamilyToken(
+      "deployments",
+      item.deployments.kind,
+      item.deployments.kind === "not_applicable"
+        ? 0
+        : item.deployments.deployments.length,
+    ),
+    formatRelatedFamilyToken(
+      "workflowRuns",
+      item.workflowRuns.kind,
+      item.workflowRuns.kind === "not_applicable"
+        ? 0
+        : item.workflowRuns.runs.length,
+    ),
+    formatRelatedFamilyToken(
+      "operations",
+      item.operations.kind,
+      item.operations.kind === "not_applicable"
+        ? 0
+        : item.operations.operations.length,
+    ),
+  ];
+  for (const token of tokens) {
+    if (token) parts.push(token);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * Compact RELATED CONTEXT block (Sprint 036): one block per neighbor with all
+ * canonical edges, identity, direction, evidence, and plain counts.
+ * No nested Change or provider evidence dumps here — DETAILED EVIDENCE owns
+ * the complete cards.
+ */
+function formatRelatedNeighborBlock(group: InvestigationNeighbor[]): string {
+  const first = group[0]!;
+  const id = neighborId(first);
+  const identity = first.resource
+    ? `${providerLabel(first.resource.provider)} ${first.resource.kind}: ${resourceDisplayName(first.resource)}\n${first.resource.id}`
+    : `${id}\n(missing resource)`;
+  const lines = [identity];
+  for (const item of group) {
+    lines.push(relatedDirectionLine(item));
+    lines.push(`Evidence: ${formatEvidence(item.relationship.evidence)}`);
+  }
+  if (first.resource) {
+    lines.push(formatRelatedSummary(first));
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Complete provider evidence for one-hop neighbors (Sprint 036).
+ * Keeps every full card available while RELATED CONTEXT becomes an index.
+ * Omitted entirely when no neighbor has retained evidence rows.
+ */
+function formatDetailedEvidence(context: InvestigationContext): string {
+  const blocks: string[] = [];
+  for (const group of groupRelatedNeighbors(context.related)) {
+    const first = group[0]!;
+    if (!first.resource) continue;
+    const sections: string[] = [];
+    if (
+      first.deployments.kind !== "not_applicable" &&
+      first.deployments.deployments.length > 0
+    ) {
+      sections.push(
+        `DEPLOYMENTS (newest first)\n\n${formatDeploymentsBlock(first.deployments)}`,
+      );
+    }
+    if (
+      first.workflowRuns.kind !== "not_applicable" &&
+      first.workflowRuns.runs.length > 0
+    ) {
+      sections.push(
+        `WORKFLOW RUNS (newest first)\n\n${formatWorkflowRunsBlock(first.workflowRuns)}`,
+      );
+    }
+    if (
+      first.operations.kind !== "not_applicable" &&
+      first.operations.operations.length > 0
+    ) {
+      sections.push(
+        `OPERATIONS (newest first)\n\n${formatNeonOperationsBlock(first.operations)}`,
+      );
+    }
+    if (sections.length === 0) continue;
+    const identity =
+      `${providerLabel(first.resource.provider)} ${first.resource.kind}: ${resourceDisplayName(first.resource)}\n` +
+      first.resource.id;
+    const edges = group.map(relatedDirectionLine).join("\n");
+    blocks.push(`${identity}\n${edges}\n\n${sections.join("\n\n")}`);
+  }
+  if (blocks.length === 0) return "";
+  return `DETAILED EVIDENCE\n\n${blocks.join("\n\n")}`;
 }
 
 function formatTimelineEntry(entry: InvestigationTimelineEntry): string {
@@ -1058,12 +1178,17 @@ export function formatInvestigationContext(
   const related =
     context.related.length === 0
       ? "No relationships discovered."
-      : context.related.map(formatRelatedNeighbor).join("\n\n");
+      : groupRelatedNeighbors(context.related)
+          .map(formatRelatedNeighborBlock)
+          .join("\n\n");
 
   const sharedCommitGroups = composeSharedCommitContext(context);
   const sharedCommitSection = formatSharedCommitContext(sharedCommitGroups);
   const sharedCommitBlock =
     sharedCommitSection === "" ? "" : `\n\n${sharedCommitSection}`;
+
+  const detailedEvidence = formatDetailedEvidence(context);
+  const detailedBlock = detailedEvidence === "" ? "" : `\n\n${detailedEvidence}`;
 
   // Chronology supplements detailed sections (DEPLOYMENTS / WORKFLOW RUNS /
   // OPERATIONS) and stays separate from Resource Change observations.
@@ -1071,6 +1196,8 @@ export function formatInvestigationContext(
   // detailed evidence scanning — without ranking or recommendations.
   // SHARED COMMIT CONTEXT is supplemental identity context after RELATED;
   // omitted when empty. Not lineage and not a chronology merge.
+  // RELATED CONTEXT is a compact one-hop index (Sprint 036); complete
+  // neighbor evidence cards remain under DETAILED EVIDENCE at the end.
   return (
     `${header}\n\n` +
     `${knownFacts}\n\n` +
@@ -1084,6 +1211,7 @@ export function formatInvestigationContext(
     `KNOWN PROVIDER ACTIVITY (newest first; incomplete)\n\n` +
     `${formatProviderActivity(context)}\n\n` +
     `COMBIE OBSERVATIONS (newest first)\n\n` +
-    `${formatCombieObservations(context)}`
+    `${formatCombieObservations(context)}` +
+    `${detailedBlock}`
   );
 }
