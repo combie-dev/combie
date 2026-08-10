@@ -2161,10 +2161,16 @@ VISION / ARCHITECTURE / ROADMAP / SKILL unchanged. Evidence association remains 
 
 ## Commit
 
-Sprint 034 research commit SHA recorded after commit:
+Sprint 034 research commit SHA:
 
 ```text
-(pending commit)
+c68cc6f57f34daef2474d3f171258486f334d928
+```
+
+Message:
+
+```text
+docs(sprint): complete Sprint 034 GitHub↔Vercel commit match research
 ```
 
 ---
@@ -2211,12 +2217,12 @@ Sprint 034 research commit SHA recorded after commit:
 - [x] no correlation engine
 - [x] no causality
 - [x] no AI
-- [ ] full tests pass (pre-commit validation)
-- [ ] typecheck passes (pre-commit validation)
-- [ ] secret scan clean (pre-commit validation)
-- [ ] diff/whitespace checks clean (pre-commit validation)
+- [x] full tests pass (572)
+- [x] typecheck passes
+- [x] secret scan clean
+- [x] diff/whitespace checks clean
 - [x] completion notes updated
 - [x] Canon changes recorded: **None**
-- [ ] Sprint 034 committed separately
-- [ ] worktree clean
+- [x] Sprint 034 committed separately (`c68cc6f`)
+- [x] worktree clean (after SHA record)
 - [x] Sprint 035 not started
