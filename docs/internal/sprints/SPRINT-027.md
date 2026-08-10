@@ -1248,10 +1248,9 @@ generic RefreshEngine = NO
 ## Commit
 
 ```text
+b3400cc04a2cbd9a972d1349b010576b66c65d45
 feat(storage): add refresh result-count provenance for Vercel and GitHub
 ```
-
-Exact SHA is the Sprint 027 commit on `master` (`git log -1 --grep 'result-count provenance'`).
 
 ## Files Changed
 
