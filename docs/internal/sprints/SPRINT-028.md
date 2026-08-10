@@ -1157,10 +1157,9 @@ Secret scan: fixture placeholder tokens only.
 ## Commit
 
 ```text
+94ff5a3dcf79530f9348f51ea3c16e3b80b15f3c
 feat(storage): persist last successful refresh observation time
 ```
-
-Exact SHA recorded after commit.
 
 ## Files Changed
 
