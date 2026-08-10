@@ -159,7 +159,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
     });
     expect(ctx.subjectWorkflowRuns.kind).toBe("empty");
     expect(formatInvestigationContext(ctx)).toContain(
-      "No workflow runs recorded for this repository in the latest successful response.",
+      "authority: empty · last successful refresh observed by Combie at 2026-08-09T12:00:00.000Z",
     );
 
     const store2 = openStore();
@@ -177,9 +177,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
     ctx = getInvestigationContext({ baseDir: dir, resourceRef: repo.id });
     expect(ctx.subjectWorkflowRuns.kind).toBe("unknown");
     const out = formatInvestigationContext(ctx);
-    expect(out).toContain(
-      "Workflow run evidence has not been successfully refreshed.",
-    );
+    expect(out).toContain("authority: unknown · retained history may be stale");
     expect(out).toContain("Prior recorded workflow runs (may be stale)");
     expect(out).toContain("run id: 9");
   });

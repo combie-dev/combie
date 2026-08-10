@@ -246,46 +246,60 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
         expect(output).toContain(
           "KNOWN PROVIDER ACTIVITY (newest first; incomplete)",
         );
-        expect(output).toContain("Vercel deployment: dpl_1");
-        expect(output).toContain("GitHub workflow run: 9001");
-        expect(output).toContain("Neon operation: op_1");
+        // Compact chronology index (Sprint 032) — not full cards.
+        expect(output).toContain("Vercel deployment  dpl_1");
+        expect(output).toContain("GitHub workflow run  9001");
+        expect(output).toContain("Neon operation  op_1");
 
-        // Newest-first by provider-native primary (created) time.
-        expect(output.indexOf("Neon operation: op_1")).toBeLessThan(
-          output.indexOf("Vercel deployment: dpl_1"),
+        // Newest-first by provider-native primary (created) time on compact lines.
+        expect(output.indexOf("Neon operation  op_1")).toBeLessThan(
+          output.indexOf("Vercel deployment  dpl_1"),
         );
-        expect(output.indexOf("Vercel deployment: dpl_1")).toBeLessThan(
-          output.indexOf("GitHub workflow run: 9001"),
+        expect(output.indexOf("Vercel deployment  dpl_1")).toBeLessThan(
+          output.indexOf("GitHub workflow run  9001"),
         );
+        expect(output).toContain("2026-08-09T10:05:00.000Z  Neon operation");
+        expect(output).toContain("2026-08-09T10:02:00.000Z  Vercel deployment");
+        expect(output).toContain("2026-08-09T10:00:00.000Z  GitHub workflow run");
 
-        // Primary timestamp semantics are explicit per family.
-        expect(output).toContain("created at: 2026-08-09T10:02:00.000Z");
-        expect(output).toContain("created at: 2026-08-09T10:00:00.000Z");
-        expect(output).toContain("created at: 2026-08-09T10:05:00.000Z");
-
-        // Secondary lifecycle timestamps remain visible.
+        // Secondary lifecycle timestamps remain on detailed evidence cards only.
+        const activitySlice = output.slice(
+          output.indexOf("KNOWN PROVIDER ACTIVITY"),
+          output.indexOf("COMBIE OBSERVATIONS"),
+        );
+        expect(activitySlice).not.toContain("building at:");
+        expect(activitySlice).not.toContain("ready at:");
+        expect(activitySlice).not.toContain("started at:");
+        expect(activitySlice).not.toContain("status updated at:");
         expect(output).toContain("building at: 2026-08-09T10:02:05.000Z");
         expect(output).toContain("ready at: 2026-08-09T10:03:00.000Z");
         expect(output).toContain("started at: 2026-08-09T10:00:05.000Z");
         expect(output).toContain("updated at: 2026-08-09T10:01:00.000Z");
         expect(output).toContain("status updated at: 2026-08-09T10:05:20.000Z");
 
-        // Provider-native state terminology preserved.
+        // Provider-native state terminology preserved (compact + detailed).
+        expect(activitySlice).toContain("readyState=READY");
+        expect(activitySlice).toContain("status=completed");
+        expect(activitySlice).toContain("conclusion=success");
+        expect(activitySlice).toContain("action=start_compute");
         expect(output).toContain("readyState: READY");
         expect(output).toContain("status: completed");
         expect(output).toContain("conclusion: success");
         expect(output).toContain("action: start_compute");
 
-        // Subject/neighbor distinction and Relationship provenance.
-        expect(output).toContain("Role: subject");
-        expect(output).toContain("Role: related");
-        expect(output).toContain("Relationship: source_for (inbound)");
-        expect(output).toContain("Relationship: uses_domain_in (outbound)");
+        // Subject/neighbor distinction (compact scope tags).
+        expect(activitySlice).toContain("role=subject");
+        expect(activitySlice).toContain("role=related via source_for");
+        expect(activitySlice).toContain("role=related via uses_domain_in");
+        // Full Relationship provenance remains under RELATED CONTEXT.
+        expect(output).toContain("← source_for");
+        expect(output).toContain("uses_domain_in →");
 
-        // Combie observation time remains evidence.
+        // Combie observation time remains on detailed evidence cards.
         expect(output).toContain(
           "observed by Combie at: 2026-08-09T12:00:00.000Z",
         );
+        expect(activitySlice).not.toContain("observed by Combie at:");
 
         // Detailed evidence sections remain alongside the chronology.
         expect(output).toContain("DEPLOYMENTS (newest first)");
@@ -299,11 +313,14 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
           output.indexOf("KNOWN PROVIDER ACTIVITY (newest first; incomplete)"),
         ).toBeLessThan(output.indexOf("COMBIE OBSERVATIONS (newest first)"));
 
-        // No correlation or causality language.
+        // No correlation, causality, or unsupported current-row membership labels.
         expect(output).not.toContain("triggered");
         expect(output).not.toContain("caused");
         expect(output).not.toContain("correlated");
         expect(output).not.toContain("explains");
+        expect(output).not.toContain("in latest refresh");
+        expect(output).not.toContain("current deployment");
+        expect(output).not.toContain("current workflow run");
 
         // Investigation remains read-only.
         expect(dbHash()).toBe(before);
@@ -376,8 +393,9 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
     );
 
     expect(output).toContain("KNOWN PROVIDER ACTIVITY (newest first; incomplete)");
-    expect(output).toContain("Vercel deployment: dpl_1");
-    expect(output).toContain("Authority: unknown (may be stale)");
+    expect(output).toContain("Vercel deployment  dpl_1");
+    expect(output).toContain("authority=unknown(may be stale)");
+    expect(output).toContain("authority: unknown · retained history may be stale");
   });
 
   test("known-empty Neon refresh keeps retained history marked as previously recorded", () => {
@@ -398,8 +416,10 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
       getInvestigationContext({ baseDir: dir, resourceRef: neonProject.id }),
     );
 
-    expect(output).toContain("Neon operation: op_1");
-    expect(output).toContain("Authority: empty (previously recorded)");
+    expect(output).toContain("Neon operation  op_1");
+    expect(output).toContain("authority=empty(previously recorded)");
+    expect(output).toContain("authority: empty");
+    expect(output).toContain("Previously recorded operations");
   });
 
   test("Resource Changes remain temporally separate from provider activity", () => {
@@ -435,10 +455,10 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
     const observations = output.slice(observationsIndex);
     expect(observations).toContain("Change ID:");
     expect(observations).toContain("Observed: 2026-08-09T11:00:00.000Z");
-    expect(observations).not.toContain("Vercel deployment: dpl_1");
+    expect(observations).not.toContain("Vercel deployment  dpl_1");
 
     const activity = output.slice(activityIndex, observationsIndex);
-    expect(activity).toContain("Vercel deployment: dpl_1");
+    expect(activity).toContain("Vercel deployment  dpl_1");
     expect(activity).not.toContain("Change ID:");
   });
 });

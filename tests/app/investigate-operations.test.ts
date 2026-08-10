@@ -147,7 +147,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
     let context = getInvestigationContext({ baseDir: dir, resourceRef: project.id });
     expect(context.subjectOperations.kind).toBe("empty");
     expect(formatInvestigationContext(context)).toContain(
-      "No operations recorded for this project in Neon's current retained response.",
+      "authority: empty · latest successful response returned 0 · last successful refresh observed by Combie at 2026-08-09T12:00:00.000Z",
     );
 
     const store2 = openStore();
@@ -172,7 +172,7 @@ describe("investigate Neon operations (Sprint 022)", () => {
     context = getInvestigationContext({ baseDir: dir, resourceRef: project.id });
     expect(context.subjectOperations.kind).toBe("unknown");
     const output = formatInvestigationContext(context);
-    expect(output).toContain("Operation evidence has not been successfully refreshed.");
+    expect(output).toContain("authority: unknown · retained history may be stale");
     expect(output).toContain("Prior recorded operations (may be stale)");
     expect(output).toContain("operation id: op-stale");
   });

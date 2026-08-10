@@ -316,6 +316,51 @@ function formatDeployment(d: VercelDeploymentEvidence): string {
   return lines.join("\n");
 }
 
+/**
+ * Compact local authority marker for detailed evidence sections.
+ * Missing Context owns full gap explanation; do not restate it here.
+ * Never labels retained rows as "current" or "in latest refresh".
+ */
+function formatDetailAuthorityMarker(
+  kind: "unknown" | "empty" | "populated",
+  options: {
+    retained: number;
+    resultCount: number | null;
+    message: string | null;
+    emptyObservedAt?: string;
+  },
+): string {
+  if (kind === "unknown") {
+    const retained =
+      options.retained > 0
+        ? " · retained history may be stale"
+        : " · no retained rows";
+    const msg = options.message ? `\n(${options.message})` : "";
+    return `authority: unknown${retained}${msg}`;
+  }
+  if (kind === "empty") {
+    const at = options.emptyObservedAt
+      ? ` · last successful refresh observed by Combie at ${options.emptyObservedAt}`
+      : "";
+    const count =
+      options.resultCount === 0
+        ? " · latest successful response returned 0"
+        : "";
+    return `authority: empty${count}${at}`;
+  }
+  // populated — optional retained vs latest cardinality note (not membership).
+  if (
+    options.resultCount != null &&
+    options.retained !== options.resultCount
+  ) {
+    return (
+      `authority: populated · latest successful response returned ${options.resultCount}; ` +
+      `Combie retains ${options.retained} (membership of retained rows is not proven)`
+    );
+  }
+  return "authority: populated";
+}
+
 function formatDeploymentsBlock(
   authority: DeploymentEvidenceAuthority,
 ): string {
@@ -323,51 +368,43 @@ function formatDeploymentsBlock(
     return "Deployment evidence does not apply to this resource.";
   }
   if (authority.kind === "unknown") {
-    const header =
-      "Deployment evidence has not been successfully refreshed.";
-    if (authority.message) {
-      // Message is already redacted at the provider boundary.
-      const stale =
-        authority.deployments.length > 0
-          ? `\n\nPrior recorded deployments (may be stale):\n\n${authority.deployments.map(formatDeployment).join("\n\n")}`
-          : "";
-      return `${header}\n(${authority.message})${stale}`;
+    const marker = formatDetailAuthorityMarker("unknown", {
+      retained: authority.deployments.length,
+      resultCount: authority.resultCount,
+      message: authority.message,
+    });
+    if (authority.deployments.length === 0) {
+      return marker;
     }
-    if (authority.deployments.length > 0) {
-      return (
-        `${header}\n\nPrior recorded deployments (may be stale):\n\n` +
-        authority.deployments.map(formatDeployment).join("\n\n")
-      );
-    }
-    return header;
-  }
-  if (authority.kind === "empty") {
-    const historical =
-      authority.deployments.length > 0
-        ? `\n\nPreviously recorded deployments (outside the latest successful response):\n\n${authority.deployments.map(formatDeployment).join("\n\n")}`
-        : "";
-    const countLine =
-      authority.resultCount === 0
-        ? "Latest successful refresh returned 0 deployments.\n"
-        : "";
     return (
-      `No deployments recorded for this project in the latest successful response.\n` +
-      countLine +
-      `Last successful refresh observed by Combie at: ${authority.observedAt}` +
-      historical
+      `${marker}\n\nPrior recorded deployments (may be stale):\n\n` +
+      authority.deployments.map(formatDeployment).join("\n\n")
     );
   }
-  if (
-    authority.resultCount != null &&
-    authority.deployments.length !== authority.resultCount
-  ) {
-    const header =
-      `Latest successful refresh returned ${authority.resultCount} deployment` +
-      `${authority.resultCount === 1 ? "" : "s"}; ` +
-      `Combie currently retains ${authority.deployments.length}.\n\n`;
-    return header + authority.deployments.map(formatDeployment).join("\n\n");
+  if (authority.kind === "empty") {
+    const marker = formatDetailAuthorityMarker("empty", {
+      retained: authority.deployments.length,
+      resultCount: authority.resultCount,
+      message: null,
+      emptyObservedAt: authority.observedAt,
+    });
+    if (authority.deployments.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPreviously recorded deployments (outside the latest successful response):\n\n` +
+      authority.deployments.map(formatDeployment).join("\n\n")
+    );
   }
-  return authority.deployments.map(formatDeployment).join("\n\n");
+  const marker = formatDetailAuthorityMarker("populated", {
+    retained: authority.deployments.length,
+    resultCount: authority.resultCount,
+    message: null,
+  });
+  if (authority.deployments.length === 0) {
+    return marker;
+  }
+  return `${marker}\n\n${authority.deployments.map(formatDeployment).join("\n\n")}`;
 }
 
 function formatWorkflowRun(run: GitHubWorkflowRunEvidence): string {
@@ -395,54 +432,51 @@ function formatWorkflowRunsBlock(
     return "Workflow run evidence does not apply to this resource.";
   }
   if (authority.kind === "unknown") {
-    const header =
-      "Workflow run evidence has not been successfully refreshed.";
-    if (authority.message) {
-      const stale =
-        authority.runs.length > 0
-          ? `\n\nPrior recorded workflow runs (may be stale):\n\n${authority.runs.map(formatWorkflowRun).join("\n\n")}`
-          : "";
-      return `${header}\n(${authority.message})${stale}`;
+    const marker = formatDetailAuthorityMarker("unknown", {
+      retained: authority.runs.length,
+      resultCount: authority.resultCount,
+      message: authority.message,
+    });
+    if (authority.runs.length === 0) {
+      return marker;
     }
-    if (authority.runs.length > 0) {
-      return (
-        `${header}\n\nPrior recorded workflow runs (may be stale):\n\n` +
-        authority.runs.map(formatWorkflowRun).join("\n\n")
-      );
-    }
-    return header;
-  }
-  if (authority.kind === "empty") {
-    const historical =
-      authority.runs.length > 0
-        ? `\n\nPreviously recorded workflow runs (outside the latest successful response):\n\n${authority.runs.map(formatWorkflowRun).join("\n\n")}`
-        : "";
-    const countLine =
-      authority.resultCount === 0
-        ? "Latest successful refresh returned 0 workflow runs.\n"
-        : "";
     return (
-      `No workflow runs recorded for this repository in the latest successful response.\n` +
-      countLine +
-      `Last successful refresh observed by Combie at: ${authority.observedAt}` +
-      historical
+      `${marker}\n\nPrior recorded workflow runs (may be stale):\n\n` +
+      authority.runs.map(formatWorkflowRun).join("\n\n")
     );
   }
-  if (
-    authority.resultCount != null &&
-    authority.runs.length !== authority.resultCount
-  ) {
-    const boundNote =
-      authority.resultCount === 100
-        ? " (bounded: ≤100 most-recent runs per repository)"
-        : "";
-    const header =
-      `Latest successful bounded refresh returned ${authority.resultCount} workflow run` +
-      `${authority.resultCount === 1 ? "" : "s"}${boundNote}; ` +
-      `Combie currently retains ${authority.runs.length}.\n\n`;
-    return header + authority.runs.map(formatWorkflowRun).join("\n\n");
+  if (authority.kind === "empty") {
+    const marker = formatDetailAuthorityMarker("empty", {
+      retained: authority.runs.length,
+      resultCount: authority.resultCount,
+      message: null,
+      emptyObservedAt: authority.observedAt,
+    });
+    if (authority.runs.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPreviously recorded workflow runs (outside the latest successful response):\n\n` +
+      authority.runs.map(formatWorkflowRun).join("\n\n")
+    );
   }
-  return authority.runs.map(formatWorkflowRun).join("\n\n");
+  const marker = formatDetailAuthorityMarker("populated", {
+    retained: authority.runs.length,
+    resultCount: authority.resultCount,
+    message: null,
+  });
+  // Bounded GitHub note stays factual (cardinality), not row membership.
+  const boundNote =
+    authority.resultCount === 100
+      ? "\n(bounded: ≤100 most-recent runs per repository)"
+      : "";
+  if (authority.runs.length === 0) {
+    return marker + boundNote;
+  }
+  return (
+    `${marker}${boundNote}\n\n` +
+    authority.runs.map(formatWorkflowRun).join("\n\n")
+  );
 }
 
 function formatNeonOperation(operation: NeonOperationEvidence): string {
@@ -469,26 +503,43 @@ function formatNeonOperationsBlock(
     return "Operation evidence does not apply to this resource.";
   }
   if (authority.kind === "unknown") {
-    const header = "Operation evidence has not been successfully refreshed.";
-    const message = authority.message ? `\n(${authority.message})` : "";
-    const stale =
-      authority.operations.length > 0
-        ? `\n\nPrior recorded operations (may be stale):\n\n${authority.operations.map(formatNeonOperation).join("\n\n")}`
-        : "";
-    return `${header}${message}${stale}`;
-  }
-  if (authority.kind === "empty") {
-    const historical =
-      authority.operations.length > 0
-        ? `\n\nPreviously recorded operations (outside the current retained response):\n\n${authority.operations.map(formatNeonOperation).join("\n\n")}`
-        : "";
+    const marker = formatDetailAuthorityMarker("unknown", {
+      retained: authority.operations.length,
+      resultCount: null,
+      message: authority.message,
+    });
+    if (authority.operations.length === 0) {
+      return marker;
+    }
     return (
-      "No operations recorded for this project in Neon's current retained response.\n" +
-      `Last successful refresh observed by Combie at: ${authority.observedAt}` +
-      historical
+      `${marker}\n\nPrior recorded operations (may be stale):\n\n` +
+      authority.operations.map(formatNeonOperation).join("\n\n")
     );
   }
-  return authority.operations.map(formatNeonOperation).join("\n\n");
+  if (authority.kind === "empty") {
+    const marker = formatDetailAuthorityMarker("empty", {
+      retained: authority.operations.length,
+      resultCount: 0,
+      message: null,
+      emptyObservedAt: authority.observedAt,
+    });
+    if (authority.operations.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPreviously recorded operations (outside the current retained response):\n\n` +
+      authority.operations.map(formatNeonOperation).join("\n\n")
+    );
+  }
+  const marker = formatDetailAuthorityMarker("populated", {
+    retained: authority.operations.length,
+    resultCount: null,
+    message: null,
+  });
+  if (authority.operations.length === 0) {
+    return marker;
+  }
+  return `${marker}\n\n${authority.operations.map(formatNeonOperation).join("\n\n")}`;
 }
 
 function formatRelatedNeighbor(item: InvestigationNeighbor): string {
@@ -554,62 +605,84 @@ function formatCombieObservations(context: InvestigationContext): string {
   return timeline.entries.map(formatTimelineEntry).join("\n\n");
 }
 
-function formatActivityAuthority(entry: ProviderActivityEntry): string {
+function formatActivityAuthorityTag(entry: ProviderActivityEntry): string {
+  // Compact trust marker only — Missing Context owns full gap explanation.
   if (entry.authority === "unknown") {
-    return "Authority: unknown (may be stale)";
+    return "authority=unknown(may be stale)";
   }
   if (entry.authority === "empty") {
-    return "Authority: empty (previously recorded)";
+    return "authority=empty(previously recorded)";
   }
-  return "Authority: populated";
+  return "authority=populated";
 }
 
+function formatActivityScope(entry: ProviderActivityEntry): string {
+  if (entry.role === "subject") {
+    return "role=subject";
+  }
+  const kinds = [
+    ...new Set(entry.relationships.map(({ relationship }) => relationship.kind)),
+  ].sort();
+  if (kinds.length === 0) {
+    return "role=related";
+  }
+  return `role=related via ${kinds.join(",")}`;
+}
+
+/**
+ * Compact chronology index row (Sprint 032).
+ * Full cards remain in DEPLOYMENTS / WORKFLOW RUNS / OPERATIONS.
+ * Does not re-print secondary timestamps or multi-line evidence bodies.
+ */
 function formatProviderActivityEntry(entry: ProviderActivityEntry): string {
   const id = nativeEvidenceId(entry);
-  let title: string;
-  let detail: string;
+  const scope = formatActivityScope(entry);
+  const auth = formatActivityAuthorityTag(entry);
+
   if (entry.family === "vercel_deployment") {
-    title = `Vercel deployment: ${id}`;
-    detail = formatDeployment(entry.evidence);
-  } else if (entry.family === "github_workflow_run") {
-    title = `GitHub workflow run: ${id}`;
-    detail = formatWorkflowRun(entry.evidence);
-  } else {
-    title = `Neon operation: ${id}`;
-    detail = formatNeonOperation(entry.evidence);
+    const d = entry.evidence;
+    const state =
+      d.readyState != null
+        ? `readyState=${d.readyState}`
+        : d.state != null
+          ? `state=${d.state}`
+          : "readyState=-";
+    return (
+      `${entry.primaryTime}  Vercel deployment  ${id}  ${state}  ` +
+      `${scope}  ${auth}  resource=${entry.resourceId}`
+    );
   }
 
-  const role = `Role: ${entry.role}`;
-  const provenance = entry.relationships
-    .map(
-      ({ relationship, direction }) =>
-        `Relationship: ${relationship.kind} (${direction})\n` +
-        `Relationship ID: ${relationship.id}\n` +
-        `Evidence: ${formatEvidence(relationship.evidence)}`,
-    )
-    .join("\n");
-  const relationshipBlock = provenance ? `\n${provenance}` : "";
+  if (entry.family === "github_workflow_run") {
+    const r = entry.evidence;
+    const name = r.name ? ` name=${JSON.stringify(r.name)}` : "";
+    const status = r.status != null ? ` status=${r.status}` : "";
+    const conclusion =
+      r.conclusion != null ? ` conclusion=${r.conclusion}` : "";
+    return (
+      `${entry.primaryTime}  GitHub workflow run  ${id}${name}${status}${conclusion}  ` +
+      `${scope}  ${auth}  resource=${entry.resourceId}`
+    );
+  }
 
+  const op = entry.evidence;
   return (
-    `${title}\n` +
-    `Resource: ${entry.resourceId}\n` +
-    `${role}${relationshipBlock}\n` +
-    `${formatActivityAuthority(entry)}\n` +
-    `primary time field: ${entry.primaryTimeField}\n` +
-    detail
+    `${entry.primaryTime}  Neon operation  ${id}  action=${op.action}  ` +
+    `status=${op.status}  ${scope}  ${auth}  resource=${entry.resourceId}`
   );
 }
 
 /**
  * Ephemeral provider-activity chronology (Sprint 024). Incomplete by design:
  * what Combie currently knows from local provider evidence only.
+ * Sprint 032: compact index — not a second full evidence dump.
  */
 function formatProviderActivity(context: InvestigationContext): string {
   const chronology = composeProviderActivityChronology(context);
   if (chronology.entries.length === 0) {
     return "No provider activity known for this investigation.";
   }
-  return chronology.entries.map(formatProviderActivityEntry).join("\n\n");
+  return chronology.entries.map(formatProviderActivityEntry).join("\n");
 }
 
 function providerActivityName(

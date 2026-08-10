@@ -160,11 +160,9 @@ describe("investigate deployments (Sprint 020)", () => {
     expect(ctx.subjectDeployments.kind).toBe("empty");
     const output = formatInvestigationContext(ctx);
     expect(output).toContain(
-      "No deployments recorded for this project in the latest successful response.",
+      "authority: empty · last successful refresh observed by Combie at 2026-08-09T12:00:00.000Z",
     );
-    expect(output).not.toContain(
-      "Deployment evidence has not been successfully refreshed.",
-    );
+    expect(output).not.toContain("authority: unknown");
   });
 
   test("unknown/unrefreshed deployment evidence is distinct from empty", () => {
@@ -178,12 +176,8 @@ describe("investigate deployments (Sprint 020)", () => {
     });
     expect(ctx.subjectDeployments.kind).toBe("unknown");
     const output = formatInvestigationContext(ctx);
-    expect(output).toContain(
-      "Deployment evidence has not been successfully refreshed.",
-    );
-    expect(output).not.toContain(
-      "No deployments recorded for this project yet.",
-    );
+    expect(output).toContain("authority: unknown · no retained rows");
+    expect(output).not.toContain("authority: empty");
   });
 
   test("failed refresh with stale deployments remains unknown and retains evidence", () => {
@@ -209,9 +203,7 @@ describe("investigate deployments (Sprint 020)", () => {
       expect(ctx.subjectDeployments.deployments).toHaveLength(1);
     }
     const output = formatInvestigationContext(ctx);
-    expect(output).toContain(
-      "Deployment evidence has not been successfully refreshed.",
-    );
+    expect(output).toContain("authority: unknown · retained history may be stale");
     expect(output).toContain("Prior recorded deployments (may be stale)");
     expect(output).toContain("uid: dpl_stale");
   });
