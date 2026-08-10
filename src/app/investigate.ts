@@ -33,6 +33,12 @@ import {
   type ProviderActivityEntry,
 } from "./provider-activity.ts";
 import {
+  composeInvestigationFacts,
+  type InvestigationFact,
+  type InvestigationFactActivityRef,
+  type InvestigationFactStateGroup,
+} from "./investigation-facts.ts";
+import {
   composeInvestigationTimeline,
   type InvestigationTimelineEntry,
 } from "./timeline.ts";
@@ -558,6 +564,215 @@ function formatProviderActivity(context: InvestigationContext): string {
   return chronology.entries.map(formatProviderActivityEntry).join("\n\n");
 }
 
+function providerActivityName(
+  family: InvestigationFactActivityRef["family"],
+  count: number,
+): string {
+  if (family === "vercel_deployment") {
+    return count === 1 ? "Vercel deployment" : "Vercel deployments";
+  }
+  if (family === "github_workflow_run") {
+    return count === 1 ? "GitHub workflow run" : "GitHub workflow runs";
+  }
+  return count === 1 ? "Neon operation" : "Neon operations";
+}
+
+function providerAuthorityName(
+  family: InvestigationFactActivityRef["family"],
+): string {
+  if (family === "vercel_deployment") return "Vercel deployment";
+  if (family === "github_workflow_run") return "GitHub workflow-run";
+  return "Neon operation";
+}
+
+function providerEvidenceNoun(
+  family: InvestigationFactActivityRef["family"],
+  count: number,
+): string {
+  if (family === "vercel_deployment") {
+    return count === 1 ? "deployment" : "deployments";
+  }
+  if (family === "github_workflow_run") {
+    return count === 1 ? "workflow run" : "workflow runs";
+  }
+  return count === 1 ? "operation" : "operations";
+}
+
+function joinList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+}
+
+function formatStateGroups(
+  groups: InvestigationFactStateGroup[],
+  field: string,
+  qualifier: "recorded" | "last recorded",
+): string {
+  return joinList(
+    groups.map(
+      (group) =>
+        `${group.count} ${group.count === 1 ? "has" : "have"} ${qualifier} ${field}: ${group.value}`,
+    ),
+  );
+}
+
+function newestRecordedState(
+  activity: InvestigationFactActivityRef,
+): { field: string; value: string | null } {
+  if (activity.family === "vercel_deployment") {
+    return { field: "readyState", value: activity.recordedReadyState };
+  }
+  if (activity.family === "github_workflow_run") {
+    return { field: "conclusion", value: activity.recordedConclusion };
+  }
+  return { field: "status", value: activity.recordedStatus };
+}
+
+function formatInvestigationFact(fact: InvestigationFact): string {
+  if (fact.kind === "provider_evidence_authority") {
+    const { source } = fact;
+    const family = providerAuthorityName(source.family);
+    const noun = providerEvidenceNoun(
+      source.family,
+      source.locallyHeldNativeIds.length,
+    );
+    if (source.authority.kind === "unknown") {
+      if (source.locallyHeldNativeIds.length === 0) {
+        return `${family} evidence for ${source.scope.resourceId} has unknown current refresh authority; no absence can be inferred.`;
+      }
+      return (
+        `${family} evidence for ${source.scope.resourceId} has unknown current refresh authority; ` +
+        `${source.locallyHeldNativeIds.length} previously recorded ${noun} may be stale.`
+      );
+    }
+    if (source.family === "neon_operation") {
+      const retained = source.locallyHeldNativeIds.length;
+      return retained === 0
+        ? `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations.`
+        : `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations; ${retained} previously recorded ${noun} ${retained === 1 ? "is" : "are"} retained.`;
+    }
+    return (
+      `The latest successful ${family} refresh for ${source.scope.resourceId} ` +
+      `returned no ${noun}.`
+    );
+  }
+
+  if (fact.kind === "provider_state_summary") {
+    const historical = fact.evidence.some(
+      (item) => item.authority.kind !== "populated",
+    );
+    const possiblyStale = fact.evidence.some(
+      (item) => item.authority.kind === "unknown",
+    );
+    const activity = providerActivityName(fact.family, fact.totalCount);
+    const opening = historical
+      ? `Among ${fact.totalCount} previously recorded ${activity}, `
+      : `Of ${fact.totalCount} ${activity} held by Combie, `;
+    const groups = formatStateGroups(
+      fact.groups,
+      fact.field,
+      historical ? "last recorded" : "recorded",
+    );
+    return `${opening}${groups}.${possiblyStale ? " Evidence may be stale." : ""}`;
+  }
+
+  if (fact.kind === "provider_activity_summary") {
+    const families = fact.families.map(
+      (group) =>
+        `${group.count} ${providerActivityName(group.family, group.count)}`,
+    );
+    return (
+      `Combie currently holds ${fact.totalCount} provider activity records in scope: ` +
+      `${joinList(families)}.`
+    );
+  }
+
+  if (fact.kind === "provider_activity_scope") {
+    const subjectPresent = fact.resources.some(
+      (resource) => resource.scope.role === "subject",
+    );
+    const related = fact.resources.filter(
+      (resource) => resource.scope.role === "related",
+    );
+    const relationshipKinds = [
+      ...new Set(
+        related.flatMap((resource) =>
+          resource.scope.relationships.map((path) => path.kind)
+        ),
+      ),
+    ].sort(compareText);
+    const paths = relationshipKinds.length > 0
+      ? ` through ${joinList(relationshipKinds)}`
+      : "";
+    if (subjectPresent) {
+      return (
+        `Known provider activity appears on the subject and ${related.length} ` +
+        `directly related ${related.length === 1 ? "Resource" : "Resources"}${paths}.`
+      );
+    }
+    return (
+      `Known provider activity rows currently held by Combie come from ${related.length} directly related ` +
+      `${related.length === 1 ? "Resource" : "Resources"}${paths}.`
+    );
+  }
+
+  if (fact.kind === "newest_provider_activity") {
+    const selected = fact.selected;
+    const name = providerActivityName(selected.family, 1);
+    const state = newestRecordedState(selected);
+    const stateText = state.value == null
+      ? ""
+      : `; its ${selected.authority.kind === "populated" ? "recorded" : "last recorded"} ${state.field} is ${state.value}`;
+    if (selected.authority.kind === "unknown") {
+      return (
+        `The newest retained ${name} is ${selected.nativeId}, by ` +
+        `${selected.primaryTimeField} ${selected.primaryTime}${stateText}. Evidence may be stale.`
+      );
+    }
+    if (selected.authority.kind === "empty") {
+      return (
+        `The newest previously recorded ${name} is ${selected.nativeId}, by ` +
+        `${selected.primaryTimeField} ${selected.primaryTime}${stateText}.`
+      );
+    }
+    return (
+      `The newest known provider activity is ${name} ${selected.nativeId}, by ` +
+      `${selected.primaryTimeField} ${selected.primaryTime}${stateText}.`
+    );
+  }
+
+  const subjectChanges = fact.changes.filter(
+    (change) => change.scope.role === "subject",
+  ).length;
+  const relatedChanges = fact.changes.length - subjectChanges;
+  const relatedResources = new Set(
+    fact.changes
+      .filter((change) => change.scope.role === "related")
+      .map((change) => change.scope.resourceId),
+  ).size;
+  const parts: string[] = [];
+  if (subjectChanges > 0) {
+    parts.push(
+      `${subjectChanges} Resource ${subjectChanges === 1 ? "Change" : "Changes"} for the subject`,
+    );
+  }
+  if (relatedChanges > 0) {
+    parts.push(
+      `${relatedChanges} Resource ${relatedChanges === 1 ? "Change" : "Changes"} across ${relatedResources} directly related ${relatedResources === 1 ? "Resource" : "Resources"}`,
+    );
+  }
+  return `Combie has recorded ${joinList(parts)}.`;
+}
+
+function formatKnownFacts(context: InvestigationContext): string {
+  const facts = composeInvestigationFacts(context);
+  if (facts.length === 0) {
+    return "No additional deterministic facts to summarize from the currently known investigation evidence.";
+  }
+  return facts.map((fact) => `- ${formatInvestigationFact(fact)}`).join("\n");
+}
+
 /** Deterministic CLI presentation of investigation context. */
 export function formatInvestigationContext(
   context: InvestigationContext,
@@ -574,6 +789,8 @@ export function formatInvestigationContext(
 
   const subjectChanges =
     `SUBJECT CHANGES\n\n${formatChangesBlock(context.subjectChanges)}`;
+
+  const knownFacts = `KNOWN FACTS\n\n${formatKnownFacts(context)}`;
 
   const subjectDeployments =
     context.subjectDeployments.kind === "not_applicable"
@@ -599,6 +816,7 @@ export function formatInvestigationContext(
   // OPERATIONS) and stays separate from Resource Change observations.
   return (
     `${header}\n\n` +
+    `${knownFacts}\n\n` +
     `${subjectChanges}` +
     `${subjectDeployments}` +
     `${subjectWorkflowRuns}` +

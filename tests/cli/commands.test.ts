@@ -470,6 +470,13 @@ describe("CLI commands", () => {
       expect(result.code).toBe(0);
       expect(result.stdout).toContain("SUBJECT");
       expect(result.stdout).toContain("cli-app-renamed");
+      expect(result.stdout).toContain("KNOWN FACTS");
+      expect(result.stdout.indexOf("KNOWN FACTS")).toBeLessThan(
+        result.stdout.indexOf("SUBJECT CHANGES"),
+      );
+      expect(result.stdout).toContain(
+        "Vercel deployment evidence for vercel:project:cli_prj has unknown current refresh authority",
+      );
       expect(result.stdout).toContain("SUBJECT CHANGES");
       expect(result.stdout).toContain("← source_for");
       expect(result.stdout).toContain(repository.id);
