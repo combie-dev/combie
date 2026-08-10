@@ -132,6 +132,7 @@ describe("Store vercel deployment persistence", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     expect(store.getVercelDeploymentRefresh("vercel:project:prj_a")?.status).toBe(
       "success",
@@ -141,17 +142,121 @@ describe("Store vercel deployment persistence", () => {
       status: "failure",
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "timeout",
+    resultCount: null,
     });
     expect(store.getVercelDeploymentRefresh("vercel:project:prj_a")).toEqual({
       resourceId: "vercel:project:prj_a",
       status: "failure",
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "timeout",
+    resultCount: null,
     });
     // Failure does not delete deployments.
     expect(store.listVercelDeploymentsForResource("vercel:project:prj_a")).toHaveLength(
       1,
     );
+    store.close();
+  });
+
+  test("Sprint 027: result_count provenance, pre-027 null, no backfill", () => {
+    // Pre-027 refresh table without result_count column.
+    const path = dbPath(dir);
+    const raw = new Database(path);
+    raw.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL,
+        last_sync_at TEXT, config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE resources (
+        id TEXT PRIMARY KEY, provider TEXT NOT NULL,
+        provider_resource_id TEXT NOT NULL, kind TEXT NOT NULL,
+        name TEXT NOT NULL, metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(provider, kind, provider_resource_id)
+      );
+      CREATE TABLE vercel_deployments (
+        uid TEXT PRIMARY KEY, provider TEXT NOT NULL DEFAULT 'vercel',
+        resource_id TEXT NOT NULL, project_id TEXT NOT NULL,
+        ready_state TEXT, state TEXT, target TEXT,
+        created_at_ms INTEGER NOT NULL, building_at_ms INTEGER,
+        ready_at_ms INTEGER, observed_at TEXT NOT NULL, source TEXT
+      );
+      CREATE TABLE vercel_deployment_refresh (
+        resource_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+        observed_at TEXT NOT NULL,
+        message TEXT
+      );
+      INSERT INTO vercel_deployment_refresh (resource_id, status, observed_at, message)
+      VALUES ('vercel:project:prj_a', 'success', '2026-08-09T11:00:00.000Z', NULL);
+      INSERT INTO vercel_deployments (
+        uid, resource_id, project_id, ready_state, state, target,
+        created_at_ms, observed_at
+      ) VALUES (
+        'dpl_old', 'vercel:project:prj_a', 'prj_a', 'READY', 'READY', 'production',
+        1000, '2026-08-09T11:00:00.000Z'
+      );
+    `);
+    raw.close();
+
+    const store = new Store(dir);
+    expect(store.isInitialized()).toBe(true);
+    const upgraded = store.getVercelDeploymentRefresh("vercel:project:prj_a");
+    expect(upgraded).toEqual({
+      resourceId: "vercel:project:prj_a",
+      status: "success",
+      observedAt: "2026-08-09T11:00:00.000Z",
+      message: null,
+      resultCount: null,
+    });
+    // Must not backfill from retained evidence count.
+    expect(store.listVercelDeploymentsForResource("vercel:project:prj_a")).toHaveLength(
+      1,
+    );
+    expect(upgraded?.resultCount).toBeNull();
+
+    store.setVercelDeploymentRefresh({
+      resourceId: "vercel:project:prj_a",
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 0,
+    });
+    expect(store.getVercelDeploymentRefresh("vercel:project:prj_a")?.resultCount).toBe(
+      0,
+    );
+
+    store.setVercelDeploymentRefresh({
+      resourceId: "vercel:project:prj_a",
+      status: "success",
+      observedAt: "2026-08-09T12:30:00.000Z",
+      message: null,
+      resultCount: 2,
+    });
+    expect(store.getVercelDeploymentRefresh("vercel:project:prj_a")?.resultCount).toBe(
+      2,
+    );
+
+    // Failure preserves last successful result count when caller passes it.
+    store.setVercelDeploymentRefresh({
+      resourceId: "vercel:project:prj_a",
+      status: "failure",
+      observedAt: "2026-08-09T13:00:00.000Z",
+      message: "timeout",
+      resultCount: 2,
+    });
+    expect(store.getVercelDeploymentRefresh("vercel:project:prj_a")).toEqual({
+      resourceId: "vercel:project:prj_a",
+      status: "failure",
+      observedAt: "2026-08-09T13:00:00.000Z",
+      message: "timeout",
+      resultCount: 2,
+    });
+    // Secrets never appear on refresh rows.
+    const row = store.getVercelDeploymentRefresh("vercel:project:prj_a");
+    expect(JSON.stringify(row)).not.toMatch(/token|secret|password/i);
     store.close();
   });
 

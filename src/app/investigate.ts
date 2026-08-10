@@ -338,10 +338,30 @@ function formatDeploymentsBlock(
     return header;
   }
   if (authority.kind === "empty") {
+    const historical =
+      authority.deployments.length > 0
+        ? `\n\nPreviously recorded deployments (outside the latest successful response):\n\n${authority.deployments.map(formatDeployment).join("\n\n")}`
+        : "";
+    const countLine =
+      authority.resultCount === 0
+        ? "Latest successful refresh returned 0 deployments.\n"
+        : "";
     return (
-      `No deployments recorded for this project yet.\n` +
-      `Last successful refresh observed by Combie at: ${authority.observedAt}`
+      `No deployments recorded for this project in the latest successful response.\n` +
+      countLine +
+      `Last successful refresh observed by Combie at: ${authority.observedAt}` +
+      historical
     );
+  }
+  if (
+    authority.resultCount != null &&
+    authority.deployments.length !== authority.resultCount
+  ) {
+    const header =
+      `Latest successful refresh returned ${authority.resultCount} deployment` +
+      `${authority.resultCount === 1 ? "" : "s"}; ` +
+      `Combie currently retains ${authority.deployments.length}.\n\n`;
+    return header + authority.deployments.map(formatDeployment).join("\n\n");
   }
   return authority.deployments.map(formatDeployment).join("\n\n");
 }
@@ -389,10 +409,34 @@ function formatWorkflowRunsBlock(
     return header;
   }
   if (authority.kind === "empty") {
+    const historical =
+      authority.runs.length > 0
+        ? `\n\nPreviously recorded workflow runs (outside the latest successful response):\n\n${authority.runs.map(formatWorkflowRun).join("\n\n")}`
+        : "";
+    const countLine =
+      authority.resultCount === 0
+        ? "Latest successful refresh returned 0 workflow runs.\n"
+        : "";
     return (
-      `No workflow runs recorded for this repository yet.\n` +
-      `Last successful refresh observed by Combie at: ${authority.observedAt}`
+      `No workflow runs recorded for this repository in the latest successful response.\n` +
+      countLine +
+      `Last successful refresh observed by Combie at: ${authority.observedAt}` +
+      historical
     );
+  }
+  if (
+    authority.resultCount != null &&
+    authority.runs.length !== authority.resultCount
+  ) {
+    const boundNote =
+      authority.resultCount === 100
+        ? " (bounded: ≤100 most-recent runs per repository)"
+        : "";
+    const header =
+      `Latest successful bounded refresh returned ${authority.resultCount} workflow run` +
+      `${authority.resultCount === 1 ? "" : "s"}${boundNote}; ` +
+      `Combie currently retains ${authority.runs.length}.\n\n`;
+    return header + authority.runs.map(formatWorkflowRun).join("\n\n");
   }
   return authority.runs.map(formatWorkflowRun).join("\n\n");
 }
@@ -633,28 +677,68 @@ function formatInvestigationFact(fact: InvestigationFact): string {
   if (fact.kind === "provider_evidence_authority") {
     const { source } = fact;
     const family = providerAuthorityName(source.family);
-    const noun = providerEvidenceNoun(
-      source.family,
-      source.locallyHeldNativeIds.length,
-    );
+    const retained = source.locallyHeldNativeIds.length;
+    const retainedNoun = providerEvidenceNoun(source.family, retained);
+    const resultCount = source.lastSuccessfulResultCount;
+
     if (source.authority.kind === "unknown") {
-      if (source.locallyHeldNativeIds.length === 0) {
+      if (resultCount != null) {
+        const returnedNoun = providerEvidenceNoun(source.family, resultCount);
+        if (retained === 0) {
+          return (
+            `${family} evidence for ${source.scope.resourceId} is currently unknown; ` +
+            `the last successful refresh returned ${resultCount} ${returnedNoun}.`
+          );
+        }
+        return (
+          `${family} evidence for ${source.scope.resourceId} is currently unknown; ` +
+          `the last successful refresh returned ${resultCount} ${returnedNoun}, ` +
+          `and ${retained} previously recorded ${retainedNoun} remain retained locally.`
+        );
+      }
+      if (retained === 0) {
         return `${family} evidence for ${source.scope.resourceId} has unknown current refresh authority; no absence can be inferred.`;
       }
       return (
         `${family} evidence for ${source.scope.resourceId} has unknown current refresh authority; ` +
-        `${source.locallyHeldNativeIds.length} previously recorded ${noun} may be stale.`
+        `${retained} previously recorded ${retainedNoun} may be stale.`
       );
     }
-    if (source.family === "neon_operation") {
-      const retained = source.locallyHeldNativeIds.length;
-      return retained === 0
-        ? `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations.`
-        : `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations; ${retained} previously recorded ${noun} ${retained === 1 ? "is" : "are"} retained.`;
+
+    if (source.authority.kind === "empty") {
+      if (source.family === "neon_operation") {
+        return retained === 0
+          ? `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations.`
+          : `The latest successful Neon operation refresh for ${source.scope.resourceId} returned no current operations; ${retained} previously recorded ${retainedNoun} ${retained === 1 ? "is" : "are"} retained.`;
+      }
+      if (retained === 0) {
+        return (
+          `The latest successful ${family} refresh for ${source.scope.resourceId} ` +
+          `returned no ${providerEvidenceNoun(source.family, 0)}.`
+        );
+      }
+      return (
+        `The latest successful ${family} refresh for ${source.scope.resourceId} returned no ${providerEvidenceNoun(source.family, 0)}; ` +
+        `${retained} previously recorded ${retainedNoun} remain retained locally.`
+      );
+    }
+
+    // Populated authority fact: only emitted when result count and retained differ.
+    const returned = resultCount ?? 0;
+    const returnedNoun = providerEvidenceNoun(source.family, returned);
+    if (source.family === "github_workflow_run") {
+      const bound =
+        returned === 100
+          ? "bounded GitHub workflow-run refresh"
+          : "GitHub workflow-run refresh";
+      return (
+        `The latest successful ${bound} for ${source.scope.resourceId} returned ${returned} ${returnedNoun}; ` +
+        `Combie currently retains ${retained} ${retainedNoun} for this repository.`
+      );
     }
     return (
-      `The latest successful ${family} refresh for ${source.scope.resourceId} ` +
-      `returned no ${noun}.`
+      `The latest successful ${family} refresh for ${source.scope.resourceId} returned ${returned} ${returnedNoun}; ` +
+      `Combie currently retains ${retained} ${retainedNoun} for this resource.`
     );
   }
 

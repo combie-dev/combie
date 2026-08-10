@@ -133,7 +133,7 @@ const NA_OPERATIONS: NeonOperationEvidenceAuthority = {
 function populatedDeployments(
   items: VercelDeploymentEvidence[],
 ): DeploymentEvidenceAuthority {
-  return { kind: "populated", observedAt: OBSERVED_AT, deployments: items };
+  return { kind: "populated", observedAt: OBSERVED_AT, resultCount: null, deployments: items };
 }
 
 function unknownDeployments(
@@ -143,6 +143,7 @@ function unknownDeployments(
     kind: "unknown",
     deployments: items,
     lastSuccessAt: null,
+    resultCount: null,
     message: null,
   };
 }
@@ -150,13 +151,13 @@ function unknownDeployments(
 function populatedRuns(
   items: GitHubWorkflowRunEvidence[],
 ): WorkflowRunEvidenceAuthority {
-  return { kind: "populated", observedAt: OBSERVED_AT, runs: items };
+  return { kind: "populated", observedAt: OBSERVED_AT, resultCount: null, runs: items };
 }
 
 function unknownRuns(
   items: GitHubWorkflowRunEvidence[],
 ): WorkflowRunEvidenceAuthority {
-  return { kind: "unknown", runs: items, lastSuccessAt: null, message: null };
+  return { kind: "unknown", runs: items, lastSuccessAt: null, resultCount: null, message: null };
 }
 
 function populatedOperations(
@@ -308,6 +309,7 @@ describe("investigation fact composition", () => {
         subjectWorkflowRuns: {
           kind: "empty",
           observedAt: OBSERVED_AT,
+          resultCount: null,
           runs: [],
         },
       }),
@@ -318,6 +320,7 @@ describe("investigation fact composition", () => {
         subjectDeployments: {
           kind: "empty",
           observedAt: OBSERVED_AT,
+          resultCount: null,
           deployments: [],
         },
       }),
@@ -696,6 +699,7 @@ describe("investigation fact composition", () => {
     const emptyRuns: WorkflowRunEvidenceAuthority = {
       kind: "empty",
       observedAt: OBSERVED_AT,
+      resultCount: null,
       runs: [],
     };
     const neighbor = {
@@ -846,6 +850,129 @@ describe("known facts formatting", () => {
     );
   });
 
+  test("Sprint 027: result-count authority facts distinguish latest success from retained memory", () => {
+    const githubEmptyRetained = formatInvestigationContext(
+      context({
+        subject: resource("github", "repository", "101"),
+        subjectWorkflowRuns: {
+          kind: "empty",
+          observedAt: OBSERVED_AT,
+          resultCount: 0,
+          runs: [
+            workflowRun({ runId: 1 }),
+            workflowRun({ runId: 2 }),
+          ],
+        },
+      }),
+    );
+    expect(githubEmptyRetained).toContain(
+      "The latest successful GitHub workflow-run refresh for github:repository:101 returned no workflow runs; 2 previously recorded workflow runs remain retained locally.",
+    );
+
+    const vercelUnknownPrior = formatInvestigationContext(
+      context({
+        subject: resource("vercel", "project", "prj_app"),
+        subjectDeployments: {
+          kind: "unknown",
+          deployments: [
+            deployment({ uid: "dpl_1" }),
+            deployment({ uid: "dpl_2" }),
+            deployment({ uid: "dpl_3" }),
+            deployment({ uid: "dpl_4" }),
+            deployment({ uid: "dpl_5" }),
+          ],
+          lastSuccessAt: null,
+          resultCount: 2,
+          message: "timeout",
+        },
+      }),
+    );
+    expect(vercelUnknownPrior).toContain(
+      "Vercel deployment evidence for vercel:project:prj_app is currently unknown; the last successful refresh returned 2 deployments, and 5 previously recorded deployments remain retained locally.",
+    );
+
+    const githubPopulatedDivergence = formatInvestigationContext(
+      context({
+        subject: resource("github", "repository", "101"),
+        subjectWorkflowRuns: {
+          kind: "populated",
+          observedAt: OBSERVED_AT,
+          resultCount: 3,
+          runs: [
+            workflowRun({ runId: 7 }),
+            workflowRun({ runId: 6 }),
+            workflowRun({ runId: 5 }),
+            workflowRun({ runId: 4 }),
+            workflowRun({ runId: 3 }),
+            workflowRun({ runId: 2 }),
+            workflowRun({ runId: 1 }),
+          ],
+        },
+      }),
+    );
+    expect(githubPopulatedDivergence).toContain(
+      "The latest successful GitHub workflow-run refresh for github:repository:101 returned 3 workflow runs; Combie currently retains 7 workflow runs for this repository.",
+    );
+    expect(githubPopulatedDivergence).not.toContain("exactly 3");
+    expect(githubPopulatedDivergence).not.toContain("GitHub has 3");
+
+    const githubBounded = formatInvestigationContext(
+      context({
+        subject: resource("github", "repository", "101"),
+        subjectWorkflowRuns: {
+          kind: "populated",
+          observedAt: OBSERVED_AT,
+          resultCount: 100,
+          runs: [workflowRun({ runId: 1 })],
+        },
+      }),
+    );
+    expect(githubBounded).toContain(
+      "The latest successful bounded GitHub workflow-run refresh for github:repository:101 returned 100 workflow runs; Combie currently retains 1 workflow run for this repository.",
+    );
+    expect(githubBounded).not.toContain("exactly 100 workflow runs");
+
+    // Pre-027 unknown provenance: no inferred latest-success count.
+    const legacyUnknown = formatInvestigationContext(
+      context({
+        subject: resource("vercel", "project", "prj_app"),
+        subjectDeployments: unknownDeployments([
+          deployment({ uid: "dpl_1" }),
+          deployment({ uid: "dpl_2" }),
+        ]),
+      }),
+    );
+    expect(legacyUnknown).toContain(
+      "unknown current refresh authority; 2 previously recorded deployments may be stale.",
+    );
+    expect(legacyUnknown).not.toContain("last successful refresh returned");
+
+    // Five-fact cap unchanged.
+    const facts = composeInvestigationFacts(
+      context({
+        subject: resource("github", "repository", "101"),
+        subjectWorkflowRuns: {
+          kind: "populated",
+          observedAt: OBSERVED_AT,
+          resultCount: 3,
+          runs: [
+            workflowRun({ runId: 7, conclusion: "failure" }),
+            workflowRun({ runId: 6, conclusion: "success" }),
+            workflowRun({ runId: 5, conclusion: "success" }),
+            workflowRun({ runId: 4, conclusion: "cancelled" }),
+            workflowRun({ runId: 3, conclusion: "failure" }),
+          ],
+        },
+        subjectChanges: [
+          change("c1", "github:repository:101", "2026-08-09T09:00:00.000Z"),
+          change("c2", "github:repository:101", "2026-08-09T09:01:00.000Z"),
+        ],
+      }),
+    );
+    expect(facts.length).toBeLessThanOrEqual(MAX_INVESTIGATION_FACTS);
+    expect(facts[0]?.kind).toBe("provider_evidence_authority");
+  });
+
   test("renders GitHub and Vercel known-empty facts without current-row claims", () => {
     const github = formatInvestigationContext(
       context({
@@ -853,6 +980,7 @@ describe("known facts formatting", () => {
         subjectWorkflowRuns: {
           kind: "empty",
           observedAt: OBSERVED_AT,
+          resultCount: null,
           runs: [],
         },
       }),
@@ -863,6 +991,7 @@ describe("known facts formatting", () => {
         subjectDeployments: {
           kind: "empty",
           observedAt: OBSERVED_AT,
+          resultCount: null,
           deployments: [],
         },
       }),

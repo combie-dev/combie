@@ -180,6 +180,95 @@ describe("syncVercelDeployments", () => {
     store.close();
   });
 
+  test("Sprint 027: result_count 0, >0, retained > latest, failure preserves, idempotent", async () => {
+    const store = new Store(dir);
+    store.init();
+    const project = projectResource("prj_demo_hub");
+    store.applyResource(project, {
+      id: "b1",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+
+    // Successful empty
+    await syncVercelDeployments({
+      store,
+      token: "token",
+      projects: [project],
+      observedAt: "2026-08-09T12:00:00.000Z",
+      fetch: (async () => Response.json(EMPTY_DEPLOYMENTS)) as unknown as typeof fetch,
+    });
+    expect(store.getVercelDeploymentRefresh(project.id)?.resultCount).toBe(0);
+
+    // Successful populated
+    await syncVercelDeployments({
+      store,
+      token: "token",
+      projects: [project],
+      observedAt: "2026-08-09T12:30:00.000Z",
+      fetch: (async () => Response.json(deploymentsFixture)) as unknown as typeof fetch,
+    });
+    expect(store.getVercelDeploymentRefresh(project.id)?.resultCount).toBe(2);
+    expect(store.listVercelDeploymentsForResource(project.id)).toHaveLength(2);
+
+    // Successful smaller response retains prior rows; result_count is latest only
+    const oneOnly = {
+      deployments: [
+        {
+          uid: "dpl_building_002",
+          projectId: "prj_demo_hub",
+          created: 1723201000000,
+          readyState: "READY",
+          state: "READY",
+        },
+      ],
+      pagination: { count: 1, next: null, prev: null },
+    };
+    await syncVercelDeployments({
+      store,
+      token: "token",
+      projects: [project],
+      observedAt: "2026-08-09T12:45:00.000Z",
+      fetch: (async () => Response.json(oneOnly)) as unknown as typeof fetch,
+    });
+    expect(store.getVercelDeploymentRefresh(project.id)?.resultCount).toBe(1);
+    expect(store.listVercelDeploymentsForResource(project.id).length).toBeGreaterThan(
+      1,
+    );
+
+    // Failure preserves last successful result count
+    await syncVercelDeployments({
+      store,
+      token: "token",
+      projects: [project],
+      observedAt: "2026-08-09T13:00:00.000Z",
+      fetch: (async () =>
+        Response.json(
+          { error: { message: "rate limited" } },
+          { status: 429 },
+        )) as unknown as typeof fetch,
+    });
+    const failed = store.getVercelDeploymentRefresh(project.id);
+    expect(failed?.status).toBe("failure");
+    expect(failed?.resultCount).toBe(1);
+
+    // Idempotent success rewrite
+    await syncVercelDeployments({
+      store,
+      token: "token",
+      projects: [project],
+      observedAt: "2026-08-09T13:30:00.000Z",
+      fetch: (async () => Response.json(oneOnly)) as unknown as typeof fetch,
+    });
+    expect(store.getVercelDeploymentRefresh(project.id)).toEqual({
+      resourceId: project.id,
+      status: "success",
+      observedAt: "2026-08-09T13:30:00.000Z",
+      message: null,
+      resultCount: 1,
+    });
+    store.close();
+  });
+
   test("ignores deployments that do not match exact project id", async () => {
     const store = new Store(dir);
     store.init();

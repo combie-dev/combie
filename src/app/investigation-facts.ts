@@ -72,17 +72,16 @@ export interface InvestigationFactAuthorityRef {
   scope: InvestigationFactScopeRef;
   authority: InvestigationFactAuthority;
   locallyHeldNativeIds: string[];
+  /**
+   * Latest successful provider response cardinality from persisted refresh
+   * provenance. Null when unknown (including pre-Sprint-027 rows). Distinct
+   * from locallyHeldNativeIds.length.
+   */
+  lastSuccessfulResultCount: number | null;
 }
 
-export type InvestigationFactReportableAuthorityRef = Omit<
-  InvestigationFactAuthorityRef,
-  "authority"
-> & {
-  authority: Extract<
-    InvestigationFactAuthority,
-    { kind: "unknown" | "empty" }
-  >;
-};
+export type InvestigationFactReportableAuthorityRef =
+  InvestigationFactAuthorityRef;
 
 export interface InvestigationFactStateGroup {
   value: string;
@@ -170,6 +169,7 @@ interface MutableAuthoritySource {
   relationships: InvestigationFactRelationshipRef[];
   authority: InvestigationFactAuthority;
   locallyHeldNativeIds: string[];
+  lastSuccessfulResultCount: number | null;
 }
 
 function compareAscending(left: string, right: string): number {
@@ -250,21 +250,21 @@ function authorityRef(
     scope: scopeRef(source),
     authority: source.authority,
     locallyHeldNativeIds: [...source.locallyHeldNativeIds],
+    lastSuccessfulResultCount: source.lastSuccessfulResultCount,
   };
 }
 
 function reportableAuthorityRef(
   source: MutableAuthoritySource,
 ): InvestigationFactReportableAuthorityRef {
-  if (source.authority.kind === "populated") {
-    throw new Error("Populated provider authority is not a reportable authority fact.");
-  }
-  return {
-    family: source.family,
-    scope: scopeRef(source),
-    authority: source.authority,
-    locallyHeldNativeIds: [...source.locallyHeldNativeIds],
-  };
+  return authorityRef(source);
+}
+
+/** Emit a populated authority fact only when retained memory differs from latest success. */
+function shouldReportPopulatedAuthority(source: MutableAuthoritySource): boolean {
+  if (source.authority.kind !== "populated") return false;
+  if (source.lastSuccessfulResultCount == null) return false;
+  return source.locallyHeldNativeIds.length !== source.lastSuccessfulResultCount;
 }
 
 function sourceKey(family: ProviderActivityFamily, resourceId: string): string {
@@ -280,6 +280,12 @@ function authorityFromDeployment(
   return { kind: authority.kind, refreshObservedAt: authority.observedAt };
 }
 
+function resultCountFromDeployment(
+  authority: Exclude<DeploymentEvidenceAuthority, { kind: "not_applicable" }>,
+): number | null {
+  return authority.resultCount;
+}
+
 function authorityFromRuns(
   authority: Exclude<WorkflowRunEvidenceAuthority, { kind: "not_applicable" }>,
 ): InvestigationFactAuthority {
@@ -289,6 +295,12 @@ function authorityFromRuns(
   return { kind: authority.kind, refreshObservedAt: authority.observedAt };
 }
 
+function resultCountFromRuns(
+  authority: Exclude<WorkflowRunEvidenceAuthority, { kind: "not_applicable" }>,
+): number | null {
+  return authority.resultCount;
+}
+
 function authorityFromOperations(
   authority: Exclude<NeonOperationEvidenceAuthority, { kind: "not_applicable" }>,
 ): InvestigationFactAuthority {
@@ -296,6 +308,20 @@ function authorityFromOperations(
     return { kind: "unknown", refreshObservedAt: null };
   }
   return { kind: authority.kind, refreshObservedAt: authority.observedAt };
+}
+
+function resultCountFromOperations(
+  authority: Exclude<NeonOperationEvidenceAuthority, { kind: "not_applicable" }>,
+): number | null {
+  // Neon refresh result_count is only authoritative on the latest success.
+  // Failure overwrites it to null; empty/populated expose it via kind.
+  if (authority.kind === "empty") return 0;
+  if (authority.kind === "populated") {
+    // Neon does not yet surface resultCount on the authority DTO; retained
+    // cardinality is not a substitute. Unknown / pre-count remains null.
+    return null;
+  }
+  return null;
 }
 
 function deploymentIds(
@@ -334,6 +360,7 @@ function collectAuthoritySources(
     relationships: InvestigationFactRelationshipRef[],
     authority: InvestigationFactAuthority,
     locallyHeldNativeIds: string[],
+    lastSuccessfulResultCount: number | null,
   ): void {
     const key = sourceKey(family, resourceId);
     const existing = sources.get(key);
@@ -348,6 +375,7 @@ function collectAuthoritySources(
       relationships: [...relationships],
       authority,
       locallyHeldNativeIds,
+      lastSuccessfulResultCount,
     });
   }
 
@@ -367,6 +395,7 @@ function collectAuthoritySources(
         relationships,
         authorityFromDeployment(deployments),
         deploymentIds(deployments),
+        resultCountFromDeployment(deployments),
       );
     }
     if (runs.kind !== "not_applicable") {
@@ -377,6 +406,7 @@ function collectAuthoritySources(
         relationships,
         authorityFromRuns(runs),
         runIds(runs),
+        resultCountFromRuns(runs),
       );
     }
     if (operations.kind !== "not_applicable") {
@@ -387,6 +417,7 @@ function collectAuthoritySources(
         relationships,
         authorityFromOperations(operations),
         operationIds(operations),
+        resultCountFromOperations(operations),
       );
     }
   }
@@ -626,7 +657,8 @@ export function composeInvestigationFacts(
 
   const candidates: InvestigationFact[] = [];
 
-  // Highest priority: unknown/stale authority, then authoritative known-empty.
+  // Highest priority: unknown/stale authority, then authoritative known-empty,
+  // then populated cases where retained local memory differs from latest success.
   for (const source of rawSources.filter(
     (item) => item.authority.kind === "unknown",
   )) {
@@ -639,6 +671,13 @@ export function composeInvestigationFacts(
   for (const source of rawSources.filter(
     (item) => item.authority.kind === "empty",
   )) {
+    candidates.push({
+      kind: "provider_evidence_authority",
+      subjectResourceId,
+      source: reportableAuthorityRef(source),
+    });
+  }
+  for (const source of rawSources.filter(shouldReportPopulatedAuthority)) {
     candidates.push({
       kind: "provider_evidence_authority",
       subjectResourceId,

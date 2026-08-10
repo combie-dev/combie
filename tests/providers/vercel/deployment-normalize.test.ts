@@ -154,6 +154,7 @@ describe("composeDeploymentAuthority", () => {
         status: "success",
         observedAt: OBSERVED,
         message: null,
+      resultCount: null,
       },
       [],
     );
@@ -170,6 +171,7 @@ describe("composeDeploymentAuthority", () => {
         status: "success",
         observedAt: OBSERVED,
         message: null,
+      resultCount: null,
       },
       [base],
     );
@@ -189,6 +191,7 @@ describe("composeDeploymentAuthority", () => {
         status: "failure",
         observedAt: OBSERVED,
         message: "List deployments failed",
+      resultCount: null,
       },
       [base],
     );
@@ -196,6 +199,84 @@ describe("composeDeploymentAuthority", () => {
     if (auth.kind === "unknown") {
       expect(auth.deployments).toHaveLength(1);
       expect(auth.message).toContain("List deployments failed");
+    }
+  });
+
+  test("Sprint 027: result_count distinguishes empty success with retained history", () => {
+    const emptyWithHistory = composeDeploymentAuthority(
+      resourceId,
+      "vercel",
+      "project",
+      {
+        resourceId,
+        status: "success",
+        observedAt: OBSERVED,
+        message: null,
+        resultCount: 0,
+      },
+      [base],
+    );
+    expect(emptyWithHistory.kind).toBe("empty");
+    if (emptyWithHistory.kind === "empty") {
+      expect(emptyWithHistory.resultCount).toBe(0);
+      expect(emptyWithHistory.deployments).toHaveLength(1);
+    }
+
+    const populated = composeDeploymentAuthority(
+      resourceId,
+      "vercel",
+      "project",
+      {
+        resourceId,
+        status: "success",
+        observedAt: OBSERVED,
+        message: null,
+        resultCount: 1,
+      },
+      [base, { ...base, uid: "dpl_2" }],
+    );
+    expect(populated.kind).toBe("populated");
+    if (populated.kind === "populated") {
+      expect(populated.resultCount).toBe(1);
+      expect(populated.deployments).toHaveLength(2);
+    }
+
+    const failedAfterSuccess = composeDeploymentAuthority(
+      resourceId,
+      "vercel",
+      "project",
+      {
+        resourceId,
+        status: "failure",
+        observedAt: OBSERVED,
+        message: "timeout",
+        resultCount: 2,
+      },
+      [base],
+    );
+    expect(failedAfterSuccess.kind).toBe("unknown");
+    if (failedAfterSuccess.kind === "unknown") {
+      expect(failedAfterSuccess.resultCount).toBe(2);
+      expect(failedAfterSuccess.deployments).toHaveLength(1);
+    }
+
+    // Pre-027 success with null resultCount does not invent a count.
+    const legacy = composeDeploymentAuthority(
+      resourceId,
+      "vercel",
+      "project",
+      {
+        resourceId,
+        status: "success",
+        observedAt: OBSERVED,
+        message: null,
+        resultCount: null,
+      },
+      [base],
+    );
+    expect(legacy.kind).toBe("populated");
+    if (legacy.kind === "populated") {
+      expect(legacy.resultCount).toBeNull();
     }
   });
 });

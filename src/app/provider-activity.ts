@@ -142,7 +142,7 @@ function collectDeployments(
     return { authority: "populated", items: authority.deployments };
   }
   if (authority.kind === "empty") {
-    // Vercel empty always has deployments: [] by type — no retained history.
+    // Successful empty refresh may still retain historical deployments.
     return authority.deployments.length > 0
       ? { authority: "empty", items: authority.deployments }
       : null;
@@ -164,7 +164,10 @@ function collectWorkflowRuns(
     return { authority: "populated", items: authority.runs };
   }
   if (authority.kind === "empty") {
-    return null;
+    // Successful empty refresh may still retain historical workflow runs.
+    return authority.runs.length > 0
+      ? { authority: "empty", items: authority.runs }
+      : null;
   }
   return authority.runs.length > 0
     ? { authority: "unknown", items: authority.runs }

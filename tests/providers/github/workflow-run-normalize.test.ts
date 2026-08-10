@@ -161,6 +161,7 @@ describe("composeWorkflowRunAuthority", () => {
           status: "success",
           observedAt: OBSERVED,
           message: null,
+        resultCount: null,
         },
         [],
       ).kind,
@@ -174,6 +175,7 @@ describe("composeWorkflowRunAuthority", () => {
         status: "success",
         observedAt: OBSERVED,
         message: null,
+      resultCount: null,
       },
       [base],
     );
@@ -187,6 +189,7 @@ describe("composeWorkflowRunAuthority", () => {
         status: "failure",
         observedAt: OBSERVED,
         message: "403 forbidden",
+      resultCount: null,
       },
       [base],
     );
@@ -194,6 +197,62 @@ describe("composeWorkflowRunAuthority", () => {
     if (failed.kind === "unknown") {
       expect(failed.runs).toHaveLength(1);
       expect(failed.message).toContain("403");
+    }
+  });
+
+  test("Sprint 027: result_count distinguishes empty/bounded success and failure", () => {
+    const emptyWithHistory = composeWorkflowRunAuthority(
+      "github",
+      "repository",
+      {
+        resourceId: "github:repository:1",
+        status: "success",
+        observedAt: OBSERVED,
+        message: null,
+        resultCount: 0,
+      },
+      [base],
+    );
+    expect(emptyWithHistory.kind).toBe("empty");
+    if (emptyWithHistory.kind === "empty") {
+      expect(emptyWithHistory.resultCount).toBe(0);
+      expect(emptyWithHistory.runs).toHaveLength(1);
+    }
+
+    const bounded = composeWorkflowRunAuthority(
+      "github",
+      "repository",
+      {
+        resourceId: "github:repository:1",
+        status: "success",
+        observedAt: OBSERVED,
+        message: null,
+        resultCount: 100,
+      },
+      [base],
+    );
+    expect(bounded.kind).toBe("populated");
+    if (bounded.kind === "populated") {
+      // 100 is the bounded response size, not proof of complete history.
+      expect(bounded.resultCount).toBe(100);
+      expect(bounded.runs).toHaveLength(1);
+    }
+
+    const failed = composeWorkflowRunAuthority(
+      "github",
+      "repository",
+      {
+        resourceId: "github:repository:1",
+        status: "failure",
+        observedAt: OBSERVED,
+        message: "rate limited",
+        resultCount: 3,
+      },
+      [base],
+    );
+    expect(failed.kind).toBe("unknown");
+    if (failed.kind === "unknown") {
+      expect(failed.resultCount).toBe(3);
     }
   });
 });

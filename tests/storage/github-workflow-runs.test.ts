@@ -131,12 +131,14 @@ describe("Store github workflow-run persistence", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.setGitHubWorkflowRunRefresh({
       resourceId: "github:repository:1",
       status: "failure",
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "403",
+    resultCount: null,
     });
     expect(store.getGitHubWorkflowRunRefresh("github:repository:1")?.status).toBe(
       "failure",
@@ -144,6 +146,103 @@ describe("Store github workflow-run persistence", () => {
     expect(
       store.listGitHubWorkflowRunsForResource("github:repository:1"),
     ).toHaveLength(1);
+    store.close();
+  });
+
+  test("Sprint 027: result_count provenance, pre-027 null, no backfill", () => {
+    const path = dbPath(dir);
+    const raw = new Database(path);
+    raw.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL,
+        last_sync_at TEXT, config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE resources (
+        id TEXT PRIMARY KEY, provider TEXT NOT NULL,
+        provider_resource_id TEXT NOT NULL, kind TEXT NOT NULL,
+        name TEXT NOT NULL, metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(provider, kind, provider_resource_id)
+      );
+      CREATE TABLE github_workflow_runs (
+        run_id INTEGER PRIMARY KEY, provider TEXT NOT NULL DEFAULT 'github',
+        resource_id TEXT NOT NULL, repository_id TEXT NOT NULL,
+        workflow_id INTEGER, name TEXT, run_number INTEGER, run_attempt INTEGER,
+        event TEXT, status TEXT, conclusion TEXT, head_branch TEXT, head_sha TEXT,
+        created_at TEXT NOT NULL, run_started_at TEXT, updated_at TEXT,
+        observed_at TEXT NOT NULL
+      );
+      CREATE TABLE github_workflow_run_refresh (
+        resource_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+        observed_at TEXT NOT NULL,
+        message TEXT
+      );
+      INSERT INTO github_workflow_run_refresh (resource_id, status, observed_at, message)
+      VALUES ('github:repository:1', 'success', '2026-08-09T11:00:00.000Z', NULL);
+      INSERT INTO github_workflow_runs (
+        run_id, resource_id, repository_id, created_at, observed_at
+      ) VALUES (
+        11, 'github:repository:1', '1', '2026-08-09T10:00:00.000Z',
+        '2026-08-09T11:00:00.000Z'
+      );
+      INSERT INTO github_workflow_runs (
+        run_id, resource_id, repository_id, created_at, observed_at
+      ) VALUES (
+        12, 'github:repository:1', '1', '2026-08-09T10:01:00.000Z',
+        '2026-08-09T11:00:00.000Z'
+      );
+    `);
+    raw.close();
+
+    const store = new Store(dir);
+    expect(store.isInitialized()).toBe(true);
+    const upgraded = store.getGitHubWorkflowRunRefresh("github:repository:1");
+    expect(upgraded?.resultCount).toBeNull();
+    expect(store.listGitHubWorkflowRunsForResource("github:repository:1")).toHaveLength(
+      2,
+    );
+
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: "github:repository:1",
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 0,
+    });
+    expect(store.getGitHubWorkflowRunRefresh("github:repository:1")?.resultCount).toBe(
+      0,
+    );
+
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: "github:repository:1",
+      status: "success",
+      observedAt: "2026-08-09T12:30:00.000Z",
+      message: null,
+      resultCount: 100,
+    });
+    expect(store.getGitHubWorkflowRunRefresh("github:repository:1")?.resultCount).toBe(
+      100,
+    );
+
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: "github:repository:1",
+      status: "failure",
+      observedAt: "2026-08-09T13:00:00.000Z",
+      message: "403",
+      resultCount: 100,
+    });
+    expect(store.getGitHubWorkflowRunRefresh("github:repository:1")).toEqual({
+      resourceId: "github:repository:1",
+      status: "failure",
+      observedAt: "2026-08-09T13:00:00.000Z",
+      message: "403",
+      resultCount: 100,
+    });
+    expect(JSON.stringify(store.getGitHubWorkflowRunRefresh("github:repository:1")))
+      .not.toMatch(/ghp_|token|secret/i);
     store.close();
   });
 

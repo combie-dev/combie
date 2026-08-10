@@ -97,6 +97,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -146,6 +147,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -155,7 +157,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
     });
     expect(ctx.subjectWorkflowRuns.kind).toBe("empty");
     expect(formatInvestigationContext(ctx)).toContain(
-      "No workflow runs recorded for this repository yet.",
+      "No workflow runs recorded for this repository in the latest successful response.",
     );
 
     const store2 = openStore();
@@ -164,6 +166,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       status: "failure",
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "403 forbidden",
+    resultCount: null,
     });
     store2.upsertGitHubWorkflowRun(run({ runId: 9, name: "stale" }));
     store2.close();
@@ -210,6 +213,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -239,6 +243,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -266,6 +271,7 @@ describe("investigate workflow runs (Sprint 021)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 

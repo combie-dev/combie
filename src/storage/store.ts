@@ -111,7 +111,8 @@ CREATE TABLE IF NOT EXISTS vercel_deployment_refresh (
   resource_id TEXT PRIMARY KEY,
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
-  message TEXT
+  message TEXT,
+  result_count INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS github_workflow_runs (
@@ -141,7 +142,8 @@ CREATE TABLE IF NOT EXISTS github_workflow_run_refresh (
   resource_id TEXT PRIMARY KEY,
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
-  message TEXT
+  message TEXT,
+  result_count INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS neon_operations (
@@ -203,6 +205,31 @@ export class Store {
   /** Apply idempotent schema (safe on existing DBs that predate new tables). */
   private applySchema(db: Database): void {
     db.exec(SCHEMA);
+    this.ensureRefreshResultCountColumns(db);
+  }
+
+  /**
+   * Additive upgrade: pre-027 refresh tables lack result_count.
+   * Existing rows become NULL (unknown provenance) — never backfilled from
+   * retained evidence row counts.
+   */
+  private ensureRefreshResultCountColumns(db: Database): void {
+    this.ensureNullableIntegerColumn(db, "vercel_deployment_refresh", "result_count");
+    this.ensureNullableIntegerColumn(db, "github_workflow_run_refresh", "result_count");
+  }
+
+  private ensureNullableIntegerColumn(
+    db: Database,
+    table: string,
+    column: string,
+  ): void {
+    const rows = db
+      .query(`PRAGMA table_info(${table})`)
+      .all() as Array<{ name: string }>;
+    // Table may not exist yet on pre-evidence DBs; CREATE TABLE above adds it.
+    if (rows.length === 0) return;
+    if (rows.some((row) => row.name === column)) return;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} INTEGER`);
   }
 
   /** Baseline only Resources that existed before Change detection was enabled. */
@@ -690,18 +717,20 @@ export class Store {
     this.getDb()
       .query(
         `INSERT INTO vercel_deployment_refresh (
-           resource_id, status, observed_at, message
-         ) VALUES (?, ?, ?, ?)
+           resource_id, status, observed_at, message, result_count
+         ) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(resource_id) DO UPDATE SET
            status = excluded.status,
            observed_at = excluded.observed_at,
-           message = excluded.message`,
+           message = excluded.message,
+           result_count = excluded.result_count`,
       )
       .run(
         refresh.resourceId,
         refresh.status,
         refresh.observedAt,
         refresh.message,
+        refresh.resultCount,
       );
   }
 
@@ -710,7 +739,7 @@ export class Store {
   ): VercelDeploymentRefresh | null {
     const row = this.getDb()
       .query(
-        `SELECT resource_id, status, observed_at, message
+        `SELECT resource_id, status, observed_at, message, result_count
          FROM vercel_deployment_refresh
          WHERE resource_id = ?`,
       )
@@ -720,6 +749,7 @@ export class Store {
           status: string;
           observed_at: string;
           message: string | null;
+          result_count: number | null;
         }
       | null;
     if (!row) return null;
@@ -728,6 +758,7 @@ export class Store {
       status: row.status as "success" | "failure",
       observedAt: row.observed_at,
       message: row.message,
+      resultCount: row.result_count,
     };
   }
 
@@ -816,18 +847,20 @@ export class Store {
     this.getDb()
       .query(
         `INSERT INTO github_workflow_run_refresh (
-           resource_id, status, observed_at, message
-         ) VALUES (?, ?, ?, ?)
+           resource_id, status, observed_at, message, result_count
+         ) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(resource_id) DO UPDATE SET
            status = excluded.status,
            observed_at = excluded.observed_at,
-           message = excluded.message`,
+           message = excluded.message,
+           result_count = excluded.result_count`,
       )
       .run(
         refresh.resourceId,
         refresh.status,
         refresh.observedAt,
         refresh.message,
+        refresh.resultCount,
       );
   }
 
@@ -836,7 +869,7 @@ export class Store {
   ): GitHubWorkflowRunRefresh | null {
     const row = this.getDb()
       .query(
-        `SELECT resource_id, status, observed_at, message
+        `SELECT resource_id, status, observed_at, message, result_count
          FROM github_workflow_run_refresh
          WHERE resource_id = ?`,
       )
@@ -846,6 +879,7 @@ export class Store {
           status: string;
           observed_at: string;
           message: string | null;
+          result_count: number | null;
         }
       | null;
     if (!row) return null;
@@ -854,6 +888,7 @@ export class Store {
       status: row.status as "success" | "failure",
       observedAt: row.observed_at,
       message: row.message,
+      resultCount: row.result_count,
     };
   }
 

@@ -146,6 +146,7 @@ function populatedDeployments(
   return {
     kind: "populated",
     observedAt: "2026-08-09T12:00:00.000Z",
+    resultCount: deployments.length,
     deployments,
   };
 }
@@ -156,6 +157,7 @@ function populatedRuns(
   return {
     kind: "populated",
     observedAt: "2026-08-09T12:00:00.000Z",
+    resultCount: runs.length,
     runs,
   };
 }
@@ -584,6 +586,7 @@ describe("provider activity chronology composition", () => {
         kind: "unknown",
         deployments: [stale],
         lastSuccessAt: null,
+        resultCount: null,
         message: "refresh failed",
       },
     }));
@@ -598,11 +601,13 @@ describe("provider activity chronology composition", () => {
       subjectDeployments: {
         kind: "empty",
         observedAt: "2026-08-09T12:00:00.000Z",
+        resultCount: null,
         deployments: [],
       },
       subjectWorkflowRuns: {
         kind: "empty",
         observedAt: "2026-08-09T12:00:00.000Z",
+        resultCount: null,
         runs: [],
       },
     }));

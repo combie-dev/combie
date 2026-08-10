@@ -92,6 +92,7 @@ describe("investigate deployments (Sprint 020)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -146,6 +147,7 @@ describe("investigate deployments (Sprint 020)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -155,7 +157,9 @@ describe("investigate deployments (Sprint 020)", () => {
     });
     expect(ctx.subjectDeployments.kind).toBe("empty");
     const output = formatInvestigationContext(ctx);
-    expect(output).toContain("No deployments recorded for this project yet.");
+    expect(output).toContain(
+      "No deployments recorded for this project in the latest successful response.",
+    );
     expect(output).not.toContain(
       "Deployment evidence has not been successfully refreshed.",
     );
@@ -189,6 +193,7 @@ describe("investigate deployments (Sprint 020)", () => {
       status: "failure",
       observedAt: "2026-08-09T13:00:00.000Z",
       message: "List deployments failed (HTTP 500)",
+    resultCount: null,
     });
     store.close();
 
@@ -240,6 +245,7 @@ describe("investigate deployments (Sprint 020)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -283,6 +289,7 @@ describe("investigate deployments (Sprint 020)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -312,6 +319,7 @@ describe("investigate deployments (Sprint 020)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 

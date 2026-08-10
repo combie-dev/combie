@@ -106,6 +106,133 @@ describe("syncGitHubWorkflowRuns", () => {
     store.close();
   });
 
+  test("Sprint 027: result_count 0–100, retained > latest, failure preserves, idempotent", async () => {
+    const store = new Store(dir);
+    store.init();
+    const repo = repoResource();
+    store.applyResource(repo, {
+      id: "b1",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+
+    await syncGitHubWorkflowRuns({
+      store,
+      token: "token",
+      repositories: [repo],
+      observedAt: "2026-08-09T12:00:00.000Z",
+      fetch: (async () =>
+        Response.json({
+          total_count: 0,
+          workflow_runs: [],
+        })) as unknown as typeof fetch,
+    });
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(0);
+
+    await syncGitHubWorkflowRuns({
+      store,
+      token: "token",
+      repositories: [repo],
+      observedAt: "2026-08-09T12:15:00.000Z",
+      fetch: (async () =>
+        Response.json(workflowRunsFixture)) as unknown as typeof fetch,
+    });
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(2);
+    expect(store.listGitHubWorkflowRunsForResource(repo.id)).toHaveLength(2);
+
+    // Smaller latest response: retained can exceed latest result_count
+    const oneRun = {
+      total_count: 1,
+      workflow_runs: [
+        {
+          id: 999001,
+          name: "CI",
+          status: "completed",
+          conclusion: "success",
+          created_at: "2026-08-09T11:00:00Z",
+          repository: { id: 915052094 },
+        },
+      ],
+    };
+    await syncGitHubWorkflowRuns({
+      store,
+      token: "token",
+      repositories: [repo],
+      observedAt: "2026-08-09T12:30:00.000Z",
+      fetch: (async () => Response.json(oneRun)) as unknown as typeof fetch,
+    });
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(1);
+    expect(store.listGitHubWorkflowRunsForResource(repo.id).length).toBeGreaterThan(
+      1,
+    );
+
+    // Bounded page of 100: cardinality is response size, not complete history.
+    const hundred = {
+      total_count: 500,
+      workflow_runs: Array.from({ length: 100 }, (_, i) => ({
+        id: 700000 + i,
+        name: "CI",
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-08-09T10:00:00Z",
+        repository: { id: 915052094 },
+      })),
+    };
+    await syncGitHubWorkflowRuns({
+      store,
+      token: "token",
+      repositories: [repo],
+      observedAt: "2026-08-09T12:45:00.000Z",
+      fetch: (async () => Response.json(hundred)) as unknown as typeof fetch,
+    });
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(100);
+
+    // Permission failure preserves last success count
+    await syncGitHubWorkflowRuns({
+      store,
+      token: "token",
+      repositories: [repo],
+      observedAt: "2026-08-09T13:00:00.000Z",
+      fetch: (async () =>
+        Response.json(
+          { message: "Forbidden" },
+          { status: 403 },
+        )) as unknown as typeof fetch,
+    });
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.status).toBe("failure");
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(100);
+
+    // Transient failure also preserves
+    await syncGitHubWorkflowRuns({
+      store,
+      token: "token",
+      repositories: [repo],
+      observedAt: "2026-08-09T13:15:00.000Z",
+      fetch: (async () =>
+        Response.json(
+          { message: "Server Error" },
+          { status: 500 },
+        )) as unknown as typeof fetch,
+    });
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)?.resultCount).toBe(100);
+
+    // Idempotent recovery
+    await syncGitHubWorkflowRuns({
+      store,
+      token: "token",
+      repositories: [repo],
+      observedAt: "2026-08-09T13:30:00.000Z",
+      fetch: (async () => Response.json(oneRun)) as unknown as typeof fetch,
+    });
+    expect(store.getGitHubWorkflowRunRefresh(repo.id)).toEqual({
+      resourceId: repo.id,
+      status: "success",
+      observedAt: "2026-08-09T13:30:00.000Z",
+      message: null,
+      resultCount: 1,
+    });
+    store.close();
+  });
+
   test("ignores runs that do not match exact repository id", async () => {
     const store = new Store(dir);
     store.init();

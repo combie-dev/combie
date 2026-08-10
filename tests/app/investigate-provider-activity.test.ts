@@ -206,6 +206,7 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.upsertGitHubWorkflowRun(run());
     store.setGitHubWorkflowRunRefresh({
@@ -213,6 +214,7 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.upsertNeonOperation(operation());
     store.setNeonOperationRefresh({
@@ -318,6 +320,7 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.close();
 
@@ -403,6 +406,7 @@ describe("investigate provider activity chronology (Sprint 024)", () => {
       status: "success",
       observedAt: "2026-08-09T12:00:00.000Z",
       message: null,
+    resultCount: null,
     });
     store.applyResource(
       { ...project, name: "demo-hub-renamed" },

@@ -49,6 +49,15 @@ export interface GitHubWorkflowRunRefresh {
   status: "success" | "failure";
   observedAt: string;
   message: string | null;
+  /**
+   * Number of normalized workflow-run rows accepted by the latest successful
+   * bounded refresh for this exact repository Resource. Null when never
+   * successfully refreshed with provenance (including pre-Sprint-027 rows).
+   * Not the count of rows currently retained locally. A value of 100 means
+   * the bounded refresh returned 100 runs — not that the repository has
+   * exactly 100 workflow runs total. Survives a later failed refresh.
+   */
+  resultCount: number | null;
 }
 
 export type WorkflowRunEvidenceAuthority =
@@ -57,16 +66,29 @@ export type WorkflowRunEvidenceAuthority =
       kind: "unknown";
       runs: GitHubWorkflowRunEvidence[];
       lastSuccessAt: string | null;
+      /**
+       * Last successful bounded response cardinality when known.
+       * Distinct from retained local row count.
+       */
+      resultCount: number | null;
       message: string | null;
     }
   | {
       kind: "empty";
       observedAt: string;
-      runs: [];
+      /** Always 0 after a successful empty refresh with provenance. */
+      resultCount: number | null;
+      /** Previously observed history retained beyond the current response. */
+      runs: GitHubWorkflowRunEvidence[];
     }
   | {
       kind: "populated";
       observedAt: string;
+      /**
+       * Latest successful bounded response cardinality when known; null for
+       * pre-027 success rows without provenance.
+       */
+      resultCount: number | null;
       runs: GitHubWorkflowRunEvidence[];
     };
 
@@ -180,12 +202,37 @@ export function composeWorkflowRunAuthority(
   }
 
   if (refresh?.status === "success") {
+    // Prefer persisted result-count provenance. Never infer empty/populated
+    // solely from retained local rows when provenance exists.
+    if (refresh.resultCount === 0) {
+      return {
+        kind: "empty",
+        observedAt: refresh.observedAt,
+        resultCount: 0,
+        runs,
+      };
+    }
+    if (refresh.resultCount != null && refresh.resultCount > 0) {
+      return {
+        kind: "populated",
+        observedAt: refresh.observedAt,
+        resultCount: refresh.resultCount,
+        runs,
+      };
+    }
+    // Pre-027 success: result count unknown.
     if (runs.length === 0) {
-      return { kind: "empty", observedAt: refresh.observedAt, runs: [] };
+      return {
+        kind: "empty",
+        observedAt: refresh.observedAt,
+        resultCount: null,
+        runs: [],
+      };
     }
     return {
       kind: "populated",
       observedAt: refresh.observedAt,
+      resultCount: null,
       runs,
     };
   }
@@ -194,6 +241,7 @@ export function composeWorkflowRunAuthority(
     kind: "unknown",
     runs,
     lastSuccessAt: null,
+    resultCount: refresh?.resultCount ?? null,
     message: refresh?.status === "failure" ? refresh.message : null,
   };
 }

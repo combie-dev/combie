@@ -42,6 +42,13 @@ export interface VercelDeploymentRefresh {
   observedAt: string;
   /** User-safe failure detail; never secrets. */
   message: string | null;
+  /**
+   * Number of normalized deployment rows accepted by the latest successful
+   * refresh for this exact project Resource. Null when never successfully
+   * refreshed with provenance (including pre-Sprint-027 rows). Not the count
+   * of rows currently retained locally. Survives a later failed refresh.
+   */
+  resultCount: number | null;
 }
 
 export type DeploymentEvidenceAuthority =
@@ -53,18 +60,31 @@ export type DeploymentEvidenceAuthority =
       kind: "unknown";
       deployments: VercelDeploymentEvidence[];
       lastSuccessAt: string | null;
+      /**
+       * Last successful normalized response cardinality when known.
+       * Distinct from retained local row count.
+       */
+      resultCount: number | null;
       message: string | null;
     }
   | {
       /** Last refresh succeeded and returned zero deployments. */
       kind: "empty";
       observedAt: string;
-      deployments: [];
+      /** Always 0 after a successful empty refresh with provenance. */
+      resultCount: number | null;
+      /** Previously observed history retained beyond the current response. */
+      deployments: VercelDeploymentEvidence[];
     }
   | {
       /** Last refresh succeeded with one or more deployments. */
       kind: "populated";
       observedAt: string;
+      /**
+       * Latest successful response cardinality when known; null for pre-027
+       * success rows without provenance.
+       */
+      resultCount: number | null;
       deployments: VercelDeploymentEvidence[];
     };
 
@@ -182,16 +202,38 @@ export function composeDeploymentAuthority(
   }
 
   if (refresh?.status === "success") {
+    // Prefer persisted result-count provenance. Never infer empty/populated
+    // solely from retained local rows when provenance exists.
+    if (refresh.resultCount === 0) {
+      return {
+        kind: "empty",
+        observedAt: refresh.observedAt,
+        resultCount: 0,
+        deployments,
+      };
+    }
+    if (refresh.resultCount != null && refresh.resultCount > 0) {
+      return {
+        kind: "populated",
+        observedAt: refresh.observedAt,
+        resultCount: refresh.resultCount,
+        deployments,
+      };
+    }
+    // Pre-027 success: result count unknown. Zero retained rows remain a
+    // safe known-empty; retained rows cannot prove latest response size.
     if (deployments.length === 0) {
       return {
         kind: "empty",
         observedAt: refresh.observedAt,
+        resultCount: null,
         deployments: [],
       };
     }
     return {
       kind: "populated",
       observedAt: refresh.observedAt,
+      resultCount: null,
       deployments,
     };
   }
@@ -200,6 +242,7 @@ export function composeDeploymentAuthority(
     kind: "unknown",
     deployments,
     lastSuccessAt: null,
+    resultCount: refresh?.resultCount ?? null,
     message: refresh?.status === "failure" ? refresh.message : null,
   };
 }
