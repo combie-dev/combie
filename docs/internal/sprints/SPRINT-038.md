@@ -1882,7 +1882,10 @@ None
 
 ## Commit
 
-Recorded when committed (see git log for `SPRINT-038`).
+```text
+bef4453 fix(cli): consistent provider display, empty states, and token guidance
+c296b4c docs(sprint): complete Sprint 038 external docs, dogfood, and UX fixes
+```
 
 ---
 
