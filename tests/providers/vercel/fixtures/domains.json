@@ -1,0 +1,38 @@
+{
+  "domains": [
+    {
+      "name": "example.com",
+      "apexName": "example.com",
+      "projectId": "prj_abc123",
+      "redirect": null,
+      "gitBranch": null,
+      "customEnvironmentId": null,
+      "updatedAt": 1704067200000,
+      "createdAt": 1704067200000,
+      "verified": true
+    },
+    {
+      "name": "app.example.com",
+      "apexName": "example.com",
+      "projectId": "prj_abc123",
+      "redirect": null,
+      "gitBranch": null,
+      "customEnvironmentId": null,
+      "updatedAt": 1704067200000,
+      "createdAt": 1704067200000,
+      "verified": true
+    },
+    {
+      "name": "combie.vercel.app",
+      "apexName": "vercel.app",
+      "projectId": "prj_abc123",
+      "redirect": null,
+      "gitBranch": null,
+      "customEnvironmentId": null,
+      "updatedAt": 1704067200000,
+      "createdAt": 1704067200000,
+      "verified": true
+    }
+  ],
+  "pagination": { "count": 3, "next": null, "prev": null }
+}

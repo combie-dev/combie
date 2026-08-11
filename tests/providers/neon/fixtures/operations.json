@@ -1,0 +1,33 @@
+{
+  "operations": [
+    {
+      "id": "97c7a650-e4ff-43d7-8c58-4c67f5050167",
+      "project_id": "steep-moon-132241",
+      "branch_id": "br-wispy-dew-591433",
+      "endpoint_id": "ep-orange-art-714542",
+      "action": "start_compute",
+      "status": "finished",
+      "failures_count": 0,
+      "created_at": "2026-08-09T08:47:52Z",
+      "updated_at": "2026-08-09T08:47:56Z",
+      "total_duration_ms": 4000,
+      "error": "must never be persisted",
+      "connection_uri": "postgresql://secret:password@example.neon.tech/db"
+    },
+    {
+      "id": "0f3daf10-2544-425c-86d3-9a9932ab25b9",
+      "project_id": "steep-moon-132241",
+      "branch_id": "br-wispy-dew-591433",
+      "action": "create_branch",
+      "status": "failed",
+      "failures_count": 2,
+      "retry_at": "2026-08-09T09:10:00Z",
+      "created_at": "2026-08-09T09:00:00Z",
+      "updated_at": "2026-08-09T09:05:00Z",
+      "total_duration_ms": 300000
+    }
+  ],
+  "pagination": {
+    "cursor": "2026-08-09T08:47:52.20417Z"
+  }
+}

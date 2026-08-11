@@ -1,0 +1,51 @@
+{
+  "deployments": [
+    {
+      "uid": "dpl_ready_001",
+      "name": "demo-hub",
+      "projectId": "prj_demo_hub",
+      "url": "demo-hub-abc.vercel.app",
+      "created": 1723200000000,
+      "createdAt": 1723200000000,
+      "buildingAt": 1723200005000,
+      "ready": 1723200300000,
+      "readyState": "READY",
+      "state": "READY",
+      "target": "production",
+      "source": "git",
+      "type": "LAMBDAS",
+      "creator": {
+        "uid": "user_secret",
+        "email": "secret@example.com",
+        "username": "secret-user"
+      },
+      "meta": {
+        "githubCommitSha": "abc123def4567890abc123def4567890abc123de",
+        "githubCommitMessage": "super secret commit message with token vercel_should_not_store",
+        "githubCommitAuthorName": "Secret Author"
+      },
+      "inspectorUrl": "https://vercel.com/team/demo-hub/dpl_ready_001",
+      "env": {
+        "DATABASE_URL": "postgres://user:password@host/db"
+      }
+    },
+    {
+      "uid": "dpl_building_002",
+      "name": "demo-hub",
+      "projectId": "prj_demo_hub",
+      "url": "demo-hub-def.vercel.app",
+      "created": 1723201000000,
+      "readyState": "BUILDING",
+      "state": "BUILDING",
+      "target": "staging",
+      "source": "cli",
+      "type": "LAMBDAS",
+      "creator": { "uid": "user_secret" }
+    }
+  ],
+  "pagination": {
+    "count": 2,
+    "next": null,
+    "prev": null
+  }
+}

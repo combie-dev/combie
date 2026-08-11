@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": "api-gateway",
+      "etag": "abc123",
+      "handlers": ["fetch"],
+      "modified_on": "2024-06-01T12:00:00.000Z",
+      "created_on": "2024-01-15T08:00:00.000Z",
+      "usage_model": "standard"
+    },
+    {
+      "id": "cron-cleanup",
+      "handlers": ["scheduled"],
+      "modified_on": "2024-07-01T00:00:00.000Z"
+    }
+  ],
+  "errors": [],
+  "messages": []
+}

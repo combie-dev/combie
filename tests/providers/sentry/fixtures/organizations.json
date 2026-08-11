@@ -1,0 +1,12 @@
+[
+  {
+    "id": "1",
+    "slug": "acme",
+    "name": "Acme Corp"
+  },
+  {
+    "id": "2",
+    "slug": "beta-org",
+    "name": "Beta Org"
+  }
+]

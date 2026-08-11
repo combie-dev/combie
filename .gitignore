@@ -1,0 +1,10 @@
+node_modules
+.combie
+*.db
+*.sqlite
+.DS_Store
+dist
+.history
+.env
+.env.*
+coverage/

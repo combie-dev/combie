@@ -1,0 +1,45 @@
+{
+  "projects": [
+    {
+      "id": "steep-moon-132241",
+      "platform_id": "aws",
+      "region_id": "aws-us-east-2",
+      "name": "combie-app",
+      "provisioner": "aws",
+      "pg_version": 17,
+      "proxy_host": "ep-steep-moon-132241.us-east-2.aws.neon.tech",
+      "branch_logical_size_limit": 5368709120,
+      "branch_logical_size_limit_bytes": 5368709120,
+      "store_passwords": true,
+      "active_time": 123.45,
+      "cpu_used_sec": 678.9,
+      "creation_source": "console",
+      "created_at": "2025-01-15T10:00:00Z",
+      "updated_at": "2026-08-01T09:30:00Z",
+      "owner_id": "user-uuid-1234"
+    },
+    {
+      "id": "quiet-river-98765",
+      "platform_id": "aws",
+      "region_id": "aws-eu-central-1",
+      "name": "analytics",
+      "provisioner": "aws",
+      "pg_version": 16,
+      "proxy_host": "ep-quiet-river-98765.eu-central-1.aws.neon.tech",
+      "branch_logical_size_limit": 5368709120,
+      "branch_logical_size_limit_bytes": 5368709120,
+      "store_passwords": true,
+      "active_time": 12.0,
+      "cpu_used_sec": 34.0,
+      "creation_source": "api",
+      "created_at": "2025-03-02T08:15:00Z",
+      "updated_at": "2026-07-20T14:00:00Z",
+      "owner_id": "user-uuid-1234",
+      "org_id": "org-acme-555",
+      "org_name": "Acme Inc"
+    }
+  ],
+  "pagination": {
+    "cursor": "quiet-river-98765"
+  }
+}

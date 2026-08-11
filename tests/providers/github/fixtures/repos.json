@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1001,
+    "name": "combie",
+    "full_name": "example-user/combie",
+    "private": true,
+    "html_url": "https://github.com/example-user/combie",
+    "default_branch": "master",
+    "archived": false,
+    "language": "TypeScript",
+    "visibility": "private",
+    "owner": {
+      "login": "example-user",
+      "id": 123456
+    }
+  },
+  {
+    "id": 1002,
+    "name": "rivora",
+    "full_name": "example-user/rivora",
+    "private": false,
+    "html_url": "https://github.com/example-user/rivora",
+    "default_branch": "main",
+    "archived": false,
+    "language": "Go",
+    "visibility": "public",
+    "owner": {
+      "login": "example-user",
+      "id": 123456
+    }
+  },
+  {
+    "id": 1003,
+    "name": "legacy-app",
+    "full_name": "example-user/legacy-app",
+    "private": true,
+    "html_url": "https://github.com/example-user/legacy-app",
+    "default_branch": "main",
+    "archived": true,
+    "language": null,
+    "visibility": "private",
+    "owner": {
+      "login": "example-user",
+      "id": 123456
+    }
+  }
+]
