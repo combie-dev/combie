@@ -1,0 +1,261 @@
+# Combie Quickstart
+
+Combie is an open engineering context layer: a local-first CLI that inventories
+resources across Cloudflare, GitHub, Vercel, Sentry, Neon, and PlanetScale,
+remembers changes, persists selected provider-native evidence (Vercel
+deployments, GitHub workflow runs, Neon operations), and supports offline
+one-hop investigation. You drive every step — no daemon, no background
+refresh, no webhooks. Allow ~20 minutes.
+
+## 1. Requirements
+- **Bun** (>= 1.1) — Bun-only, does not run on Node: `curl -fsSL https://bun.sh/install | bash`
+- **git**
+- **Tokens**: GitHub and Vercel are required; the rest are optional
+
+| Provider    | What you need                                          |
+| ----------- | ------------------------------------------------------ |
+| GitHub      | Personal access token with `repo` read access          |
+| Vercel      | Access token (Dashboard -> Settings -> Tokens)         |
+| Cloudflare  | API token with Account read: Workers, D1, KV, Zones    |
+| Sentry      | Auth token                                             |
+| Neon        | API key                                                |
+| PlanetScale | Service-token ID + secret pair (read access)           |
+
+Never set the same variable two ways — use **one** method per provider.
+## 2. Clone and install
+```bash
+git clone <combie-repository-url>
+cd combie
+bun install
+bun run combie help
+```
+
+You should see the command list. Not published to any registry. Optional global
+install: `bun link` (then use `combie <command>` instead of `bun run combie
+<command>` below).
+
+**Troubleshooting:** `bun: command not found` -> Bun missing or not on PATH
+(reinstall, new shell). `Could not find package` -> wrong directory or
+incomplete clone.
+
+## 3. Initialize
+
+```bash
+bun run combie init
+```
+Expected output: `Initialized Combie at /path/to/cwd/.combie`.
+
+This creates the state directory `.combie` (mode 0700) in the working
+directory, containing `combie.db` (SQLite: resources, changes, relationships,
+evidence) and `credentials` (mode 0600, separate from the DB). The global flag
+`--dir <path>` points any command at a different state directory (handy for
+`/tmp` experiments); `COMBIE_HOME` does the same. No encryption at rest, no OS
+keychain. Deleting `.combie` removes everything, including stored credentials —
+that is the full reset. `init` is idempotent.
+
+**Troubleshooting:** `.combie` in the wrong place -> it is created in the
+current working directory; `rm -rf .combie` and re-run elsewhere.
+
+## 4. Connect GitHub
+Choose **one** method.
+
+```bash
+export GITHUB_TOKEN=<token>
+bun run combie connect github --use-env
+```
+
+`GH_TOKEN` works too. Alternatives: `gh auth login` then `bun run combie
+connect github --use-gh` (reuse the authenticated GitHub CLI), or `bun run
+combie connect github --token <token>`.
+
+Expected output:
+
+```
+Connected GitHub (account: <your-account>).
+Credentials stored securely for local use.
+```
+
+**Troubleshooting:** `GITHUB_TOKEN (or GH_TOKEN) is not set` -> env var not
+exported in this shell. `GitHub CLI returned an empty token` -> run
+`gh auth login` first. `authentication failed` -> wrong token or missing
+`repo` read scope.
+
+## 5. Connect Vercel
+```bash
+export VERCEL_TOKEN=<token>
+bun run combie connect vercel --use-env
+```
+
+Expected output:
+
+```
+Connected Vercel (account: <your-account>).
+Credentials stored securely for local use.
+```
+
+**Troubleshooting:** same `is not set` / `authentication failed` checks as
+GitHub above.
+
+## 6. (Optional) Connect Cloudflare
+```bash
+export CLOUDFLARE_API_TOKEN=<token>
+bun run combie connect cloudflare --use-env
+```
+
+The token needs read access to the discovery endpoints Combie calls (Account
+read: Workers, D1, KV, Zones). Without those permissions, discovery comes back
+empty even though the token is valid.
+
+## 7. (Optional) Connect Sentry
+```bash
+export SENTRY_AUTH_TOKEN=<token>
+bun run combie connect sentry --use-env
+```
+
+`SENTRY_TOKEN` works as an alternative name.
+
+## 8. (Optional) Connect Neon and PlanetScale
+```bash
+export NEON_API_KEY=<key>
+bun run combie connect neon --use-env
+```
+
+PlanetScale (ID and secret are both required):
+
+```bash
+export PLANETSCALE_SERVICE_TOKEN_ID=<id>
+export PLANETSCALE_SERVICE_TOKEN=<secret>
+bun run combie connect planetscale --use-env
+```
+
+If the token can access multiple organizations, add the organization:
+
+```bash
+bun run combie connect planetscale --organization <slug> --use-env
+```
+
+Alternative to env vars (ID + secret as flags): `bun run combie connect
+planetscale --token-id <id> --token <secret>`.
+
+**A note on `--token` flags:** passing tokens directly as CLI flags can persist
+them in your shell history. Prefer the env-var flow everywhere.
+
+## 9. Sync
+```bash
+bun run combie sync
+```
+
+`sync` queries every connected provider and updates the local SQLite state:
+resources, changes, relationships, and provider-native evidence. `connect`
+only stores the credential — nothing is discovered until you sync.
+
+Expected output: a per-provider summary. If one provider fails (bad token,
+network, rate limit), the others still sync; errors are reported per provider
+and the command exits non-zero if any provider failed.
+
+Sync a single provider: `bun run combie sync github`.
+
+**Troubleshooting:** `not initialized` -> run `init` first. `authentication
+failed` for a provider -> reconnect it (steps 4–8). `no supported resources
+found` -> the account has none of the discoverable kinds (`worker`,
+`database`, `kv_namespace`, `zone`, `repository`, `project`). Valid outcome.
+
+## 10. Inspect what you have
+```bash
+bun run combie providers
+bun run combie resources
+bun run combie relationships
+```
+
+- `providers` — which providers are connected and when they last synced.
+- `resources` — every discovered resource. Filter with `--provider <id>` or
+  `--kind <kind>` (kinds listed above).
+- `relationships` — cross-provider edges. Combie proves exactly two kinds,
+  only when deterministic evidence exists:
+  - `source_for`: GitHub repository -> Vercel project (the project's Git link
+    must match a discovered repository)
+  - `uses_domain_in`: Vercel project -> Cloudflare zone (a custom domain apex
+    must match a discovered zone)
+
+If `relationships` is empty, no deterministic evidence was found — partial
+data produces no edges by design.
+
+## 11. Choose a resource ID
+```bash
+bun run combie resources
+```
+
+Resource IDs have an exact format, `provider:kind:providerResourceId`:
+
+```
+github:repository:915052094
+vercel:project:prj_abc123
+cloudflare:zone:zone_example_com
+```
+
+Copy the exact ID from the `resources` output. There is no fuzzy lookup — the
+ID must match exactly. A good first target is a Vercel project (or GitHub
+repository) you recognize.
+
+## 12. Investigate
+```bash
+bun run combie investigate vercel:project:prj_abc123
+```
+
+The report is composed deterministically, offline, read-only, one hop. It
+contains: current state; known facts and missing context; subject changes over
+time; provider-native evidence (e.g. Vercel deployments, GitHub workflow
+runs); related resources within one hop; shared commit context when exact Git
+commit evidence exists across GitHub and Vercel (full-SHA matches only); a
+provider-activity chronology; and detailed evidence.
+
+It does **not** contain root-cause analysis or AI reasoning — those do not
+exist yet. You get the facts and the evidence trail; interpretation is yours.
+
+**Troubleshooting:** `Unknown resource` -> the ID is not in the store;
+re-check the exact string from `resources`, or re-run `sync` — state is only
+as fresh as your last sync. Shared commit context missing -> that section only
+appears when a GitHub commit SHA exactly matches Vercel deployment commit
+evidence; partial or fuzzy matches never count.
+
+## 13. Re-sync later
+Sync is operator-driven. For fresh state, run it again: `bun run combie sync`.
+
+Read commands (`resources`, `relationships`, `changes`, `history`, `related`,
+`context`, `investigate`) never touch the network. Only `connect` and `sync`
+do.
+
+## 14. Verify offline behavior
+```bash
+unset GITHUB_TOKEN VERCEL_TOKEN CLOUDFLARE_API_TOKEN SENTRY_AUTH_TOKEN NEON_API_KEY PLANETSCALE_SERVICE_TOKEN_ID PLANETSCALE_SERVICE_TOKEN
+bun run combie resources
+bun run combie investigate <resource-id>
+```
+
+Both still work: they read only `.combie`. Nothing in the read path needs
+credentials or the network.
+
+Reset everything (including stored credentials):
+
+```bash
+rm -rf .combie
+bun run combie init
+```
+
+## 15. Troubleshooting basics
+| Symptom                        | Cause and fix                                                  |
+| ------------------------------ | -------------------------------------------------------------- |
+| `not initialized`              | Run `bun run combie init`.                                     |
+| `unknown provider`             | Check spelling: `cloudflare`, `github`, `vercel`, `sentry`, `neon`, `planetscale`. |
+| `X_TOKEN is not set`           | Wrong env var name, or not exported in this shell.             |
+| `authentication failed`        | Token rejected. Verify value and scopes.                       |
+| `no relationships`             | Expected without exact evidence: a Vercel Git link must match a discovered GitHub repo, and a domain apex must match a discovered Cloudflare zone. |
+| Shared commit context missing  | Only exact full-SHA matches across GitHub and Vercel produce it. |
+| `no supported resources found` | The account has none of the discoverable kinds. Valid result.  |
+
+---
+
+Still stuck? Most common causes: not in the repo root (so `./.combie` lives
+somewhere unexpected), an env var exported in a different shell than the one
+running `connect`, and missing read scopes on a token. Re-reading steps 3, 4,
+and 9 covers the rest.
