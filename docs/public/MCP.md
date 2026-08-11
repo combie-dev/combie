@@ -8,9 +8,10 @@ sync providers.
 
 The protocol contract is validated end to end with the MCP TypeScript client:
 tool discovery, calls, structured results, offline operation, and unchanged
-database bytes after reads. Client configuration has been checked for Codex
-0.146.0 and Cursor 3.15.6. A natural-language agent call remains a release
-condition until it is repeated successfully on the final release commit.
+database bytes after reads. Codex 0.146.0 successfully invoked both Resource
+listing and investigation through MCP against release commit `da03893` under
+its `writes` approval mode. Cursor 3.15.6 configuration/tool discovery was
+checked separately; no natural-language Cursor call is claimed.
 
 ## Before configuring an agent
 
@@ -96,8 +97,8 @@ Add this to `~/.cursor/mcp.json` and restart or refresh MCP servers:
 }
 ```
 
-Configuration and tool discovery were checked on Cursor 3.15.6; a recorded
-natural-language call is still required on the final release commit.
+Configuration and tool discovery were checked on Cursor 3.15.6; no recorded
+natural-language Cursor call is claimed.
 
 ## Claude Code
 
@@ -135,5 +136,5 @@ a deployment. It supplies bounded evidence; the external agent interprets it.
 - Relationships are one hop and limited to the two deterministic kinds in the
   README.
 - No root-cause analysis, recommendations, or autonomous action.
-- Natural-agent validation on the final release build is still a release gate;
-  protocol-level success alone does not satisfy it.
+- Codex natural-agent execution is validated; Cursor natural-agent execution
+  and Claude Code execution are not.

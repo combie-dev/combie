@@ -4,7 +4,7 @@ Date: 2026-08-11
 
 Package version: `0.1.0`
 
-Release commit: recorded in the invitation after the Sprint 041 commit exists
+Release commit: `da038939e1def0cf3b2888ec973a8ca465955425`
 
 Decision: **CONDITIONAL GO**
 
@@ -122,9 +122,9 @@ unredacted database. If logs may contain a secret, rotate it before sharing.
 - [ ] Complete one fresh live GitHub connect/sync using the public quickstart.
 - [ ] Complete one GitHub + Vercel live run, or explicitly narrow the cohort
   and invitation promise to a validated provider configuration.
-- [ ] Complete one natural-language Codex or Cursor MCP call against the final
+- [x] Complete one natural-language Codex or Cursor MCP call against the final
   release commit and record the result in `DOGFOOD.md`.
-- [ ] Re-run `bun test`, `bun run typecheck`, secret scan, and clean-checkout
+- [x] Re-run `bun test`, `bun run typecheck`, secret scan, and clean-checkout
   install verification at the final SHA.
 
 Until these boxes have real evidence, Sprint 042 invitations are blocked.

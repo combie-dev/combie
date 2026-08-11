@@ -56,9 +56,10 @@ invitations remain blocked by the conditions below.
 - [ ] **Live multi-provider relationship/shared-commit dogfood is complete.** A
   GitHub + Vercel run remains required, or the first cohort and invitation
   promise must be narrowed to a validated provider configuration.
-- [ ] **Final-SHA validation is complete.** Re-run clean clone/install, the two
-  natural Codex prompts, full tests, typecheck, and secret scan after the Sprint
-  041 release commit exists.
+- [x] **Release-SHA validation is complete.** Commit
+  `da038939e1def0cf3b2888ec973a8ca465955425` passed a clean clone, frozen
+  install, help/version/init, 624 tests, typecheck, committed-diff secret scan,
+  and a natural Codex prompt that invoked both listing and investigation.
 
 ## Classified findings
 

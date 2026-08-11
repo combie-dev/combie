@@ -1990,7 +1990,8 @@ is made.
 ## Codex
 
 Full local natural-agent calls succeeded for Resource listing and
-investigation on the worktree candidate. Repeat on the final release SHA.
+investigation, then succeeded again from a clean clone pinned to release commit
+`da038939e1def0cf3b2888ec973a8ca465955425`.
 
 ## Cursor
 
@@ -2062,8 +2063,9 @@ template and explicitly forbids sharing credentials or unredacted state.
 
 ## Release Identity
 
-Package version `0.1.0` plus exact git SHA. No tag/package/binary is claimed.
-The invitation must pin the final Sprint 041 commit.
+Package version `0.1.0` plus release commit
+`da038939e1def0cf3b2888ec973a8ca465955425`. No tag/package/binary is claimed.
+The invitation must provide repository access and pin that commit.
 
 ## Known Limitations
 
@@ -2118,10 +2120,11 @@ scope is explicitly narrowed.
 
 ## Validation
 
-`bun test`: 624 pass, 0 fail, 57 files. `bun run typecheck`: clean.
-`git diff --check`: clean. Added-line secret scan: clean. Final clean-clone and
-agent replay are recorded during release-SHA handoff. Worktree changes are
-Sprint 041 only.
+Release commit `da038939e1def0cf3b2888ec973a8ca465955425` from a clean clone:
+frozen install, help/version/init, state mode `0700`, 624 tests passing across
+57 files, typecheck clean, committed-diff secret scan clean, and a natural
+Codex listing + investigation call. `git diff --check` was clean. The release
+commit left the source checkout clean before this completion record.
 
 ## Canon Changes
 
@@ -2129,8 +2132,9 @@ None.
 
 ## Commit
 
-Implementation/release commit: pending final commit. Completion-record commit:
-pending. Sprint 042 was not started.
+Implementation/release commit:
+`da038939e1def0cf3b2888ec973a8ca465955425`. Completion-record commit: this
+document-only follow-up. Sprint 042 was not started.
 
 ---
 
@@ -2192,7 +2196,7 @@ pending. Sprint 042 was not started.
 - [x] safe bug-report guidance documented
 - [x] beta support path documented
 - [x] running build can be identified
-- [ ] exact release artifact/path chosen
+- [x] exact release artifact/path chosen
 - [x] known limitations documented
 - [x] all discovered issues classified P0/P1/P2/P3
 - [x] only beta blockers fixed
@@ -2205,10 +2209,10 @@ pending. Sprint 042 was not started.
 - [x] typecheck passes
 - [x] diff check clean
 - [x] secret scan clean
-- [ ] worktree clean
+- [x] worktree clean
 - [x] completion notes written
 - [x] Canon changes recorded or None
-- [ ] Sprint 041 committed separately
+- [x] Sprint 041 committed separately
 - [x] Sprint 042 not started
 
 ---

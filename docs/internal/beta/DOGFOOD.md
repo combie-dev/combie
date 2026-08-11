@@ -203,7 +203,7 @@ Notes:
 | --- | --- |
 | Date | 2026-08-11 |
 | Baseline commit | `cf9cf8776e890776248e7ccc6b6d3e564ab1e92a` |
-| Release commit | pending at time of this record; final SHA must be added to the invite |
+| Release commit | `da038939e1def0cf3b2888ec973a8ca465955425` |
 | Machine / OS | macOS 26.5.2, arm64 |
 | Bun | 1.3.5 |
 | Providers connected | none — every provider environment variable was absent and both configured `gh` accounts had invalid authentication |
@@ -269,6 +269,9 @@ substituted for dogfood.
 - [x] A second natural prompt invoked `investigate_resource` and accurately
   separated the known Resource identity/zero states from never-refreshed
   workflow evidence and absent Relationships.
+- [x] Final release-SHA replay from a clean clone invoked both tools in one
+  natural Codex prompt and returned the exact ID plus grounded known/missing
+  context.
 - [ ] Cursor 3.15.6 natural-language interaction: deferred; configuration and
   tool discovery only.
 - [ ] Claude Code: deferred; the installed path resolves to a broken,
