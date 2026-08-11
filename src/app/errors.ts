@@ -20,14 +20,14 @@ export class CombieError extends Error {
 export function notInitialized(): CombieError {
   return new CombieError(
     "NOT_INITIALIZED",
-    "Combie is not initialized in this directory.\nRun: combie init",
+    "Combie is not initialized in this directory.\nRun: bun run combie init",
   );
 }
 
 export function providerNotConnected(provider: string): CombieError {
   return new CombieError(
     "PROVIDER_NOT_CONNECTED",
-    `${provider} is not connected.\nRun: combie connect ${provider}`,
+    `${provider} is not connected.\nRun: bun run combie connect ${provider}`,
   );
 }
 

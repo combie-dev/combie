@@ -8,7 +8,7 @@ import {
   type VercelClient,
   type VercelClientOptions,
 } from "./client.ts";
-import { VercelApiError } from "./errors.ts";
+import { VercelApiError, redactSecrets } from "./errors.ts";
 import { normalizeDomains, normalizeProject } from "./normalize.ts";
 
 export interface VercelProviderOptions {
@@ -57,7 +57,7 @@ export function createVercelProvider(
         const reason = err instanceof Error ? err.message : "unknown error";
         return {
           ok: false,
-          message: `Vercel authentication failed: ${reason}`,
+          message: `Vercel authentication failed: ${redactSecrets(reason, [token])}`,
         };
       }
     },
@@ -96,7 +96,7 @@ export function createVercelProvider(
           });
         }
         const reason = err instanceof Error ? err.message : "unknown error";
-        throw new Error(`Vercel project discovery failed: ${reason}`);
+        throw new Error(`Vercel project discovery failed: ${redactSecrets(reason, [token])}`);
       }
     },
   };

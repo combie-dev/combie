@@ -134,6 +134,7 @@ describe("Store vercel deployment persistence", () => {
 
     const upgraded = new Store(dir);
     expect(upgraded.isInitialized()).toBe(true);
+    upgraded.init();
     const old = upgraded.listVercelDeploymentsForResource(
       "vercel:project:prj_a",
     );
@@ -275,6 +276,7 @@ describe("Store vercel deployment persistence", () => {
 
     const store = new Store(dir);
     expect(store.isInitialized()).toBe(true);
+    store.init();
     const upgraded = store.getVercelDeploymentRefresh("vercel:project:prj_a");
     // Pre-028 success rows safely backfill lastSuccessfulObservedAt from
     // observed_at (status proves success). result_count stays null (no count
@@ -374,6 +376,7 @@ describe("Store vercel deployment persistence", () => {
 
     const store = new Store(dir);
     expect(store.isInitialized()).toBe(true);
+    store.init();
     // Success row: safe backfill from observed_at.
     expect(store.getVercelDeploymentRefresh("vercel:project:ok")).toEqual({
       resourceId: "vercel:project:ok",

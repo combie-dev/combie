@@ -423,7 +423,7 @@ describe("Investigation context composition", () => {
     } catch (error) {
       expect((error as CombieError).code).toBe("RESOURCE_REF_REQUIRED");
       expect((error as CombieError).message).toContain(
-        "Usage: combie investigate <resource-id>",
+        "Usage: bun run combie investigate <resource-id>",
       );
     }
 

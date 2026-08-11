@@ -1,6 +1,7 @@
 import {
   CloudflareApiError,
   cloudflareErrorMessage,
+  redactSecrets,
   type CloudflareApiErrorBody,
 } from "./errors.ts";
 
@@ -124,7 +125,7 @@ export class CloudflareClient {
     } catch (err) {
       const reason = err instanceof Error ? err.message : "network error";
       throw new CloudflareApiError({
-        message: `${context}: could not reach Cloudflare API (${reason}). Check network connectivity and try again.`,
+        message: `${context}: could not reach Cloudflare API (${redactSecrets(reason, [this.token])}). Check network connectivity and try again.`,
         status: 0,
         endpoint: path,
       });
@@ -139,6 +140,7 @@ export class CloudflareClient {
           context,
           response.status,
           undefined,
+          [this.token],
         ) + " (response was not valid JSON)",
         status: response.status,
         endpoint: path,
@@ -151,7 +153,7 @@ export class CloudflareClient {
         .map((e) => e.code)
         .filter((c): c is number => typeof c === "number");
       throw new CloudflareApiError({
-        message: cloudflareErrorMessage(context, response.status, errors),
+        message: cloudflareErrorMessage(context, response.status, errors, [this.token]),
         status: response.status,
         codes,
         endpoint: path,

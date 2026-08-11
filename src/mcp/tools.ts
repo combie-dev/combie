@@ -1,12 +1,24 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { CombieError } from "../app/errors.ts";
+import { composeInvestigationFacts } from "../app/investigation-facts.ts";
 import { listProviders, listResources } from "../app/list.ts";
+import { composeMissingContext } from "../app/missing-context.ts";
+import { composeProviderActivityChronology } from "../app/provider-activity.ts";
+import { composeSharedCommitContext } from "../app/shared-commit-context.ts";
+import { composeInvestigationTimeline } from "../app/timeline.ts";
 import { safeJson } from "./serialization.ts";
 
 export interface ToolContext {
   baseDir: string;
 }
+
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
 
 function toolError(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
@@ -23,6 +35,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "Optionally filter by provider or kind. " +
         "Returns Resource identity fields: id, provider, kind, providerResourceId, and name. " +
         "Read-only; does not call providers or mutate state.",
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
         provider: z.string().optional().describe("Filter by provider id (e.g. 'github', 'vercel')"),
         kind: z.string().optional().describe("Filter by resource kind (e.g. 'repository', 'project')"),
@@ -57,6 +70,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "Preserves relationship kind, direction, evidence, source, and target. " +
         "Does not call providers, infer new relationships, or mutate state. " +
         "Requires a prior sync to populate local context.",
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
         resourceId: z.string().describe("Exact Combie Resource ID (e.g. 'vercel:project:prj_abc')"),
       }),
@@ -113,6 +127,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "including current state, changes, related Resources, provider evidence, authority, " +
         "and cross-provider shared commit context when available. " +
         "Does not call providers, mutate state, or perform inference.",
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
         resourceId: z.string().describe("Exact Combie Resource ID (e.g. 'vercel:project:prj_abc')"),
       }),
@@ -184,6 +199,11 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             subjectWorkflowRuns: ctx.subjectWorkflowRuns,
             subjectOperations: ctx.subjectOperations,
             related,
+            knownFacts: composeInvestigationFacts(ctx),
+            missingContext: composeMissingContext(ctx),
+            providerActivity: composeProviderActivityChronology(ctx),
+            timeline: composeInvestigationTimeline(ctx),
+            sharedCommitContext: composeSharedCommitContext(ctx),
           }) as Record<string, unknown>,
         };
       } catch (err) {
@@ -199,6 +219,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
       description:
         "List locally connected Combie providers with their status and account identity. " +
         "Read-only; uses persisted local state. Does not expose credentials or tokens.",
+      annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({}),
     },
     async () => {

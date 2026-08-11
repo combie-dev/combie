@@ -114,6 +114,26 @@ describe("Cloudflare adapter authenticate", () => {
     }
   });
 
+  test("redacts the exact credential when Cloudflare echoes a short token", async () => {
+    const secret = "short-secret-123";
+    const provider = createCloudflareProvider({
+      fetch: createMockFetch({
+        "/accounts": () =>
+          jsonResponse(
+            { success: false, errors: [{ code: 10000, message: `echo ${secret}` }], result: null },
+            401,
+          ),
+      }),
+    });
+
+    const result = await provider.authenticate(secret);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).not.toContain(secret);
+      expect(result.message).toContain("[REDACTED]");
+    }
+  });
+
   test("empty token fails without network call semantics", async () => {
     const provider = createCloudflareProvider({
       fetch: createMockFetch({}),

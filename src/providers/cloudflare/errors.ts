@@ -38,8 +38,14 @@ export class CloudflareApiError extends Error {
 }
 
 /** Strip anything that looks like a bearer token from free-form text. */
-export function redactSecrets(text: string): string {
-  return text
+export function redactSecrets(
+  text: string,
+  explicitSecrets: readonly string[] = [],
+): string {
+  const explicitlyRedacted = explicitSecrets
+    .filter((secret) => secret.length > 0)
+    .reduce((safe, secret) => safe.split(secret).join("[REDACTED]"), text);
+  return explicitlyRedacted
     .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, "Bearer [REDACTED]")
     .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[REDACTED]");
 }
@@ -47,6 +53,7 @@ export function redactSecrets(text: string): string {
 export function formatCloudflareErrors(
   errors: CloudflareApiErrorBody[] | undefined,
   fallback: string,
+  explicitSecrets: readonly string[] = [],
 ): string {
   if (!errors || errors.length === 0) {
     return fallback;
@@ -55,7 +62,7 @@ export function formatCloudflareErrors(
     .map((e) => {
       const code = e.code != null ? ` (code ${e.code})` : "";
       const msg = e.message?.trim() || "unknown error";
-      return `${redactSecrets(msg)}${code}`;
+      return `${redactSecrets(msg, explicitSecrets)}${code}`;
     })
     .filter(Boolean);
   return parts.length > 0 ? parts.join("; ") : fallback;
@@ -65,8 +72,9 @@ export function cloudflareErrorMessage(
   context: string,
   status: number,
   errors: CloudflareApiErrorBody[] | undefined,
+  explicitSecrets: readonly string[] = [],
 ): string {
-  const detail = formatCloudflareErrors(errors, `HTTP ${status}`);
+  const detail = formatCloudflareErrors(errors, `HTTP ${status}`, explicitSecrets);
   if (status === 401) {
     return `${context}: authentication failed — ${detail}. Check that the API token is valid and not expired.`;
   }

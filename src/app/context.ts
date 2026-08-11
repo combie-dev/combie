@@ -33,7 +33,7 @@ export function getResourceContext(
   if (!resourceRef) {
     throw new CombieError(
       "RESOURCE_REF_REQUIRED",
-      "Resource reference is required.\nUsage: combie context <resource-id>\nExample: combie context github:repository:1001\nList ids: combie resources",
+      "Resource reference is required.\nUsage: bun run combie context <resource-id>\nExample: bun run combie context github:repository:1001\nList ids: bun run combie resources",
     );
   }
 
@@ -45,7 +45,7 @@ export function getResourceContext(
     if (!resource) {
       throw new CombieError(
         "RESOURCE_NOT_FOUND",
-        `Resource not found: ${resourceRef}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: combie resources`,
+        `Resource not found: ${resourceRef}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: bun run combie resources`,
       );
     }
 

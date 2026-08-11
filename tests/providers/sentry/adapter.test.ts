@@ -184,6 +184,19 @@ describe("Sentry provider adapter", () => {
     }
   });
 
+  test("redacts the exact credential when Sentry echoes a short token", async () => {
+    const secret = "short-secret-123";
+    const provider = createSentryProvider({
+      fetch: mockFetch({ userStatus: 401, userError: `echo ${secret}` }),
+    });
+    const result = await provider.authenticate(secret);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).not.toContain(secret);
+      expect(result.message).toContain("[REDACTED]");
+    }
+  });
+
   test("authenticate fails when user id is missing", async () => {
     const provider = createSentryProvider({
       fetch: mockFetch({

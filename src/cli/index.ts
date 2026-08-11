@@ -22,11 +22,14 @@ import {
   formatInvestigationContext,
 } from "../app/investigate.ts";
 import { serveMcp } from "../mcp/server.ts";
+import packageJson from "../../package.json";
+
+const VERSION = packageJson.version;
 
 const HELP = `combie — engineering context layer
 
 Usage:
-  combie <command> [options]
+  bun run combie <command> [options]
 
 Commands:
   init                         Initialize local Combie state
@@ -41,6 +44,7 @@ Commands:
   context <resource-id>        Compose current, related, and Change context
   investigate <resource-id>    Compose one-hop investigation context around a resource
   mcp                          Start read-only MCP server over stdio
+  version                      Show build version
   help                         Show this help
 
 Connect options:
@@ -67,26 +71,27 @@ Resource references:
 Global:
   --dir <path>                 Combie state directory (default: ./.combie)
   --help, -h                   Show help
+  --version                    Show build version
 
 Examples:
-  combie init
-  combie connect cloudflare --use-env
-  combie connect github --use-gh
-  combie connect vercel --use-env
-  combie connect sentry --use-env
-  combie connect neon --use-env
-  combie connect planetscale --use-env
-  combie connect planetscale --organization acme --use-env
-  combie sync
-  combie providers
-  combie resources
-  combie relationships
-  combie changes
-  combie history github:repository:1001
-  combie related github:repository:1001
-  combie context github:repository:1001
-  combie investigate vercel:project:prj_abc
-  combie mcp
+  bun run combie init
+  bun run combie connect cloudflare --use-env
+  bun run combie connect github --use-gh
+  bun run combie connect vercel --use-env
+  bun run combie connect sentry --use-env
+  bun run combie connect neon --use-env
+  bun run combie connect planetscale --use-env
+  bun run combie connect planetscale --organization acme --use-env
+  bun run combie sync
+  bun run combie providers
+  bun run combie resources
+  bun run combie relationships
+  bun run combie changes
+  bun run combie history github:repository:1001
+  bun run combie related github:repository:1001
+  bun run combie context github:repository:1001
+  bun run combie investigate vercel:project:prj_abc
+  bun run combie mcp
 `;
 
 interface ParsedArgs {
@@ -139,9 +144,19 @@ function baseDirFromFlags(flags: Record<string, string | boolean>): string {
 async function main(argv: string[]): Promise<number> {
   const { command, positionals, flags } = parseArgs(argv);
 
+  if (command === "version" || flags.version === true) {
+    console.log(`combie ${VERSION}`);
+    return 0;
+  }
+
   if (!command || command === "help" || flags.help) {
     console.log(HELP.trimEnd());
     return 0;
+  }
+
+  if (flags.dir === true) {
+    console.error("--dir requires a path.\nUsage: bun run combie <command> --dir <path>");
+    return 1;
   }
 
   const baseDir = baseDirFromFlags(flags);
@@ -157,7 +172,7 @@ async function main(argv: string[]): Promise<number> {
         const providerId = positionals[0];
         if (!providerId) {
           console.error(
-            "Usage: combie connect <provider>\nExample: combie connect cloudflare\n         combie connect github --use-gh",
+            "Usage: bun run combie connect <provider>\nExample: bun run combie connect cloudflare\n         bun run combie connect github --use-gh",
           );
           return 1;
         }
@@ -217,7 +232,7 @@ async function main(argv: string[]): Promise<number> {
         const resourceRef = positionals[0];
         if (!resourceRef) {
           console.error(
-            "Usage: combie history <resource-id>\nExample: combie history github:repository:1001\nList ids: combie resources",
+            "Usage: bun run combie history <resource-id>\nExample: bun run combie history github:repository:1001\nList ids: bun run combie resources",
           );
           return 1;
         }
@@ -229,7 +244,7 @@ async function main(argv: string[]): Promise<number> {
         const resourceRef = positionals[0];
         if (!resourceRef) {
           console.error(
-            "Usage: combie related <resource-id>\nExample: combie related github:repository:1001\nList ids: combie resources",
+            "Usage: bun run combie related <resource-id>\nExample: bun run combie related github:repository:1001\nList ids: bun run combie resources",
           );
           return 1;
         }
@@ -241,7 +256,7 @@ async function main(argv: string[]): Promise<number> {
         const resourceRef = positionals[0];
         if (!resourceRef) {
           console.error(
-            "Usage: combie context <resource-id>\nExample: combie context github:repository:1001\nList ids: combie resources",
+            "Usage: bun run combie context <resource-id>\nExample: bun run combie context github:repository:1001\nList ids: bun run combie resources",
           );
           return 1;
         }
@@ -253,7 +268,7 @@ async function main(argv: string[]): Promise<number> {
         const resourceRef = positionals[0];
         if (!resourceRef) {
           console.error(
-            "Usage: combie investigate <resource-id>\nExample: combie investigate vercel:project:prj_abc\nList ids: combie resources",
+            "Usage: bun run combie investigate <resource-id>\nExample: bun run combie investigate vercel:project:prj_abc\nList ids: bun run combie resources",
           );
           return 1;
         }

@@ -187,6 +187,7 @@ export interface ApplyResourceObservation extends ChangeObservation {
 export class Store {
   private readonly baseDir: string;
   private db: Database | null = null;
+  private dbReadOnly = false;
 
   constructor(baseDir: string) {
     this.baseDir = baseDir;
@@ -204,6 +205,14 @@ export class Store {
       );
     }
     return this.db;
+  }
+
+  /** Reopen through the explicit write path before any state mutation. */
+  private getWritableDb(): Database {
+    if (this.dbReadOnly) {
+      this.init();
+    }
+    return this.getDb();
   }
 
   /** Apply idempotent schema (safe on existing DBs that predate new tables). */
@@ -308,6 +317,12 @@ export class Store {
       mkdirSync(dir, { recursive: true, mode: 0o700 });
     }
 
+    if (this.dbReadOnly) {
+      this.db?.close();
+      this.db = null;
+      this.dbReadOnly = false;
+    }
+
     if (!this.db) {
       this.db = new Database(dbPath(this.baseDir));
       this.db.exec("PRAGMA journal_mode = WAL;");
@@ -337,18 +352,13 @@ export class Store {
         if (!existsSync(path)) {
           return false;
         }
-        this.db = new Database(path);
-        this.db.exec("PRAGMA journal_mode = WAL;");
-        this.db.exec("PRAGMA foreign_keys = ON;");
+        this.db = new Database(path, { readonly: true });
+        this.dbReadOnly = true;
       }
-      // Ensure newer tables (e.g. relationships) exist on pre-005 databases.
-      this.applySchema(this.db);
       const row = this.db
         .query(`SELECT value FROM meta WHERE key = 'initialized'`)
         .get() as { value: string } | null;
-      const initialized = row?.value === "true";
-      if (initialized) this.prepareChangeDetection(this.db);
-      return initialized;
+      return row?.value === "true";
     } catch {
       return false;
     }
@@ -361,7 +371,7 @@ export class Store {
     lastSyncAt?: string | null;
     config?: Record<string, unknown>;
   }): void {
-    const db = this.getDb();
+    const db = this.getWritableDb();
     const configJson = JSON.stringify(provider.config ?? {});
     const lastSyncAt = provider.lastSyncAt ?? null;
     db.query(
@@ -413,7 +423,7 @@ export class Store {
    * preserve created_at.
    */
   upsertResource(resource: Resource): void {
-    const db = this.getDb();
+    const db = this.getWritableDb();
     const metadataJson = JSON.stringify(resource.metadata);
     db.query(
       `INSERT INTO resources (
@@ -503,7 +513,7 @@ export class Store {
     resource: Resource,
     observation: ApplyResourceObservation,
   ): Change | null {
-    const db = this.getDb();
+    const db = this.getWritableDb();
     const apply = db.transaction((): Change | null => {
       const previous = this.getResource(resource.id);
       const effective = previous
@@ -571,7 +581,7 @@ export class Store {
   }
 
   setLastSync(providerId: string, at: string): void {
-    const db = this.getDb();
+    const db = this.getWritableDb();
     const result = db
       .query(`UPDATE providers SET last_sync_at = ? WHERE id = ?`)
       .run(at, providerId);
@@ -588,7 +598,7 @@ export class Store {
    * preserve created_at and stable id.
    */
   upsertRelationship(relationship: Relationship): void {
-    const db = this.getDb();
+    const db = this.getWritableDb();
     const evidenceJson = JSON.stringify(relationship.evidence);
     db.query(
       `INSERT INTO relationships (
@@ -676,7 +686,7 @@ export class Store {
   }
 
   deleteRelationship(id: string): void {
-    this.getDb().query(`DELETE FROM relationships WHERE id = ?`).run(id);
+    this.getWritableDb().query(`DELETE FROM relationships WHERE id = ?`).run(id);
   }
 
   /**
@@ -684,7 +694,7 @@ export class Store {
    */
   deleteRelationshipsByIds(ids: string[]): number {
     if (ids.length === 0) return 0;
-    const db = this.getDb();
+    const db = this.getWritableDb();
     let deleted = 0;
     const stmt = db.query(`DELETE FROM relationships WHERE id = ?`);
     for (const id of ids) {
@@ -700,7 +710,7 @@ export class Store {
    * Does not create Resource Changes.
    */
   upsertVercelDeployment(deployment: VercelDeploymentEvidence): void {
-    const db = this.getDb();
+    const db = this.getWritableDb();
     db.query(
       `INSERT INTO vercel_deployments (
          uid, provider, resource_id, project_id,
@@ -767,7 +777,7 @@ export class Store {
   }
 
   setVercelDeploymentRefresh(refresh: VercelDeploymentRefresh): void {
-    this.getDb()
+    this.getWritableDb()
       .query(
         `INSERT INTO vercel_deployment_refresh (
            resource_id, status, observed_at, message, result_count,
@@ -827,7 +837,7 @@ export class Store {
    * Does not create Resource Changes.
    */
   upsertGitHubWorkflowRun(run: GitHubWorkflowRunEvidence): void {
-    this.getDb()
+    this.getWritableDb()
       .query(
         `INSERT INTO github_workflow_runs (
            run_id, provider, resource_id, repository_id,
@@ -903,7 +913,7 @@ export class Store {
   }
 
   setGitHubWorkflowRunRefresh(refresh: GitHubWorkflowRunRefresh): void {
-    this.getDb()
+    this.getWritableDb()
       .query(
         `INSERT INTO github_workflow_run_refresh (
            resource_id, status, observed_at, message, result_count,
@@ -959,7 +969,7 @@ export class Store {
 
   /** Upsert the latest observed lifecycle for one stable Neon operation id. */
   upsertNeonOperation(operation: NeonOperationEvidence): void {
-    this.getDb()
+    this.getWritableDb()
       .query(
         `INSERT INTO neon_operations (
            operation_id, provider, resource_id, project_id,
@@ -1023,7 +1033,7 @@ export class Store {
   }
 
   setNeonOperationRefresh(refresh: NeonOperationRefresh): void {
-    this.getDb()
+    this.getWritableDb()
       .query(
         `INSERT INTO neon_operation_refresh (
            resource_id, status, observed_at, message, result_count,
@@ -1079,6 +1089,7 @@ export class Store {
     if (this.db) {
       this.db.close();
       this.db = null;
+      this.dbReadOnly = false;
     }
   }
 }

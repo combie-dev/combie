@@ -27,8 +27,14 @@ export class GitHubApiError extends Error {
 }
 
 /** Strip anything that looks like a bearer/token from free-form text. */
-export function redactSecrets(text: string): string {
-  return text
+export function redactSecrets(
+  text: string,
+  explicitSecrets: readonly string[] = [],
+): string {
+  const explicitlyRedacted = explicitSecrets
+    .filter((secret) => secret.length > 0)
+    .reduce((safe, secret) => safe.split(secret).join("[REDACTED]"), text);
+  return explicitlyRedacted
     .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, "Bearer [REDACTED]")
     .replace(/token\s+[A-Za-z0-9._\-]+/gi, "token [REDACTED]")
     .replace(/\b(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "[REDACTED]")
@@ -39,8 +45,9 @@ export function githubErrorMessage(
   context: string,
   status: number,
   detail?: string,
+  explicitSecrets: readonly string[] = [],
 ): string {
-  const safeDetail = detail ? redactSecrets(detail.trim()) : "";
+  const safeDetail = detail ? redactSecrets(detail.trim(), explicitSecrets) : "";
   if (status === 401) {
     return (
       `${context}: authentication failed` +

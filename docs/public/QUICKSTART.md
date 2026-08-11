@@ -8,31 +8,34 @@ one-hop investigation. You drive every step — no daemon, no background
 refresh, no webhooks. Allow ~20 minutes.
 
 ## 1. Requirements
+
 - **Bun** (>= 1.1) — Bun-only, does not run on Node: `curl -fsSL https://bun.sh/install | bash`
 - **git**
-- **Tokens**: GitHub and Vercel are required; the rest are optional
+- **Tokens**: at least one supported provider; GitHub + Vercel is the
+  recommended beta stack and the rest are optional
 
 | Provider    | What you need                                          |
 | ----------- | ------------------------------------------------------ |
 | GitHub      | Personal access token with `repo` read access          |
 | Vercel      | Access token (Dashboard -> Settings -> Tokens)         |
 | Cloudflare  | API token with Account read: Workers, D1, KV, Zones    |
-| Sentry      | Auth token                                             |
+| Sentry      | Auth token with organization read access               |
 | Neon        | API key                                                |
 | PlanetScale | Service-token ID + secret pair (read access)           |
 
 Never set the same variable two ways — use **one** method per provider.
 ## 2. Clone and install
 ```bash
-git clone <combie-repository-url>
+git clone <repository-url-from-your-invite>
 cd combie
-bun install
+git checkout <release-sha-from-your-invite>
+bun install --frozen-lockfile
 bun run combie help
 ```
 
-You should see the command list. Not published to any registry. Optional global
-install: `bun link` (then use `combie <command>` instead of `bun run combie
-<command>` below).
+Your invite must provide the repository URL and exact release SHA. You should
+see the command list. Combie is not published to a registry and the closed-beta
+path does not use `bun link`; use `bun run combie` from the repository root.
 
 **Troubleshooting:** `bun: command not found` -> Bun missing or not on PATH
 (reinstall, new shell). `Could not find package` -> wrong directory or
@@ -46,8 +49,9 @@ bun run combie init
 Expected output: `Initialized Combie at /path/to/cwd/.combie`.
 
 This creates the state directory `.combie` (mode 0700) in the working
-directory, containing `combie.db` (SQLite: resources, changes, relationships,
-evidence) and `credentials` (mode 0600, separate from the DB). The global flag
+directory containing `combie.db` (SQLite: resources, changes, relationships,
+evidence). The separate `credentials` file is created on first successful
+connect with mode 0600. The global flag
 `--dir <path>` points any command at a different state directory (handy for
 `/tmp` experiments); `COMBIE_HOME` does the same. No encryption at rest, no OS
 keychain. Deleting `.combie` removes everything, including stored credentials —
@@ -72,7 +76,7 @@ Expected output:
 
 ```
 Connected GitHub (account: <your-account>).
-Credentials stored securely for local use.
+Credential stored in the local restricted-permission credentials file.
 ```
 
 **Troubleshooting:** `GITHUB_TOKEN (or GH_TOKEN) is not set` -> env var not
@@ -90,11 +94,13 @@ Expected output:
 
 ```
 Connected Vercel (account: <your-account>).
-Credentials stored securely for local use.
+Credential stored in the local restricted-permission credentials file.
 ```
 
 **Troubleshooting:** same `is not set` / `authentication failed` checks as
-GitHub above.
+GitHub above. This beta does not pass a Vercel `teamId`; team-owned projects
+may therefore be absent. Use a personal-scope project for the first cohort or
+record the team-scope gap in feedback.
 
 ## 6. (Optional) Connect Cloudflare
 ```bash
@@ -102,9 +108,12 @@ export CLOUDFLARE_API_TOKEN=<token>
 bun run combie connect cloudflare --use-env
 ```
 
-The token needs read access to the discovery endpoints Combie calls (Account
-read: Workers, D1, KV, Zones). Without those permissions, discovery comes back
-empty even though the token is valid.
+The token must be able to list the account and read Workers scripts, D1
+databases, KV namespaces, and zones. Discovery is all-or-nothing: if any of
+those calls is denied, Cloudflare sync fails with a permission error; it does
+not silently return an empty inventory. Tokens that can see multiple accounts
+are not supported in the first cohort because this beta selects the first
+returned account.
 
 ## 7. (Optional) Connect Sentry
 ```bash
@@ -113,6 +122,8 @@ bun run combie connect sentry --use-env
 ```
 
 `SENTRY_TOKEN` works as an alternative name.
+The token must be able to list organizations and their projects (`org:read` on
+legacy token scopes).
 
 ## 8. (Optional) Connect Neon and PlanetScale
 ```bash
@@ -227,13 +238,17 @@ do.
 
 ## 14. Verify offline behavior
 ```bash
-unset GITHUB_TOKEN VERCEL_TOKEN CLOUDFLARE_API_TOKEN SENTRY_AUTH_TOKEN NEON_API_KEY PLANETSCALE_SERVICE_TOKEN_ID PLANETSCALE_SERVICE_TOKEN
+unset GITHUB_TOKEN GH_TOKEN VERCEL_TOKEN CLOUDFLARE_API_TOKEN SENTRY_AUTH_TOKEN SENTRY_TOKEN NEON_API_KEY PLANETSCALE_SERVICE_TOKEN_ID PLANETSCALE_SERVICE_TOKEN
 bun run combie resources
 bun run combie investigate <resource-id>
 ```
 
 Both still work: they read only `.combie`. Nothing in the read path needs
 credentials or the network.
+
+To give a local agent the same read-only context, follow
+[MCP.md](MCP.md). The MCP server exposes exactly four read-only stdio tools and
+still requires a prior manual sync.
 
 Reset everything (including stored credentials):
 

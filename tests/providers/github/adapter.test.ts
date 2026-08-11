@@ -81,6 +81,19 @@ describe("GitHub provider adapter", () => {
     }
   });
 
+  test("redacts the exact credential when GitHub echoes a short token", async () => {
+    const secret = "short-secret-123";
+    const provider = createGitHubProvider({
+      fetch: mockFetch({ userStatus: 401, userError: `echo ${secret}` }),
+    });
+    const result = await provider.authenticate(secret);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).not.toContain(secret);
+      expect(result.message).toContain("[REDACTED]");
+    }
+  });
+
   test("discoverResources normalizes repositories with stable ids", async () => {
     const provider = createGitHubProvider({
       fetch: mockFetch({}),

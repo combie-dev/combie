@@ -8,7 +8,7 @@ import {
   type GitHubClient,
   type GitHubClientOptions,
 } from "./client.ts";
-import { GitHubApiError } from "./errors.ts";
+import { GitHubApiError, redactSecrets } from "./errors.ts";
 import { normalizeRepository } from "./normalize.ts";
 
 export interface GitHubProviderOptions {
@@ -66,7 +66,7 @@ export function createGitHubProvider(
         const reason = err instanceof Error ? err.message : "unknown error";
         return {
           ok: false,
-          message: `GitHub authentication failed: ${reason}`,
+          message: `GitHub authentication failed: ${redactSecrets(reason, [token])}`,
         };
       }
     },
@@ -91,7 +91,7 @@ export function createGitHubProvider(
           });
         }
         const reason = err instanceof Error ? err.message : "unknown error";
-        throw new Error(`GitHub repository discovery failed: ${reason}`);
+        throw new Error(`GitHub repository discovery failed: ${redactSecrets(reason, [token])}`);
       }
     },
   };

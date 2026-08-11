@@ -53,7 +53,7 @@ Start: clean clone, no `.combie` state, no provider env vars.
 
 Checklist:
 - [ ] Clean clone and `bun install` complete without errors
-- [ ] `bun run combie --help` prints the full command list (12 commands) and connect options
+- [ ] `bun run combie --help` prints the full command list (14 commands) and connect options
 - [ ] `bun run combie init` succeeds
 - [ ] State dir created at `./.combie` with mode `0700`
 - [ ] `./.combie/combie.db` exists (SQLite)
@@ -167,7 +167,7 @@ Record: (any command that failed or touched the network)
 Goal: verify errors are understandable, actionable, and secret-safe.
 
 Checklist:
-- [ ] Invalid Resource ID format (e.g. `combie history not-an-id`) gives a clear parse error
+- [ ] Invalid Resource ID format (e.g. `bun run combie history not-an-id`) gives a clear parse error
 - [ ] Unknown Resource (valid format, no such resource) gives a clear not-found error
 - [ ] `connect <provider>` with no token and no env var explains the options
 - [ ] Bad token (safe to try with a throwaway token) fails with redacted error
@@ -194,3 +194,100 @@ Notes:
 ---
 
 *Blank template. Copy the file or keep one canonical instance and append per run.*
+
+---
+
+## Sprint 041 release-candidate run — 2026-08-11
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-08-11 |
+| Baseline commit | `cf9cf8776e890776248e7ccc6b6d3e564ab1e92a` |
+| Release commit | pending at time of this record; final SHA must be added to the invite |
+| Machine / OS | macOS 26.5.2, arm64 |
+| Bun | 1.3.5 |
+| Providers connected | none — every provider environment variable was absent and both configured `gh` accounts had invalid authentication |
+| Resources | one synthetic local Resource used only for MCP/client journey validation; no fixture is represented as live dogfood |
+| Relationships / evidence | none in synthetic state |
+| Investigate target | `github:repository:123` (synthetic local state) |
+| Security | exact-secret echo tests passed; protocol database hash unchanged; no credential file was created in the synthetic state |
+
+### Scenario A — clean install/start
+
+- [x] A clean local clone outside the development checkout completed `bun
+  install --frozen-lockfile`, `bun run combie help`, and `bun run combie init`.
+- [x] Repository-only distribution was confirmed: package is private, `bin`
+  points at TypeScript source, and no registry package or standalone binary
+  exists.
+- [x] `bun run combie --version` reports `combie 0.1.0` after the Sprint 041 fix.
+- [x] `--dir` without a path now exits non-zero with a usable command.
+- [x] Arbitrary-cwd operation with an absolute `COMBIE_HOME` succeeded.
+- [ ] Accessible external clone URL/pin: deferred because this checkout has no
+  remote or tags. The invitation must provide both.
+
+Friction: the former optional `bun link` path made the command work but changed
+the tracked `src/cli/index.ts` mode from 0644 to 0777, dirtying a clean clone on
+Bun 1.3.5. It was removed from the beta journey.
+
+### Scenarios B–E — live provider journey
+
+Deferred. No authorized token was present for Cloudflare, GitHub, Vercel,
+Sentry, Neon, or PlanetScale, and `gh auth status` reported invalid credentials.
+Therefore no fresh live connect, sync, Resource inventory, Relationship, or
+shared-commit result is claimed. Fixture/unit coverage remains green but is not
+substituted for dogfood.
+
+### Scenario F — offline/read-only
+
+- [x] CLI Resource reads succeeded from an isolated state using only
+  `COMBIE_HOME` and no provider environment variables.
+- [x] The stdio protocol client listed tools and called investigation offline.
+- [x] Database SHA-256 was unchanged after MCP calls.
+- [x] A legacy initialized database retained the same SHA and table set after
+  the initialization probe.
+
+### Scenario G — errors and credential safety
+
+- [x] Uninitialized, unknown Resource, missing argument, empty state, unknown
+  provider, and missing-token paths are covered and use `bun run combie`
+  recovery commands.
+- [x] Cloudflare, GitHub, Vercel, and Sentry mocked upstream responses that
+  echoed `short-secret-123`; every user-visible error contained `[REDACTED]`
+  and not the credential.
+- [x] Multi-provider partial-failure behavior remains covered without live
+  credentials.
+
+### Scenarios H–I — real MCP client and agent
+
+- [x] MCP TypeScript client discovered exactly `list_resources`,
+  `list_providers`, `get_related_context`, and `investigate_resource`.
+- [x] Every tool advertised read-only, non-destructive, idempotent, closed-world
+  annotations.
+- [x] Codex CLI 0.146.0, configured only through invocation overrides and run
+  with `default_tools_approval_mode="writes"`, invoked `list_resources` and
+  returned exact ID `github:repository:123` without shell use.
+- [x] A second natural prompt invoked `investigate_resource` and accurately
+  separated the known Resource identity/zero states from never-refreshed
+  workflow evidence and absent Relationships.
+- [ ] Cursor 3.15.6 natural-language interaction: deferred; configuration and
+  tool discovery only.
+- [ ] Claude Code: deferred; the installed path resolves to a broken,
+  non-executable file. Current official stdio configuration is documented.
+
+### Sprint 041 findings
+
+| Finding | Severity | Outcome |
+| --- | --- | --- |
+| README said MCP did not exist | blocker / P0 | fixed |
+| Read probe applied schema migrations | blocker / P0 | fixed with read-only open + regression |
+| Four providers could echo exact short secrets | blocker / P0 | fixed + four regressions |
+| MCP investigation response omitted promised projections | major / P1 | fixed + protocol assertion |
+| MCP tools lacked read-only annotations | major / P1 | fixed; real Codex call now succeeds |
+| No accessible repository remote/tag or use terms | major / P1 | release condition |
+| No live provider credentials | major / P1 | explicit deferral / release condition |
+| Vercel team and Cloudflare multi-account scope ambiguity | major / P1 | documented; restrict cohort |
+| `bun link` dirtied a clean clone | major / P1 | removed from beta path |
+
+Decision from this run: **CONDITIONAL GO**. Product-level local/MCP blockers are
+fixed; Sprint 042 invitations remain blocked by the release conditions in
+`RELEASE.md`.

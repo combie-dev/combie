@@ -1,159 +1,139 @@
-# MCP — Agent Access (Beta)
+# MCP — Local Agent Access (Closed Beta)
 
-Combie exposes a **local stdio MCP server** that gives external AI agents read-only access to your synchronized Combie engineering context.
+Combie exposes synchronized engineering context to local MCP clients through a
+read-only stdio server. It is not a remote service and it cannot connect or
+sync providers.
 
 ## Status
 
-**MCP beta: validated.** Read-only, local-only, stdio-only. Requires prior `combie sync`. Agents cannot connect providers, sync, or mutate data through MCP.
+The protocol contract is validated end to end with the MCP TypeScript client:
+tool discovery, calls, structured results, offline operation, and unchanged
+database bytes after reads. Client configuration has been checked for Codex
+0.146.0 and Cursor 3.15.6. A natural-language agent call remains a release
+condition until it is repeated successfully on the final release commit.
 
-## Quickstart
+## Before configuring an agent
 
-1. Initialize Combie and connect at least one provider:
+Populate Combie through the CLI first:
 
-   ```bash
-   bun run combie init
-   bun run combie connect github --use-gh
-   bun run combie connect vercel --use-env
-   bun run combie sync
-   ```
+```bash
+bun run combie init
+bun run combie connect github --use-gh
+bun run combie sync
+```
 
-2. The MCP server reads from the same Combie state as the CLI. Configure your state location.
+One provider is enough. Provider credentials are needed for `connect` and
+`sync`, but not for MCP reads after state has been synchronized.
 
-3. Start the MCP server (or let your MCP client launch it):
+## Frozen beta contract
 
-   ```bash
-   bun run combie mcp
-   ```
+- Transport: local stdio only; no HTTP, SSE, or hosted endpoint.
+- State: the same local SQLite state used by the CLI.
+- Network: tools never call providers.
+- Mutation: tools are annotated read-only, non-destructive, idempotent, and
+  closed-world; protocol tests verify that calls leave the database unchanged.
+- Lookup: exact stable Resource IDs; no fuzzy names.
+- Scope: deterministic current state and one-hop relationships only.
 
-## State Directory
+| Tool | Input | Structured result |
+| --- | --- | --- |
+| `list_resources` | optional `provider`, `kind` | Resource identities and stable IDs |
+| `list_providers` | none | provider status and persisted account identity |
+| `get_related_context` | exact `resourceId` | one-hop edges, direction, neighbors, evidence |
+| `investigate_resource` | exact `resourceId` | subject, changes, native evidence, related context, known facts, missing context, provider activity, timeline, and exact shared-commit groups |
 
-The MCP server reads from the same Combie state as the CLI:
+There are no MCP tools for `init`, `connect`, `sync`, credential access,
+provider calls, deploys, restarts, rollbacks, or any other write.
 
-- Default: `./.combie`
-- Override: `COMBIE_HOME` environment variable
-- Or: `--dir <path>` CLI flag
+## State location
 
-When configuring an external MCP client that may launch from a different working directory, set `COMBIE_HOME` to point at your Combie state directory.
+The default is `./.combie`. Agent processes often start elsewhere, so either
+set `COMBIE_HOME` to the absolute state-directory path or pass `--dir` to the
+server command. The examples below use `COMBIE_HOME`.
 
-## Beta MCP Contract
+## Codex
 
-### Transport
-- **Local stdio only** — no HTTP, SSE, Streamable HTTP, or remote hosting.
+Codex supports local stdio servers with a command, arguments, environment, and
+working directory. Add Combie with:
 
-### State
-- **Local persisted Combie context** — requires prior manual `combie sync`.
-- MCP tools never call providers or mutate state.
+```bash
+codex mcp add combie \
+  --env COMBIE_HOME=/absolute/path/to/.combie \
+  -- bun run --cwd /absolute/path/to/combie combie mcp
+```
 
-### Tools (frozen for beta)
-
-| Tool | Input | Description |
-|------|-------|-------------|
-| `list_resources` | `provider?`, `kind?` (optional filters) | List locally stored Combie Resources with exact stable IDs (provider:kind:providerResourceId). Use for Resource discovery. |
-| `list_providers` | none | List locally connected providers with status and account identity. No credentials or tokens exposed. |
-| `get_related_context` | `resourceId` (exact) | Return one-hop Relationships and neighbor Resources for an exact Resource ID. Preserves relationship kind, direction, and evidence. |
-| `investigate_resource` | `resourceId` (exact) | Return complete deterministic investigation context: current state, changes, related Resources, provider evidence (deployments, workflow runs, operations), authority, and cross-provider shared commit context when available. |
-
-### Guarantees
-- **Read-only** — no state mutation
-- **No provider network calls** — reads local persisted state only
-- **Structured results** — `structuredContent` with JSON-safe data
-- **Exact Resource IDs** — no fuzzy name matching
-- **One-hop relationships** only
-- **Deterministic evidence** with authority provenance
-- **Offline** after prior sync — no provider credentials required for reads
-
-### Non-guarantees
-- Not real-time — requires manual `combie sync` outside MCP
-- Not root cause analysis — provides context, not causality
-- Not infrastructure execution — no deploy, rollback, or restart
-- Not complete graph — one-hop relationships only
-- Not autonomous — external agent provides reasoning
-
-## Verified Client Configuration
-
-### Codex
-
-Tested with: Codex CLI v0.146.0
-
-Configure via `~/.codex/config.toml`:
+Equivalent `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.combie]
 command = "bun"
-args = ["run", "--cwd", "/path/to/combie", "combie", "mcp"]
+args = ["run", "combie", "mcp"]
+cwd = "/absolute/path/to/combie"
 
 [mcp_servers.combie.env]
-COMBIE_HOME = "/path/to/.combie"
+COMBIE_HOME = "/absolute/path/to/.combie"
 ```
 
-Or using the CLI:
+Confirm with `codex mcp list`, then ask: “Use Combie to list the engineering
+Resources it knows about.” Codex documentation:
+<https://learn.chatgpt.com/docs/extend/mcp?surface=cli>.
 
-```bash
-codex mcp add combie --env "COMBIE_HOME=/path/to/.combie" -- bun run --cwd /path/to/combie combie mcp
-```
+## Cursor
 
-**Known limitation:** Codex exec mode (non-interactive) may require explicit MCP tool approval. Interactive sessions work as expected.
-
-### Cursor
-
-Tested with: Cursor 3.15.6
-
-Configure via `~/.cursor/mcp.json`:
+Add this to `~/.cursor/mcp.json` and restart or refresh MCP servers:
 
 ```json
 {
   "mcpServers": {
     "combie": {
       "command": "bun",
-      "args": ["run", "--cwd", "/path/to/combie", "combie", "mcp"],
+      "args": ["run", "--cwd", "/absolute/path/to/combie", "combie", "mcp"],
       "env": {
-        "COMBIE_HOME": "/path/to/.combie"
+        "COMBIE_HOME": "/absolute/path/to/.combie"
       }
     }
   }
 }
 ```
 
-### Claude Code
+Configuration and tool discovery were checked on Cursor 3.15.6; a recorded
+natural-language call is still required on the final release commit.
 
-Not yet validated — configuration mechanism varies by version. Will be validated in a follow-up release.
+## Claude Code
 
-## Prior Sync Required
+Current Claude Code documentation uses this local stdio form:
 
-MCP tools read from local Combie state. Run `combie sync` outside MCP to populate data before an agent uses MCP tools.
-
-## Not Exposed
-
-MCP tools do NOT expose:
-- `init`, `connect`, `sync`, `disconnect`
-- Credential writes or credential data
-- Infrastructure execution (deploy, rollback, restart)
-- Provider network calls
-
-## Example Agent Prompts
-
+```bash
+claude mcp add --transport stdio \
+  --env COMBIE_HOME=/absolute/path/to/.combie \
+  combie -- bun run --cwd /absolute/path/to/combie combie mcp
 ```
+
+Claude Code could not be validated on the release machine because the local
+`claude` executable is broken/non-executable. This is a recorded deferral, not
+a claim of compatibility. Documentation: <https://code.claude.com/docs/en/mcp>.
+
+## Useful prompts
+
+```text
 Use Combie to list the engineering Resources it knows about.
 
-Use Combie to investigate this Resource: vercel:project:prj_...
+Use Combie to investigate github:repository:123 and separate known facts from
+missing context.
 
-Use Combie to explain which Resources are directly related to this one
-and what evidence supports those Relationships.
-
-Use Combie to tell me what it knows and what context is missing around
-this Resource.
+Use Combie to show the direct Relationships around this Resource and the
+provider evidence for each one.
 ```
 
-Avoid:
-```
-Use Combie to fix my deployment.
-Use Combie to find the root cause.
-Use Combie to sync my providers.
-```
+Do not ask Combie MCP to sync, mutate infrastructure, find a root cause, or fix
+a deployment. It supplies bounded evidence; the external agent interprets it.
 
 ## Limitations
 
-- Client-specific configuration currently verified for Codex and Cursor only.
-- Tool schemas may be refined based on beta feedback.
-- Provider credentials must be configured through the CLI before MCP use.
-- Output size for `investigate_resource` varies with data; no pagination in beta.
+- State is only as fresh as the last manual CLI sync.
+- Investigation output is unpaginated and can be large.
+- Relationships are one hop and limited to the two deterministic kinds in the
+  README.
+- No root-cause analysis, recommendations, or autonomous action.
+- Natural-agent validation on the final release build is still a release gate;
+  protocol-level success alone does not satisfy it.

@@ -167,7 +167,7 @@ export function createPlanetScaleProvider(
           throw new PlanetScaleApiError({
             message:
               "PlanetScale discovery failed: the connected organization is no longer visible to this service token. " +
-              "Reconnect with: combie connect planetscale --use-env",
+              "Reconnect with: bun run combie connect planetscale --use-env",
             status: 404,
             endpoint: "/organizations",
           });

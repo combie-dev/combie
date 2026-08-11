@@ -8,7 +8,7 @@ import {
   type CloudflareClientOptions,
   createCloudflareClient,
 } from "./client.ts";
-import { CloudflareApiError } from "./errors.ts";
+import { CloudflareApiError, redactSecrets } from "./errors.ts";
 import {
   normalizeD1,
   normalizeKvNamespace,
@@ -78,7 +78,7 @@ export function createCloudflareProvider(
         const reason = err instanceof Error ? err.message : "unknown error";
         return {
           ok: false,
-          message: `Cloudflare authentication failed: ${reason}`,
+          message: `Cloudflare authentication failed: ${redactSecrets(reason, [token])}`,
         };
       }
     },
@@ -118,7 +118,7 @@ export function createCloudflareProvider(
           });
         }
         const reason = err instanceof Error ? err.message : "unknown error";
-        throw new Error(`Cloudflare resource discovery failed: ${reason}`);
+        throw new Error(`Cloudflare resource discovery failed: ${redactSecrets(reason, [token])}`);
       }
     },
   };

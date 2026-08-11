@@ -201,6 +201,7 @@ describe("Store github workflow-run persistence", () => {
 
     const store = new Store(dir);
     expect(store.isInitialized()).toBe(true);
+    store.init();
     const upgraded = store.getGitHubWorkflowRunRefresh("github:repository:1");
     expect(upgraded?.resultCount).toBeNull();
     expect(store.listGitHubWorkflowRunsForResource("github:repository:1")).toHaveLength(

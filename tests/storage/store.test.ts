@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
@@ -60,6 +61,35 @@ describe("Store", () => {
     });
     store.init();
     expect(store.getProvider("cloudflare")?.status).toBe("connected");
+  });
+
+  test("isInitialized is a read-only probe and does not migrate legacy state", () => {
+    const dir = tempDir();
+    dirs.push(dir);
+    const path = dbPath(dir);
+    const legacy = new Database(path, { create: true });
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+    `);
+    legacy.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(path)).digest("hex");
+    const before = digest();
+
+    const store = new Store(dir);
+    stores.push(store);
+    expect(store.isInitialized()).toBe(true);
+    store.close();
+
+    expect(digest()).toBe(before);
+    const check = new Database(path, { readonly: true });
+    const tables = check
+      .query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    check.close();
+    expect(tables.map((row) => row.name)).toEqual(["meta"]);
   });
 
   test("upsertProvider and get/list providers", () => {

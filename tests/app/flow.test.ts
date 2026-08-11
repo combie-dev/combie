@@ -127,6 +127,8 @@ describe("app vertical slice", () => {
 
     const pTable = formatProvidersTable(providers);
     expect(pTable).toContain("Cloudflare");
+    expect(pTable).toContain("ACCOUNT");
+    expect(pTable).toContain("Test Account");
     expect(pTable).toContain("Connected");
     expect(pTable).not.toContain(secret);
 

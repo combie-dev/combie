@@ -8,7 +8,7 @@ import {
   type SentryClient,
   type SentryClientOptions,
 } from "./client.ts";
-import { SentryApiError } from "./errors.ts";
+import { SentryApiError, redactSecrets } from "./errors.ts";
 import { normalizeProject } from "./normalize.ts";
 
 export interface SentryProviderOptions {
@@ -57,7 +57,7 @@ export function createSentryProvider(
         const reason = err instanceof Error ? err.message : "unknown error";
         return {
           ok: false,
-          message: `Sentry authentication failed: ${reason}`,
+          message: `Sentry authentication failed: ${redactSecrets(reason, [token])}`,
         };
       }
     },
@@ -82,7 +82,7 @@ export function createSentryProvider(
           });
         }
         const reason = err instanceof Error ? err.message : "unknown error";
-        throw new Error(`Sentry project discovery failed: ${reason}`);
+        throw new Error(`Sentry project discovery failed: ${redactSecrets(reason, [token])}`);
       }
     },
   };

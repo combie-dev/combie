@@ -33,7 +33,7 @@ export function getResourceHistory(
   if (!ref) {
     throw new CombieError(
       "RESOURCE_REF_REQUIRED",
-      "Resource reference is required.\nUsage: combie history <resource-id>\nExample: combie history github:repository:1001\nList ids: combie resources",
+      "Resource reference is required.\nUsage: bun run combie history <resource-id>\nExample: bun run combie history github:repository:1001\nList ids: bun run combie resources",
     );
   }
 
@@ -47,7 +47,7 @@ export function getResourceHistory(
     if (!resource) {
       throw new CombieError(
         "RESOURCE_NOT_FOUND",
-        `Resource not found: ${ref}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: combie resources`,
+        `Resource not found: ${ref}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: bun run combie resources`,
       );
     }
 

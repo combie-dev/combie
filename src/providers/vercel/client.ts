@@ -285,7 +285,7 @@ export class VercelClient {
     } catch (err) {
       const reason = err instanceof Error ? err.message : "network error";
       throw new VercelApiError({
-        message: `${context}: could not reach Vercel API (${redactSecrets(reason)}). Check network connectivity and try again.`,
+        message: `${context}: could not reach Vercel API (${redactSecrets(reason, [this.token])}). Check network connectivity and try again.`,
         status: 0,
         endpoint: path.split("?")[0] ?? path,
       });
@@ -296,7 +296,7 @@ export class VercelClient {
       bodyText = await response.text();
     } catch {
       throw new VercelApiError({
-        message: vercelErrorMessage(context, response.status, "empty response body"),
+        message: vercelErrorMessage(context, response.status, "empty response body", [this.token]),
         status: response.status,
         endpoint: path.split("?")[0] ?? path,
       });
@@ -308,7 +308,7 @@ export class VercelClient {
     } catch {
       throw new VercelApiError({
         message:
-          vercelErrorMessage(context, response.status) +
+          vercelErrorMessage(context, response.status, undefined, [this.token]) +
           " (response was not valid JSON)",
         status: response.status,
         endpoint: path.split("?")[0] ?? path,
@@ -326,7 +326,7 @@ export class VercelClient {
           : undefined;
       const messageFromBody = errorObj?.message;
       throw new VercelApiError({
-        message: vercelErrorMessage(context, response.status, messageFromBody),
+        message: vercelErrorMessage(context, response.status, messageFromBody, [this.token]),
         status: response.status,
         endpoint: path.split("?")[0] ?? path,
       });

@@ -36,10 +36,13 @@ deterministic data you can inspect.
   workflow runs (bounded to 100), Neon operations.
 - Compose offline one-hop investigation context for any resource
   (`investigate`), with provenance for every fact.
+- Expose that same synchronized context to local agents through four read-only
+  MCP tools over stdio.
 
 ## What Combie does not do yet
 
-- No MCP server or protocol support.
+- No remote, HTTP, or hosted MCP endpoint; MCP is local stdio only.
+- No provider connection, sync, or other state mutation through MCP.
 - No API or SDK.
 - No AI or model-based reasoning.
 - No automatic or background sync (sync is manual).
@@ -76,30 +79,22 @@ core connect → sync → investigate loop.
 ## Installation / running
 
 ```bash
-git clone <combie-repository-url>
+git clone <repository-url-from-your-invite>
 cd combie
-bun install
+bun install --frozen-lockfile
+git checkout <release-sha-from-your-invite>
 bun run combie --help
 ```
 
-The `<combie-repository-url>` placeholder is filled in by the invite that
-grants you access to the repository.
-
-Combie is not on npm. The only route to a global `combie` command is a local
-`bun link` from the repository root (the `bin` entry ships with a
-`#!/usr/bin/env bun` shebang):
-
-```bash
-bun link
-combie --help
-```
-
-In this README, `combie <command>` and `bun run combie <command>` are
-interchangeable.
+The invite must supply an accessible repository URL and an exact release SHA.
+Combie is not on npm and does not ship a standalone binary. Run it from the
+repository with `bun run combie`; global linking is not part of the beta path.
 
 ## Quickstart
 
-This walks the default stack: GitHub + Vercel.
+One connected provider is enough to use Combie. GitHub + Vercel is the
+recommended beta stack because it can demonstrate the `source_for`
+relationship and shared commit context.
 
 ```bash
 bun install
@@ -151,6 +146,8 @@ resources`.
 | `related <resource-id>`| One-hop related context for a resource            | No      | Yes       |
 | `context <resource-id>`| Current, related, and Change context              | No      | Yes       |
 | `investigate <resource-id>` | One-hop investigation context                | No      | Yes       |
+| `mcp`                  | Start the four-tool local stdio MCP server       | No      | Yes       |
+| `version` / `--version`| Show the package version                         | No      | Yes       |
 | `help`                 | Show help                                         | No      | Yes       |
 
 Global flags: `--dir <path>` (state directory override, default `./.combie`),
@@ -217,7 +214,7 @@ Combie keeps everything under one state directory, `./.combie` by default:
 .combie/
   combie.db      SQLite database (WAL) with providers, resources,
                  relationships, changes, history, evidence
-  credentials    JSON file with provider tokens (mode 0600)
+  credentials    JSON file with provider tokens (mode 0600; created on first connect)
 ```
 
 Override the location with `--dir <path>` on any command, or with the
@@ -238,6 +235,9 @@ Each provider needs a credential with read access. Full setup for every
 provider (and scopes) is in
 [docs/public/QUICKSTART.md](docs/public/QUICKSTART.md).
 
+For agent configuration and the frozen four-tool contract, see
+[docs/public/MCP.md](docs/public/MCP.md).
+
 ## Development
 
 ```bash
@@ -250,6 +250,6 @@ The test suite runs without live provider credentials (fixtures and mocks).
 
 ## Status
 
-Late alpha, preparing for a closed beta. The core connect → sync →
-investigate loop works for the six providers above. Changes to state layout
-or command semantics are still possible.
+Closed-beta candidate. The core connect → sync → investigate loop and the
+read-only MCP surface are implemented. See the release note supplied with the
+invite for the exact build identity and current limitations.

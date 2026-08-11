@@ -53,6 +53,22 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("Initialized");
   });
 
+  test("--dir requires an explicit path", async () => {
+    const result = await capture(() => main(["init", "--dir"]));
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--dir requires a path");
+  });
+
+  test("version reports the beta package identity", async () => {
+    const long = await capture(() => main(["--version"]));
+    expect(long.code).toBe(0);
+    expect(long.stdout).toBe("combie 0.1.0");
+
+    const command = await capture(() => main(["version"]));
+    expect(command.code).toBe(0);
+    expect(command.stdout).toBe("combie 0.1.0");
+  });
+
   test("init is idempotent", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const result = await capture(() => main(["init", "--dir", dir]));
@@ -280,7 +296,7 @@ describe("CLI commands", () => {
       main(["history", "--dir", dir]),
     );
     expect(missingArgument.code).not.toBe(0);
-    expect(missingArgument.stderr).toContain("Usage: combie history <resource-id>");
+    expect(missingArgument.stderr).toContain("Usage: bun run combie history <resource-id>");
 
     const unknown = await capture(() =>
       main(["history", "github:repository:missing", "--dir", dir]),
@@ -407,7 +423,7 @@ describe("CLI commands", () => {
     );
     expect(missingArgument.code).not.toBe(0);
     expect(missingArgument.stderr).toContain(
-      "Usage: combie context <resource-id>",
+      "Usage: bun run combie context <resource-id>",
     );
 
     const unknown = await capture(() =>
@@ -431,7 +447,7 @@ describe("CLI commands", () => {
     );
     expect(missingArgument.code).not.toBe(0);
     expect(missingArgument.stderr).toContain(
-      "Usage: combie investigate <resource-id>",
+      "Usage: bun run combie investigate <resource-id>",
     );
 
     const unknown = await capture(() =>

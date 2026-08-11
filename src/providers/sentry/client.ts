@@ -210,7 +210,7 @@ export class SentryClient {
     } catch (err) {
       const reason = err instanceof Error ? err.message : "network error";
       throw new SentryApiError({
-        message: `${context}: could not reach Sentry API (${redactSecrets(reason)}). Check network connectivity and try again.`,
+        message: `${context}: could not reach Sentry API (${redactSecrets(reason, [this.token])}). Check network connectivity and try again.`,
         status: 0,
         endpoint,
       });
@@ -221,7 +221,7 @@ export class SentryClient {
       bodyText = await response.text();
     } catch {
       throw new SentryApiError({
-        message: sentryErrorMessage(context, response.status, "empty response body"),
+        message: sentryErrorMessage(context, response.status, "empty response body", [this.token]),
         status: response.status,
         endpoint,
       });
@@ -233,7 +233,7 @@ export class SentryClient {
     } catch {
       throw new SentryApiError({
         message:
-          sentryErrorMessage(context, response.status) +
+          sentryErrorMessage(context, response.status, undefined, [this.token]) +
           " (response was not valid JSON)",
         status: response.status,
         endpoint,
@@ -243,7 +243,7 @@ export class SentryClient {
     if (!response.ok) {
       const detail = extractSentryErrorDetail(body);
       throw new SentryApiError({
-        message: sentryErrorMessage(context, response.status, detail),
+        message: sentryErrorMessage(context, response.status, detail, [this.token]),
         status: response.status,
         endpoint,
       });

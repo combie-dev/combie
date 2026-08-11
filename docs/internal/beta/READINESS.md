@@ -1,71 +1,97 @@
-# READINESS.md — Closed-Beta Release Gate (internal)
+# Closed-Beta Release Gate (internal)
 
-Gate for inviting the first closed-beta cohort (5–15 startup engineers).
-Source of truth: the repository, Sprint 037 audit, Sprint 038 run, Sprint 039 MCP foundation, and Sprint 040 MCP validation.
-Each item is an honest status checkbox with "Status / evidence" line.
-
-Product status context: **B — late alpha / closed-beta candidate** (Sprint 037).
-Three hard blockers were identified; Sprints 038–040 resolve blockers 1 and 2, with blocker 3 partially addressed.
-
----
+Updated 2026-08-11 during Sprint 041. The evidence source is the repository,
+not earlier completion claims. Decision: **CONDITIONAL GO**; Sprint 042
+invitations remain blocked by the conditions below.
 
 ## Gate items
 
-- [x] **1. README accurately describes the current product**
-      Status / evidence: README rewritten in Sprint 038; commands verified against `src/cli/index.ts`; no Sprint-001-era claims remaining.
+- [x] **README matches the product.** It documents all six providers, the
+  repository-only run path, manual sync, exact Relationships, offline
+  investigation, and four-tool read-only MCP. The former “No MCP” contradiction
+  and `bun link` path are removed.
+- [x] **Quickstart matches implementation.** One provider is sufficient;
+  GitHub + Vercel is recommended. Credential creation timing, Cloudflare
+  all-or-nothing permissions, Sentry organization access, Vercel team scope,
+  and offline environment variables are explicit.
+- [x] **Credential matrix matches `src/app/connect.ts`.** Authorization remains
+  explicit and the credentials file is separate with mode `0600`.
+- [x] **Current / NOT YET boundary is clear.** No AI reasoning, root cause,
+  background sync, autonomous action, remote MCP, API/SDK, or complete graph is
+  promised.
+- [x] **Read behavior is non-mutating.** `Store.isInitialized()` now opens the
+  database read-only; writes reopen through `init()`. A legacy-database hash and
+  table-count regression plus a real stdio protocol test cover the boundary.
+- [x] **Credential error redaction covers exact secrets.** Cloudflare, GitHub,
+  Vercel, and Sentry now scrub the credential itself in response and network
+  errors, including short echoed values.
+- [x] **CLI identity and recovery are usable.** `version`/`--version` reports
+  `0.1.0`, missing `--dir` fails clearly, recovery commands use the canonical
+  `bun run combie` path, and `providers` displays account identity.
+- [x] **MCP beta contract is exactly four tools.** Every tool is annotated
+  read-only/non-destructive/idempotent/closed-world. `investigate_resource`
+  returns Known Facts, Missing Context, provider activity, timeline, and exact
+  shared-commit context as documented.
+- [x] **Protocol-level MCP validation is real.** The test client discovers
+  exactly four tools, calls investigation, verifies the complete structured
+  keys, and observes unchanged database bytes.
+- [x] **Natural Codex agent execution succeeded.** Codex CLI 0.146.0 under
+  `default_tools_approval_mode="writes"` called `list_resources` and
+  `investigate_resource` without shell use or provider credentials and produced
+  grounded known-versus-missing output from an isolated state directory.
+- [x] **Cursor validation level is stated precisely.** Configuration and tool
+  discovery were checked on Cursor 3.15.6; no natural-language Cursor call is
+  claimed.
+- [x] **Claude Code deferral is precise.** Current official stdio syntax is
+  documented; the installed executable is broken/non-executable, so no tool
+  discovery or call is claimed.
+- [x] **Beta audience, learning goals, support, safe bug reporting, rollback,
+  known limitations, and release conditions are defined** in `RELEASE.md`.
+- [ ] **Accessible release artifact is ready.** This checkout has no git remote
+  or tag. The final invite still needs an accessible repository URL, exact
+  Sprint 041 SHA, and owner-approved license/beta-use terms.
+- [ ] **Fresh live provider journey is complete on the final build.** No valid
+  authorized provider credential or GitHub CLI login was available during this
+  run, so connect/sync cannot honestly be marked complete.
+- [ ] **Live multi-provider relationship/shared-commit dogfood is complete.** A
+  GitHub + Vercel run remains required, or the first cohort and invitation
+  promise must be narrowed to a validated provider configuration.
+- [ ] **Final-SHA validation is complete.** Re-run clean clone/install, the two
+  natural Codex prompts, full tests, typecheck, and secret scan after the Sprint
+  041 release commit exists.
 
-- [x] **2. Public quickstart (`docs/public/QUICKSTART.md`) usable end-to-end**
-      Status / evidence: followed line-by-line in Sprint 038; GitHub + Vercel path complete; Neon/PlanetScale optional sections present and clearly labeled optional.
+## Classified findings
 
-- [x] **3. Provider credential matrix verified from code**
-      Status / evidence: all rows verified against `src/app/connect.ts` in Sprint 038. Cloudflare `CLOUDFLARE_API_TOKEN`; GitHub `GITHUB_TOKEN`/`GH_TOKEN` or `--use-gh`; Vercel `VERCEL_TOKEN`; Sentry `SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN`; Neon `NEON_API_KEY`; PlanetScale `PLANETSCALE_SERVICE_TOKEN_ID` + `PLANETSCALE_SERVICE_TOKEN`.
+P0 fixed:
 
-- [x] **4. Product limitations documented (what Combie does not do)**
-      Status / evidence: explicit NOT-YET list in README; MCP read-only boundary in `docs/public/MCP.md`.
+- Public README denied the shipped MCP surface.
+- Read/MCP paths applied schema migrations.
+- Four provider error paths could echo an exact credential.
 
-- [x] **5. Security behavior documented truthfully**
-      Status / evidence: state dir `0700`; credentials file `0600` separate from `combie.db`; offline reads after sync; `--token` may appear in shell history — prefer `--use-env`/`--use-gh`; no OS keychain; no encryption at rest; reset = delete the state dir.
+P1 fixed:
 
-- [x] **6. CLI help strings consistent**
-      Status / evidence: "PlanetScale" display label vs `planetscale` id; Sentry `SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN` naming; all fixed in Sprint 038.
+- MCP investigation structured output did not match its documented contract.
+- MCP tools lacked read-only annotations, triggering write-style approvals.
+- `--dir` without a value silently used the current directory.
+- Build version and provider account identity were absent from CLI output.
+- Recovery commands and the documented install path disagreed.
 
-- [x] **7. Test suite green**
-      Status / evidence: 616 passing, 0 failing, 56 files. Sprint 040 baseline; re-run `bun test`.
+P1 accepted as release conditions/limitations:
 
-- [x] **8. Typecheck green**
-      Status / evidence: `bun run typecheck` clean (Sprint 040 verified).
+- No accessible remote, tag, committed license, or beta-use terms in checkout.
+- Vercel team scope (`teamId`) is not implemented.
+- Cloudflare multi-account selection is implicit and unsafe for that cohort.
+- Live GitHub + Vercel dogfood is unavailable without authorized credentials.
 
-- [x] **9. Dogfood run status**
-      Status / evidence: GitHub-only dogfood completed Sprint 038 (310 repos, 606 workflow runs). Multi-provider live state verified Sprint 040: Cloudflare (1 zone) + Vercel (44 projects) connected and synced on workspace `.combie`. Multi-provider relationships (source_for, uses_domain_in) not observed — no GitHub connected in workspace state, no custom domain matches found. Deferred scenarios documented in DOGFOOD.md.
+P2 deferred:
 
-- [x] **10. MCP status — foundation implemented AND externally validated (Sprint 039 + 040)**
-      Status / evidence: Sprint 039: MCP foundation implemented (stdio server, 4 read-only tools). Sprint 040: stdio server fix (Bun event loop), serialization infinite recursion fix, tools.ts/server.ts duplication resolved, protocol-level scenario suite validated (Scenarios A–J), offline/read-only/security checks verified. Codex (v0.146.0) and Cursor (3.15.6) client configurations documented. Beta MCP contract frozen with 4 tools.
+- No npm package, standalone binary, automated release pipeline, or in-product
+  feedback system.
+- Cursor natural-agent and Claude Code client execution are unvalidated.
 
-- [x] **11. MCP external-agent validation (Sprint 040)**
-      Status / evidence: Protocol-level validation: 4 tools discovered, all respond with structured data, no credential leakage, read-only DB hash unchanged, offline works without provider credentials. Codex: MCP server discovered, tool calls attempted (approval mechanism in exec mode needs further investigation). Cursor: MCP config deployed. Claude Code: not validated (configuration mechanism differs; lower priority).
+## Decision
 
-- [x] **12. Beta promise frozen (current vs not-yet boundary)**
-      Status / evidence: Current: local-first CLI; six providers; normalized Resources; exact Relationships (2 kinds); Changes/history; Vercel deployments, GitHub workflow runs, Neon operations evidence; offline one-hop investigate; MCP beta with 4 read-only tools over local stdio. NOT YET: AI reasoning, automatic sync, webhooks, complete graph, root cause, autonomous execution, learning. Beta MCP contract frozen in `docs/public/MCP.md`.
-
-- [ ] **13. Invite criteria note**
-      Status / evidence: Beta start planned for after Sprint 041 (release prep). Sprints completed: 038 docs → 039 MCP foundation → 040 tools/validation. Sprint 041 release prep remains. Invites land in Sprint 042. Do not invite early.
-
----
-
-## Remaining Beta Blockers
-
-1. **Sprint 041 — Closed-beta release prep** (versioning, CI, known limitations, invite criteria, dogfood completion)
-2. **Multi-provider dogfood completion** — workspace has Cloudflare + Vercel live; GitHub needed for source_for relationships and shared commit validation. Requires GitHub credentials in workspace context.
-3. **Claude Code MCP validation** — deferred; not a hard blocker if Codex + Cursor are available.
-
----
-
-## Decision rule
-
-- All boxes ticked with real evidence, or explicit recorded deferrals with the exact missing prerequisite → gate passed / conditional.
-- MCP must be validated (Sprint 039 + 040 completed).
-- Any manufactured dogfood result invalidates the gate.
-
----
-
-*Maintainers only. Updated after Sprint 040 MCP validation.*
+**CONDITIONAL GO.** The local product and read-only agent boundary are coherent
+enough for a small closed beta, but invitations must not start until the
+unchecked conditions above are either completed with evidence or explicitly
+narrowed in the invitation. Sprint 042 is therefore **blocked** at this commit.

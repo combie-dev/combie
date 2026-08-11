@@ -120,7 +120,7 @@ async function syncOne(
   if (!token) {
     throw new CombieError(
       "MISSING_CREDENTIALS",
-      `No credentials found for ${providerId}.\nRun: combie connect ${providerId}`,
+      `No credentials found for ${providerId}.\nRun: bun run combie connect ${providerId}`,
     );
   }
 
@@ -140,7 +140,7 @@ async function syncOne(
     if (!accountId) {
       throw new CombieError(
         "NO_ACCOUNT",
-        `${provider.name} authentication succeeded but no account identity was returned.\nReconnect with: combie connect ${providerId}`,
+        `${provider.name} authentication succeeded but no account identity was returned.\nReconnect with: bun run combie connect ${providerId}`,
       );
     }
     store.upsertProvider({
@@ -262,6 +262,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
     if (!store.isInitialized()) {
       throw notInitialized();
     }
+    store.init();
 
     const providers = options.providerId
       ? [options.providerId.toLowerCase()]
@@ -273,7 +274,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
     if (providers.length === 0) {
       throw new CombieError(
         "NO_PROVIDERS",
-        "No connected providers to sync.\nRun: combie connect cloudflare\nor: combie connect github\nor: combie connect vercel\nor: combie connect sentry\nor: combie connect neon\nor: combie connect planetscale",
+        "No connected providers to sync.\nRun: bun run combie connect cloudflare\nor: bun run combie connect github\nor: bun run combie connect vercel\nor: bun run combie connect sentry\nor: bun run combie connect neon\nor: bun run combie connect planetscale",
       );
     }
 

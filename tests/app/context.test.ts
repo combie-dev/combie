@@ -339,7 +339,7 @@ describe("Resource context composition", () => {
       expect(error).toBeInstanceOf(CombieError);
       expect((error as CombieError).code).toBe("RESOURCE_REF_REQUIRED");
       expect((error as CombieError).message).toContain(
-        "Usage: combie context <resource-id>",
+        "Usage: bun run combie context <resource-id>",
       );
     }
 

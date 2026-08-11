@@ -172,7 +172,7 @@ export class GitHubClient {
     } catch (err) {
       const reason = err instanceof Error ? err.message : "network error";
       throw new GitHubApiError({
-        message: `${context}: could not reach GitHub API (${redactSecrets(reason)}). Check network connectivity and try again.`,
+        message: `${context}: could not reach GitHub API (${redactSecrets(reason, [this.token])}). Check network connectivity and try again.`,
         status: 0,
         endpoint: path.split("?")[0] ?? path,
       });
@@ -183,7 +183,7 @@ export class GitHubClient {
       bodyText = await response.text();
     } catch {
       throw new GitHubApiError({
-        message: githubErrorMessage(context, response.status, "empty response body"),
+        message: githubErrorMessage(context, response.status, "empty response body", [this.token]),
         status: response.status,
         endpoint: path.split("?")[0] ?? path,
       });
@@ -195,7 +195,7 @@ export class GitHubClient {
     } catch {
       throw new GitHubApiError({
         message:
-          githubErrorMessage(context, response.status) +
+          githubErrorMessage(context, response.status, undefined, [this.token]) +
           " (response was not valid JSON)",
         status: response.status,
         endpoint: path.split("?")[0] ?? path,
@@ -211,7 +211,7 @@ export class GitHubClient {
           ? (body as { message: string }).message
           : undefined;
       throw new GitHubApiError({
-        message: githubErrorMessage(context, response.status, messageFromBody),
+        message: githubErrorMessage(context, response.status, messageFromBody, [this.token]),
         status: response.status,
         endpoint: path.split("?")[0] ?? path,
       });

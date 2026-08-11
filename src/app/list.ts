@@ -131,7 +131,7 @@ export function formatRelationshipsTable(
   if (relationships.length === 0) {
     return (
       "No relationships discovered yet.\n" +
-      "Run: combie sync\n" +
+      "Run: bun run combie sync\n" +
       "(Relationships require deterministic provider evidence, e.g. Vercel GitHub link matched to a GitHub repository.)"
     );
   }
@@ -195,21 +195,28 @@ export function formatRelativeTime(iso: string | null | undefined, now = Date.no
 
 export function formatProvidersTable(providers: ProviderRecord[], now = Date.now()): string {
   if (providers.length === 0) {
-    return "No providers connected.\nRun: combie connect cloudflare\nor: combie connect github\nor: combie connect vercel\nor: combie connect sentry\nor: combie connect neon\nor: combie connect planetscale";
+    return "No providers connected.\nRun: bun run combie connect cloudflare\nor: bun run combie connect github\nor: bun run combie connect vercel\nor: bun run combie connect sentry\nor: bun run combie connect neon\nor: bun run combie connect planetscale";
   }
   const rows = providers.map((p) => ({
     provider: p.name,
+    account:
+      (typeof p.config?.accountName === "string" && p.config.accountName) ||
+      (typeof p.config?.accountId === "string" && p.config.accountId) ||
+      "—",
     status: p.status === "connected" ? "Connected" : p.status,
     lastSync: formatRelativeTime(p.lastSyncAt, now),
   }));
   const col1 = Math.max("PROVIDER".length, ...rows.map((r) => r.provider.length));
-  const col2 = Math.max("STATUS".length, ...rows.map((r) => r.status.length));
+  const col2 = Math.max("ACCOUNT".length, ...rows.map((r) => r.account.length));
+  const col3 = Math.max("STATUS".length, ...rows.map((r) => r.status.length));
   const header =
-    "PROVIDER".padEnd(col1) + "  " + "STATUS".padEnd(col2) + "  " + "LAST SYNC";
+    "PROVIDER".padEnd(col1) + "  " + "ACCOUNT".padEnd(col2) + "  " +
+    "STATUS".padEnd(col3) + "  " + "LAST SYNC";
   const body = rows
     .map(
       (r) =>
-        r.provider.padEnd(col1) + "  " + r.status.padEnd(col2) + "  " + r.lastSync,
+        r.provider.padEnd(col1) + "  " + r.account.padEnd(col2) + "  " +
+        r.status.padEnd(col3) + "  " + r.lastSync,
     )
     .join("\n");
   return `${header}\n${body}`;
@@ -217,7 +224,7 @@ export function formatProvidersTable(providers: ProviderRecord[], now = Date.now
 
 export function formatResourcesTable(resources: Resource[]): string {
   if (resources.length === 0) {
-    return "No resources discovered yet.\nRun: combie sync";
+    return "No resources discovered yet.\nRun: bun run combie sync";
   }
   const rows = resources.map((r) => ({
     type: r.kind,
@@ -256,7 +263,7 @@ export function formatChangesTable(
   now = Date.now(),
 ): string {
   if (changes.length === 0) {
-    return "No changes observed yet.\nRun: combie sync";
+    return "No changes observed yet.\nRun: bun run combie sync";
   }
   const rows = changes.map((change) => ({
     when: formatRelativeTime(change.observedAt, now),
