@@ -115,6 +115,7 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("VERCEL_TOKEN");
     expect(result.stdout).toContain("sentry");
     expect(result.stdout).toContain("SENTRY_AUTH_TOKEN");
+    expect(result.stdout).toContain("SENTRY_TOKEN");
     expect(result.stdout).toContain("neon");
     expect(result.stdout).toContain("NEON_API_KEY");
     expect(result.stdout).toContain("planetscale");
@@ -162,10 +163,36 @@ describe("CLI commands", () => {
     const providers = await capture(() => main(["providers", "--dir", dir]));
     expect(providers.code).toBe(0);
     expect(providers.stdout.toLowerCase()).toMatch(/no providers|connect/);
+    for (const providerId of [
+      "cloudflare",
+      "github",
+      "vercel",
+      "sentry",
+      "neon",
+      "planetscale",
+    ]) {
+      expect(providers.stdout).toContain(providerId);
+    }
 
     const resources = await capture(() => main(["resources", "--dir", dir]));
     expect(resources.code).toBe(0);
     expect(resources.stdout.toLowerCase()).toMatch(/no resources|sync/);
+  });
+
+  test("sync empty state enumerates every supported provider", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() => main(["sync", "--dir", dir]));
+    expect(result.code).not.toBe(0);
+    for (const providerId of [
+      "cloudflare",
+      "github",
+      "vercel",
+      "sentry",
+      "neon",
+      "planetscale",
+    ]) {
+      expect(result.stderr).toContain(providerId);
+    }
   });
 
   test("relationships fails when not initialized", async () => {

@@ -138,6 +138,9 @@ describe("app vertical slice", () => {
     expect(rTable).toContain("zone");
     expect(rTable).toContain("example.com");
     expect(rTable).not.toContain(secret);
+    for (const resource of resources) {
+      expect(rTable).toContain(resource.id);
+    }
   });
 
   test("connect via --use-env path", async () => {

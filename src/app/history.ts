@@ -63,6 +63,7 @@ const PROVIDER_DISPLAY: Record<string, string> = {
   cloudflare: "Cloudflare",
   sentry: "Sentry",
   neon: "Neon",
+  planetscale: "PlanetScale",
 };
 
 function providerLabel(provider: string): string {

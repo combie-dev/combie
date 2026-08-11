@@ -49,7 +49,7 @@ Connect options:
                                cloudflare: CLOUDFLARE_API_TOKEN
                                github: GITHUB_TOKEN or GH_TOKEN
                                vercel: VERCEL_TOKEN
-                               sentry: SENTRY_AUTH_TOKEN
+                               sentry: SENTRY_AUTH_TOKEN or SENTRY_TOKEN
                                neon: NEON_API_KEY
                                planetscale: PLANETSCALE_SERVICE_TOKEN_ID + PLANETSCALE_SERVICE_TOKEN
   --use-gh                     GitHub only: reuse authenticated GitHub CLI (\`gh auth token\`)

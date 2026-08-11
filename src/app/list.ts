@@ -106,6 +106,7 @@ const PROVIDER_DISPLAY: Record<string, string> = {
   cloudflare: "Cloudflare",
   sentry: "Sentry",
   neon: "Neon",
+  planetscale: "PlanetScale",
 };
 
 function formatResourceLabel(
@@ -194,7 +195,7 @@ export function formatRelativeTime(iso: string | null | undefined, now = Date.no
 
 export function formatProvidersTable(providers: ProviderRecord[], now = Date.now()): string {
   if (providers.length === 0) {
-    return "No providers connected.\nRun: combie connect cloudflare\nor: combie connect github";
+    return "No providers connected.\nRun: combie connect cloudflare\nor: combie connect github\nor: combie connect vercel\nor: combie connect sentry\nor: combie connect neon\nor: combie connect planetscale";
   }
   const rows = providers.map((p) => ({
     provider: p.name,
@@ -221,16 +222,30 @@ export function formatResourcesTable(resources: Resource[]): string {
   const rows = resources.map((r) => ({
     type: r.kind,
     name: r.name,
+    id: r.id,
     provider: r.provider,
   }));
   const col1 = Math.max("TYPE".length, ...rows.map((r) => r.type.length));
   const col2 = Math.max("NAME".length, ...rows.map((r) => r.name.length));
+  const col3 = Math.max("ID".length, ...rows.map((r) => r.id.length));
   const header =
-    "TYPE".padEnd(col1) + "  " + "NAME".padEnd(col2) + "  " + "PROVIDER";
+    "TYPE".padEnd(col1) +
+    "  " +
+    "NAME".padEnd(col2) +
+    "  " +
+    "ID".padEnd(col3) +
+    "  " +
+    "PROVIDER";
   const body = rows
     .map(
       (r) =>
-        r.type.padEnd(col1) + "  " + r.name.padEnd(col2) + "  " + r.provider,
+        r.type.padEnd(col1) +
+        "  " +
+        r.name.padEnd(col2) +
+        "  " +
+        r.id.padEnd(col3) +
+        "  " +
+        r.provider,
     )
     .join("\n");
   return `${header}\n${body}`;

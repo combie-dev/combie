@@ -162,7 +162,7 @@ function resolveSentryToken(options: ConnectOptions): string {
     "MISSING_TOKEN",
     "No Sentry token provided.\n" +
       "Options:\n" +
-      "  1. Export SENTRY_AUTH_TOKEN and run: combie connect sentry --use-env\n" +
+      "  1. Export SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) and run: combie connect sentry --use-env\n" +
       "  2. Run: combie connect sentry --token <token>",
   );
 }

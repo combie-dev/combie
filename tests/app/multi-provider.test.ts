@@ -13,7 +13,11 @@ import {
   formatResourcesTable,
 } from "../../src/app/list.ts";
 import { getResourceHistory } from "../../src/app/history.ts";
+import { formatResourceHistory } from "../../src/app/history.ts";
 import { getResourceContext } from "../../src/app/context.ts";
+import { formatResourceContext } from "../../src/app/context.ts";
+import { getRelatedContext } from "../../src/app/related.ts";
+import { formatRelatedContext } from "../../src/app/related.ts";
 import { CredentialsStore } from "../../src/storage/credentials.ts";
 import { Store } from "../../src/storage/store.ts";
 import { createResource } from "../../src/domain/resource.ts";
@@ -1417,6 +1421,17 @@ describe("multi-provider connection", () => {
     expect(context.resource.name).toBe("combie-app-renamed");
     expect(context.related).toEqual([]);
     expect(context.changes).toHaveLength(1);
+
+    const history = getResourceHistory({ baseDir: dir, resourceRef: resourceId });
+    expect(formatResourceHistory(history)).toContain(
+      "PlanetScale database: combie-app-renamed",
+    );
+    expect(formatResourceContext(context)).toContain(
+      "PlanetScale database: combie-app-renamed",
+    );
+    const related = getRelatedContext({ baseDir: dir, resourceRef: resourceId });
+    expect(formatRelatedContext(related)).toContain("PlanetScale database");
+    expect(formatRelatedContext(related)).not.toContain("Planetscale");
 
     globalThis.fetch = mockMultiProviderFetch({
       planetscaleEnrichmentFail: true,
