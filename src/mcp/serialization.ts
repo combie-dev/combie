@@ -5,14 +5,19 @@
  */
 
 function safeValue(value: unknown): unknown {
-  if (value === undefined) return null;
-  if (value === null) return null;
+  if (value === undefined || value === null) return null;
   if (value instanceof Date) return value.toISOString();
-  if (value instanceof Map) return safeJson(Object.fromEntries(value));
-  if (value instanceof Set) return safeJson([...value]);
+  if (value instanceof Map) return safeValue(Object.fromEntries(value));
+  if (value instanceof Set) return safeValue([...value]);
   if (Array.isArray(value)) return value.map(safeValue);
-  if (typeof value === "object") return safeJson(value as Record<string, unknown>);
   if (typeof value === "bigint") return Number(value);
+  if (typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(value)) {
+      result[key] = safeValue((value as Record<string, unknown>)[key]);
+    }
+    return result;
+  }
   return value;
 }
 
