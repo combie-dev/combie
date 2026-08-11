@@ -48,8 +48,9 @@ prepares blocker 3. MCP (blocker 2) is Sprint 039+.
       Sentry `SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN` naming; actionable empty
       states; command examples match actual flags)
 
-- [ ] **7. Test suite green**
-      Status / evidence: (608 passing, Sprint 038 baseline; re-run `bun test`)
+- [x] **7. Test suite green**
+       Status / evidence: (616 passing, 0 failing, 56 files. Sprint 039
+       baseline; re-run `bun test`)
 
 - [ ] **8. Typecheck green**
       Status / evidence: (`bun run typecheck` clean)
@@ -60,22 +61,28 @@ prepares blocker 3. MCP (blocker 2) is Sprint 039+.
       no Vercel token" / "deferred — no Cloudflare zone" and list which
       scenarios A–G remain)
 
-- [ ] **10. MCP status — MUST remain: NOT STARTED after Sprint 038**
-      Status / evidence: (Sprint 038 does not begin agent access; Sprint 039
-      is the MCP foundation. Zero MCP code under `src/`.)
+- [x] **10. MCP status — foundation implemented (Sprint 039)**
+       Status / evidence: (After Sprint 039: MCP foundation implemented.
+       Read-only stdio MCP server available via `bun run combie mcp`.
+       Tools: `list_resources`, `get_related_context`, `investigate_resource`,
+       `list_providers`. External-agent validation NOT done — Sprint 040 owns
+       real client testing.)
 
 - [ ] **11. Known remaining blockers**
-      Status / evidence: (Sprint 037 list: external docs/onboarding —
-      addressed in Sprint 038; read-only MCP — Sprint 039+; real
-      multi-provider dogfood — in progress via DOGFOOD.md)
+       Status / evidence: (After Sprint 039: external docs/onboarding —
+       resolved in Sprint 038; read-only MCP foundation — Sprint 039 DONE;
+       MCP external-agent validation — Sprint 040 pending; real
+       multi-provider dogfood — in progress via DOGFOOD.md)
 
 - [ ] **12. Beta promise frozen (current vs not-yet boundary)**
-      Status / evidence: (current truthful promise: "Connect your stack once.
-      Combie inventories resources, infers exact relationships it can prove,
-      remembers changes and selected provider activity, and composes offline
-      one-hop investigation context." NOT YET: MCP, AI reasoning, automatic
-      sync, webhooks, complete graph, root cause, autonomous execution,
-      learning.)
+       Status / evidence: (current truthful promise: "Connect your stack once.
+       Combie inventories resources, infers exact relationships it can prove,
+       remembers changes and selected provider activity, and composes offline
+       one-hop investigation context. MCP foundation available: local stdio,
+       read-only agent access. Requires prior connect/sync; no automatic
+       provider calls." NOT YET: MCP external-agent validation, AI reasoning,
+       automatic sync, webhooks, complete graph, root cause, autonomous
+       execution, learning.)
 
 - [ ] **13. Invite criteria note**
       Status / evidence: (beta start planned for after Sprint 041, per

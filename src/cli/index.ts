@@ -21,6 +21,7 @@ import {
   getInvestigationContext,
   formatInvestigationContext,
 } from "../app/investigate.ts";
+import { serveMcp } from "../mcp/server.ts";
 
 const HELP = `combie — engineering context layer
 
@@ -39,6 +40,7 @@ Commands:
   related <resource-id>        Show one-hop related context for a resource
   context <resource-id>        Compose current, related, and Change context
   investigate <resource-id>    Compose one-hop investigation context around a resource
+  mcp                          Start read-only MCP server over stdio
   help                         Show this help
 
 Connect options:
@@ -84,6 +86,7 @@ Examples:
   combie related github:repository:1001
   combie context github:repository:1001
   combie investigate vercel:project:prj_abc
+  combie mcp
 `;
 
 interface ParsedArgs {
@@ -259,6 +262,10 @@ async function main(argv: string[]): Promise<number> {
           resourceRef,
         });
         console.log(formatInvestigationContext(investigation));
+        return 0;
+      }
+      case "mcp": {
+        await serveMcp({ baseDir });
         return 0;
       }
       default:
