@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 /**
  * Resolves the Combie state root.
@@ -6,12 +6,12 @@ import { join } from "node:path";
  */
 export function getCombieRoot(baseDir?: string): string {
   if (baseDir !== undefined) {
-    return baseDir;
+    return resolve(baseDir);
   }
   if (process.env.COMBIE_HOME) {
-    return process.env.COMBIE_HOME;
+    return resolve(process.env.COMBIE_HOME);
   }
-  return join(process.cwd(), ".combie");
+  return resolve(process.cwd(), ".combie");
 }
 
 /**

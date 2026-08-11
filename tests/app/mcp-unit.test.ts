@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { initCombie } from "../../src/app/init";
 import { Store } from "../../src/storage/store";
 import { createResource } from "../../src/domain/resource";
 import { createRelationship } from "../../src/domain/relationship";
+import { safeJson } from "../../src/mcp/serialization";
+import { getCombieRoot } from "../../src/storage/paths";
 
 describe("mcp unit tests", () => {
   test("in-memory serialization of Resource preserves identity", () => {
@@ -156,5 +158,53 @@ describe("mcp unit tests", () => {
         else delete process.env[key];
       }
     }
+  });
+
+  test("serialization handles circular references without crashing", () => {
+    const obj: Record<string, unknown> = { name: "test" };
+    obj.self = obj;
+    const result = safeJson(obj);
+    expect(result).toBeDefined();
+    const r = result as Record<string, unknown>;
+    expect(r.name).toBe("test");
+    expect(r.self).toBe("[Circular]");
+  });
+
+  test("serialization handles deep nesting without crashing", () => {
+    let deep: Record<string, unknown> = { value: "bottom" };
+    for (let i = 0; i < 200; i++) {
+      deep = { child: deep };
+    }
+    const result = safeJson(deep);
+    expect(result).toBeDefined();
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain("[max depth]");
+  });
+
+  test("serialization handles BigInt as string", () => {
+    const obj = { big: 9007199254740993n };
+    const result = safeJson(obj) as Record<string, unknown>;
+    expect(result.big).toBe("9007199254740993");
+  });
+
+  test("serialization handles Date objects", () => {
+    const d = new Date("2024-01-15T12:00:00Z");
+    const result = safeJson({ when: d }) as Record<string, unknown>;
+    expect(result.when).toBe("2024-01-15T12:00:00.000Z");
+  });
+
+  test("getCombieRoot normalizes relative paths", () => {
+    const result = getCombieRoot("./sub/../.combie");
+    expect(result).toBe(resolve(process.cwd(), ".combie"));
+  });
+
+  test("getCombieRoot resolves absolute paths", () => {
+    const result = getCombieRoot("/tmp/combie-test");
+    expect(result).toBe("/tmp/combie-test");
+  });
+
+  test("default getCombieRoot returns cwd/.combie", () => {
+    const result = getCombieRoot();
+    expect(result).toBe(resolve(process.cwd(), ".combie"));
   });
 });

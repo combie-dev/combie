@@ -62,7 +62,7 @@ describe("NeonClient.getAuthDetails", () => {
       expect(err).toBeInstanceOf(NeonApiError);
       expect((err as NeonApiError).isAuthError).toBe(true);
       expect((err as Error).message).toContain("authentication failed");
-      expect((err as Error).message).toContain("Invalid API key");
+      expect((err as Error).message).toContain("[REDACTED]");
     }
   });
 

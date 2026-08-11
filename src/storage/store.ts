@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, chmodSync } from "node:fs";
 import {
   diffResource,
   type Change,
@@ -313,9 +313,7 @@ export class Store {
   /** Create state directory + schema. Idempotent. */
   init(): void {
     const dir = this.stateDir;
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-    }
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
 
     if (this.dbReadOnly) {
       this.db?.close();
@@ -327,6 +325,9 @@ export class Store {
       this.db = new Database(dbPath(this.baseDir));
       this.db.exec("PRAGMA journal_mode = WAL;");
       this.db.exec("PRAGMA foreign_keys = ON;");
+      if (process.platform !== "win32") {
+        chmodSync(dbPath(this.baseDir), 0o600);
+      }
     }
 
     this.applySchema(this.db);

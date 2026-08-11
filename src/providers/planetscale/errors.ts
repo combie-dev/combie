@@ -29,7 +29,7 @@ export function redactSecrets(
 ): string {
   const explicitlyRedacted = explicitSecrets.reduce(
     (safe, secret) =>
-      secret.length >= 4 ? safe.split(secret).join("[REDACTED]") : safe,
+      secret.length > 0 ? safe.split(secret).join("[REDACTED]") : safe,
     text,
   );
   return explicitlyRedacted
@@ -47,7 +47,7 @@ export function planetScaleErrorMessage(
   context: string,
   status: number,
   detail?: string,
-  explicitSecrets?: readonly string[],
+  explicitSecrets: readonly string[] = [],
 ): string {
   const safeDetail = detail
     ? redactSecrets(detail.trim(), explicitSecrets)

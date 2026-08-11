@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -111,5 +112,39 @@ describe("CredentialStore", () => {
     store.setCredential("cloudflare", "old");
     store.setCredential("cloudflare", "new");
     expect(store.getCredential("cloudflare")).toBe("new");
+  });
+
+  test("corrupted credentials file returns empty without exposing secrets", () => {
+    const { dir } = fresh();
+    const path = credentialsPath(dir);
+
+    writeFileSync(path, "NOT JSON {{{", { encoding: "utf8" });
+    const store = new CredentialStore(dir);
+    expect(store.getCredential("cloudflare")).toBeNull();
+    expect(store.hasCredential("cloudflare")).toBe(false);
+  });
+
+  test("empty credentials file returns empty without error", () => {
+    const { dir } = fresh();
+    const path = credentialsPath(dir);
+    writeFileSync(path, "", { encoding: "utf8" });
+    const store = new CredentialStore(dir);
+    expect(store.getCredential("cloudflare")).toBeNull();
+  });
+
+  test("whitespace-only credentials file returns empty", () => {
+    const { dir } = fresh();
+    const path = credentialsPath(dir);
+    writeFileSync(path, "   \n  \t  ", { encoding: "utf8" });
+    const store = new CredentialStore(dir);
+    expect(store.getCredential("cloudflare")).toBeNull();
+  });
+
+  test("non-object JSON in credentials file returns empty", () => {
+    const { dir } = fresh();
+    const path = credentialsPath(dir);
+    writeFileSync(path, "[]", { encoding: "utf8" });
+    const store = new CredentialStore(dir);
+    expect(store.getCredential("cloudflare")).toBeNull();
   });
 });

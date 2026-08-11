@@ -61,16 +61,17 @@ export class CredentialStore {
     if (!raw.trim()) {
       return {};
     }
-    const parsed = JSON.parse(raw) as CredentialsFile;
-    return parsed && typeof parsed === "object" ? parsed : {};
+    try {
+      const parsed = JSON.parse(raw) as CredentialsFile;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
   }
 
   private write(data: CredentialsFile): void {
     const dir = dirname(this.path);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-    }
-    // Write with restrictive mode; chmod after write for overwrite cases.
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(this.path, JSON.stringify(data, null, 2) + "\n", {
       encoding: "utf8",
       mode: 0o600,
