@@ -4,6 +4,7 @@ import type {
   RelationshipEvidence,
 } from "../domain/relationship.ts";
 import type { Resource } from "../domain/resource.ts";
+import { BINARY_NAME } from "../cli/constants.ts";
 import {
   composeWorkflowRunAuthority,
   type GitHubWorkflowRunEvidence,
@@ -111,7 +112,7 @@ export function getInvestigationContext(
   if (!resourceRef) {
     throw new CombieError(
       "RESOURCE_REF_REQUIRED",
-      "Resource reference is required.\nUsage: bun run combie investigate <resource-id>\nExample: bun run combie investigate vercel:project:prj_abc\nList ids: bun run combie resources",
+      `Resource reference is required.\nUsage: ${BINARY_NAME} investigate <resource-id>\nExample: ${BINARY_NAME} investigate vercel:project:prj_abc\nList ids: ${BINARY_NAME} resources`,
     );
   }
 
@@ -123,7 +124,7 @@ export function getInvestigationContext(
     if (!subject) {
       throw new CombieError(
         "RESOURCE_NOT_FOUND",
-        `Resource not found: ${resourceRef}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: bun run combie resources`,
+        `Resource not found: ${resourceRef}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: ${BINARY_NAME} resources`,
       );
     }
 

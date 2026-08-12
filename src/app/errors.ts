@@ -4,6 +4,7 @@
  */
 
 import { supportedProviderIds } from "../provider/registry.ts";
+import { BINARY_NAME } from "../cli/constants.ts";
 
 export class CombieError extends Error {
   readonly code: string;
@@ -20,14 +21,14 @@ export class CombieError extends Error {
 export function notInitialized(): CombieError {
   return new CombieError(
     "NOT_INITIALIZED",
-    "Combie is not initialized in this directory.\nRun: bun run combie init",
+    `Combie is not initialized in this directory.\nRun: ${BINARY_NAME} init`,
   );
 }
 
 export function providerNotConnected(provider: string): CombieError {
   return new CombieError(
     "PROVIDER_NOT_CONNECTED",
-    `${provider} is not connected.\nRun: bun run combie connect ${provider}`,
+    `${provider} is not connected.\nRun: ${BINARY_NAME} connect ${provider}`,
   );
 }
 

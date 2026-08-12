@@ -2,6 +2,7 @@ import type { Change } from "../domain/change.ts";
 import type { Resource } from "../domain/resource.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
+import { BINARY_NAME } from "../cli/constants.ts";
 
 export interface ResourceHistory {
   resource: Resource;
@@ -33,7 +34,7 @@ export function getResourceHistory(
   if (!ref) {
     throw new CombieError(
       "RESOURCE_REF_REQUIRED",
-      "Resource reference is required.\nUsage: bun run combie history <resource-id>\nExample: bun run combie history github:repository:1001\nList ids: bun run combie resources",
+      `Resource reference is required.\nUsage: ${BINARY_NAME} history <resource-id>\nExample: ${BINARY_NAME} history github:repository:1001\nList ids: ${BINARY_NAME} resources`,
     );
   }
 
@@ -47,7 +48,7 @@ export function getResourceHistory(
     if (!resource) {
       throw new CombieError(
         "RESOURCE_NOT_FOUND",
-        `Resource not found: ${ref}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: bun run combie resources`,
+        `Resource not found: ${ref}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: ${BINARY_NAME} resources`,
       );
     }
 

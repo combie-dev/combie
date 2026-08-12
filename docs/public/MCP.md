@@ -18,9 +18,9 @@ checked separately; no natural-language Cursor call is claimed.
 Populate Combie through the CLI first:
 
 ```bash
-bun run combie init
-bun run combie connect github --use-gh
-bun run combie sync
+combie init
+combie connect github --use-gh
+combie sync
 ```
 
 One provider is enough. Provider credentials are needed for `connect` and

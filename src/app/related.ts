@@ -2,6 +2,7 @@ import type { Resource } from "../domain/resource.ts";
 import type { Relationship } from "../domain/relationship.ts";
 import { Store } from "../storage/store.ts";
 import { notInitialized, CombieError } from "./errors.ts";
+import { BINARY_NAME } from "../cli/constants.ts";
 
 /**
  * Direction of a canonical Relationship relative to the queried Resource.
@@ -76,7 +77,7 @@ export function getRelatedContext(
   if (!ref) {
     throw new CombieError(
       "RESOURCE_REF_REQUIRED",
-      "Resource reference is required.\nUsage: bun run combie related <resource-id>\nExample: bun run combie related github:repository:1001\nList ids: bun run combie resources",
+      `Resource reference is required.\nUsage: ${BINARY_NAME} related <resource-id>\nExample: ${BINARY_NAME} related github:repository:1001\nList ids: ${BINARY_NAME} resources`,
     );
   }
 
@@ -90,7 +91,7 @@ export function getRelatedContext(
     if (!resource) {
       throw new CombieError(
         "RESOURCE_NOT_FOUND",
-        `Resource not found: ${ref}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: bun run combie resources`,
+        `Resource not found: ${ref}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: ${BINARY_NAME} resources`,
       );
     }
 
