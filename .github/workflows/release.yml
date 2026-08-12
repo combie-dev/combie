@@ -94,6 +94,6 @@ jobs:
         with:
           name: "Combie ${{ github.ref_name }}"
           generate_release_notes: true
+          # Single glob — dual patterns double-match and race asset uploads.
           files: |
             combie-*/combie-*
-            combie-*/*.sha256

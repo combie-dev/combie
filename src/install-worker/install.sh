@@ -59,37 +59,30 @@ detect_platform() {
   echo "${os}-${arch}"
 }
 
-find_checksum_tool() {
+hash_file_sha256() {
+  # Hash an explicit path (do not use `sha256sum -c`, which resolves names
+  # relative to the caller's CWD and fails when the binary is in a temp dir).
   if command -v sha256sum > /dev/null 2>&1; then
-    echo "sha256sum"
+    sha256sum "$1" | awk '{print $1}'
     return
   fi
   if command -v shasum > /dev/null 2>&1; then
-    echo "shasum -a 256"
+    shasum -a 256 "$1" | awk '{print $1}'
     return
   fi
   die "Neither sha256sum nor shasum found. Install one and retry."
 }
 
 verify_checksum() {
-  local checksum_tool file expected_file
-  checksum_tool="$1"
-  file="$2"
-  expected_file="$3"
-
-  if [ "${checksum_tool}" = "shasum -a 256" ]; then
-    local expected actual
-    expected="$(awk '{print $1}' "${expected_file}")"
-    actual="$(shasum -a 256 "${file}" | awk '{print $1}')"
-    if [ "${expected}" != "${actual}" ]; then
-      die "Checksum verification FAILED.\nExpected: ${expected}\nGot: ${actual}"
-    fi
-    return
-  fi
-
-  # sha256sum
-  if ! sha256sum -c "${expected_file}" > /dev/null 2>&1; then
-    die "Checksum verification FAILED."
+  local file expected_file expected actual
+  file="$1"
+  expected_file="$2"
+  expected="$(awk '{print $1}' "${expected_file}")"
+  actual="$(hash_file_sha256 "${file}")"
+  if [ -z "${expected}" ] || [ -z "${actual}" ] || [ "${expected}" != "${actual}" ]; then
+    die "Checksum verification FAILED.
+Expected: ${expected}
+Got: ${actual}"
   fi
 }
 
@@ -144,9 +137,8 @@ fi
 
 # ----- verify -----
 
-CHECKSUM_TOOL="$(find_checksum_tool)"
 printf "Verifying checksum...\n"
-verify_checksum "${CHECKSUM_TOOL}" "${BINARY_PATH}" "${TEMP_DIR}/${CHECKSUM_FILE}"
+verify_checksum "${BINARY_PATH}" "${TEMP_DIR}/${CHECKSUM_FILE}"
 
 # ----- install -----
 
