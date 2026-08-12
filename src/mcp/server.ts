@@ -1,12 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { registerTools } from "./tools.ts";
+import { VERSION } from "../cli/constants.ts";
 
 export interface McpOptions {
   baseDir: string;
 }
 
 export function createMcpServer(options: McpOptions): McpServer {
-  const server = new McpServer({ name: "combie", version: "0.1.0" });
+  const server = new McpServer({ name: "combie", version: VERSION });
   registerTools(server, { baseDir: options.baseDir });
   return server;
 }

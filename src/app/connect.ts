@@ -3,6 +3,7 @@ import { Store } from "../storage/store.ts";
 import { CredentialsStore } from "../storage/credentials.ts";
 import { getProvider } from "../provider/registry.ts";
 import { encodePlanetScaleCredential } from "../providers/planetscale/credentials.ts";
+import { BINARY_NAME } from "../cli/constants.ts";
 import {
   notInitialized,
   unknownProvider,
@@ -68,8 +69,8 @@ function resolveCloudflareToken(options: ConnectOptions): string {
     "MISSING_TOKEN",
     "No Cloudflare API token provided.\n" +
       "Options:\n" +
-      "  1. Export CLOUDFLARE_API_TOKEN and run: bun run combie connect cloudflare --use-env\n" +
-      "  2. Run: bun run combie connect cloudflare --token <token>",
+      "  1. Export CLOUDFLARE_API_TOKEN and run: " + BINARY_NAME + " connect cloudflare --use-env\n" +
+      "  2. Run: " + BINARY_NAME + " connect cloudflare --token <token>",
   );
 }
 
@@ -114,9 +115,9 @@ function resolveGitHubToken(options: ConnectOptions): string {
     "MISSING_TOKEN",
     "No GitHub token provided.\n" +
       "Options:\n" +
-      "  1. Run: bun run combie connect github --use-gh   (reuse authenticated GitHub CLI)\n" +
-      "  2. Export GITHUB_TOKEN and run: bun run combie connect github --use-env\n" +
-      "  3. Run: bun run combie connect github --token <token>",
+      "  1. Run: " + BINARY_NAME + " connect github --use-gh   (reuse authenticated GitHub CLI)\n" +
+      "  2. Export GITHUB_TOKEN and run: " + BINARY_NAME + " connect github --use-env\n" +
+      "  3. Run: " + BINARY_NAME + " connect github --token <token>",
   );
 }
 
@@ -130,15 +131,15 @@ function resolveVercelToken(options: ConnectOptions): string {
     if (fromEnv) return fromEnv;
     throw new CombieError(
       "MISSING_TOKEN",
-      "VERCEL_TOKEN is not set.\nExport a token and run: bun run combie connect vercel --use-env",
+      "VERCEL_TOKEN is not set.\nExport a token and run: " + BINARY_NAME + " connect vercel --use-env",
     );
   }
   throw new CombieError(
     "MISSING_TOKEN",
     "No Vercel token provided.\n" +
       "Options:\n" +
-      "  1. Export VERCEL_TOKEN and run: bun run combie connect vercel --use-env\n" +
-      "  2. Run: bun run combie connect vercel --token <token>",
+      "  1. Export VERCEL_TOKEN and run: " + BINARY_NAME + " connect vercel --use-env\n" +
+      "  2. Run: " + BINARY_NAME + " connect vercel --token <token>",
   );
 }
 
@@ -155,15 +156,15 @@ function resolveSentryToken(options: ConnectOptions): string {
     if (fromEnv) return fromEnv;
     throw new CombieError(
       "MISSING_TOKEN",
-      "SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) is not set.\nExport a token and run: bun run combie connect sentry --use-env",
+      "SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) is not set.\nExport a token and run: " + BINARY_NAME + " connect sentry --use-env",
     );
   }
   throw new CombieError(
     "MISSING_TOKEN",
     "No Sentry token provided.\n" +
       "Options:\n" +
-      "  1. Export SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) and run: bun run combie connect sentry --use-env\n" +
-      "  2. Run: bun run combie connect sentry --token <token>",
+      "  1. Export SENTRY_AUTH_TOKEN (or SENTRY_TOKEN) and run: " + BINARY_NAME + " connect sentry --use-env\n" +
+      "  2. Run: " + BINARY_NAME + " connect sentry --token <token>",
   );
 }
 
@@ -177,15 +178,15 @@ function resolveNeonToken(options: ConnectOptions): string {
     if (fromEnv) return fromEnv;
     throw new CombieError(
       "MISSING_TOKEN",
-      "NEON_API_KEY is not set.\nExport an API key and run: bun run combie connect neon --use-env",
+      "NEON_API_KEY is not set.\nExport an API key and run: " + BINARY_NAME + " connect neon --use-env",
     );
   }
   throw new CombieError(
     "MISSING_TOKEN",
     "No Neon API key provided.\n" +
       "Options:\n" +
-      "  1. Export NEON_API_KEY and run: bun run combie connect neon --use-env\n" +
-      "  2. Run: bun run combie connect neon --token <api-key>",
+      "  1. Export NEON_API_KEY and run: " + BINARY_NAME + " connect neon --use-env\n" +
+      "  2. Run: " + BINARY_NAME + " connect neon --token <api-key>",
   );
 }
 
@@ -220,7 +221,7 @@ function resolvePlanetScaleToken(options: ConnectOptions): string {
     throw new CombieError(
       "MISSING_TOKEN",
       `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set.\n` +
-        "Export both service-token values and run: bun run combie connect planetscale --use-env",
+        "Export both service-token values and run: " + BINARY_NAME + " connect planetscale --use-env",
     );
   }
 
@@ -229,8 +230,8 @@ function resolvePlanetScaleToken(options: ConnectOptions): string {
     "No PlanetScale service token provided.\n" +
       "Options:\n" +
       "  1. Export PLANETSCALE_SERVICE_TOKEN_ID and PLANETSCALE_SERVICE_TOKEN\n" +
-      "     then run: bun run combie connect planetscale --use-env\n" +
-      "  2. Run: bun run combie connect planetscale --token-id <id> --token <secret>\n" +
+      "     then run: " + BINARY_NAME + " connect planetscale --use-env\n" +
+      "  2. Run: " + BINARY_NAME + " connect planetscale --token-id <id> --token <secret>\n" +
       "When the token can access multiple organizations, add --organization <slug>.",
   );
 }

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "combie-install",
+  "main": "src/install-worker/worker.ts",
+  "compatibility_date": "2025-08-01",
+  "routes": [
+    {
+      "pattern": "combie.dev/install*",
+      "zone_name": "combie.dev"
+    }
+  ]
+}

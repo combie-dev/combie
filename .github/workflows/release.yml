@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            artifact: combie-linux-x64
+          - os: macos-latest
+            target: bun-darwin-arm64
+            artifact: combie-darwin-arm64
+          - os: macos-13
+            target: bun-darwin-x64
+            artifact: combie-darwin-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run typecheck
+
+      - run: bun test
+
+      - name: Build standalone binary
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          bun build --compile \
+            --target=${{ matrix.target }} \
+            --define 'BUN_BINARY_NAME="combie"' \
+            --define "BUN_BUILD_VERSION=\"${TAG_VERSION}\"" \
+            ./src/cli/index.ts \
+            --outfile ${{ matrix.artifact }}
+
+      - name: Smoke test binary
+        shell: bash
+        run: |
+          chmod +x ${{ matrix.artifact }}
+          ./${{ matrix.artifact }} --version
+          ./${{ matrix.artifact }} --help > /dev/null
+
+      - name: Generate checksum
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+          else
+            shasum -a 256 ${{ matrix.artifact }} | awk '{print $1 "  ${{ matrix.artifact }}"}' > ${{ matrix.artifact }}.sha256
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Display artifact structure
+        run: ls -R
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: "Combie ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            combie-*/combie-*
+            combie-*/*.sha256

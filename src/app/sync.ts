@@ -8,6 +8,7 @@ import {
   providerNotConnected,
   CombieError,
 } from "./errors.ts";
+import { BINARY_NAME } from "../cli/constants.ts";
 import {
   inferGitHubVercelRelationships,
   isGitHubVercelSourceFor,
@@ -120,7 +121,7 @@ async function syncOne(
   if (!token) {
     throw new CombieError(
       "MISSING_CREDENTIALS",
-      `No credentials found for ${providerId}.\nRun: bun run combie connect ${providerId}`,
+      `No credentials found for ${providerId}.\nRun: ${BINARY_NAME} connect ${providerId}`,
     );
   }
 
@@ -140,7 +141,7 @@ async function syncOne(
     if (!accountId) {
       throw new CombieError(
         "NO_ACCOUNT",
-        `${provider.name} authentication succeeded but no account identity was returned.\nReconnect with: bun run combie connect ${providerId}`,
+        `${provider.name} authentication succeeded but no account identity was returned.\nReconnect with: ${BINARY_NAME} connect ${providerId}`,
       );
     }
     store.upsertProvider({
@@ -274,7 +275,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
     if (providers.length === 0) {
       throw new CombieError(
         "NO_PROVIDERS",
-        "No connected providers to sync.\nRun: bun run combie connect cloudflare\nor: bun run combie connect github\nor: bun run combie connect vercel\nor: bun run combie connect sentry\nor: bun run combie connect neon\nor: bun run combie connect planetscale",
+        `No connected providers to sync.\nRun: ${BINARY_NAME} connect cloudflare\nor: ${BINARY_NAME} connect github\nor: ${BINARY_NAME} connect vercel\nor: ${BINARY_NAME} connect sentry\nor: ${BINARY_NAME} connect neon\nor: ${BINARY_NAME} connect planetscale`,
       );
     }
 

@@ -4,6 +4,7 @@ import type {
   ProviderAuthResult,
   ProviderAuthOptions,
 } from "../../provider/types.ts";
+import { BINARY_NAME } from "../../cli/constants.ts";
 import {
   createPlanetScaleClient,
   type PlanetScaleClient,
@@ -167,7 +168,7 @@ export function createPlanetScaleProvider(
           throw new PlanetScaleApiError({
             message:
               "PlanetScale discovery failed: the connected organization is no longer visible to this service token. " +
-              "Reconnect with: bun run combie connect planetscale --use-env",
+              `Reconnect with: ${BINARY_NAME} connect planetscale --use-env`,
             status: 404,
             endpoint: "/organizations",
           });

@@ -3,6 +3,7 @@ import type { Change } from "../domain/change.ts";
 import type { Relationship } from "../domain/relationship.ts";
 import { Store, type ProviderRecord } from "../storage/store.ts";
 import { notInitialized } from "./errors.ts";
+import { BINARY_NAME } from "../cli/constants.ts";
 
 export interface ListProvidersResult {
   providers: ProviderRecord[];
@@ -131,7 +132,7 @@ export function formatRelationshipsTable(
   if (relationships.length === 0) {
     return (
       "No relationships discovered yet.\n" +
-      "Run: bun run combie sync\n" +
+      `Run: ${BINARY_NAME} sync\n` +
       "(Relationships require deterministic provider evidence, e.g. Vercel GitHub link matched to a GitHub repository.)"
     );
   }
@@ -195,7 +196,7 @@ export function formatRelativeTime(iso: string | null | undefined, now = Date.no
 
 export function formatProvidersTable(providers: ProviderRecord[], now = Date.now()): string {
   if (providers.length === 0) {
-    return "No providers connected.\nRun: bun run combie connect cloudflare\nor: bun run combie connect github\nor: bun run combie connect vercel\nor: bun run combie connect sentry\nor: bun run combie connect neon\nor: bun run combie connect planetscale";
+    return `No providers connected.\nRun: ${BINARY_NAME} connect cloudflare\nor: ${BINARY_NAME} connect github\nor: ${BINARY_NAME} connect vercel\nor: ${BINARY_NAME} connect sentry\nor: ${BINARY_NAME} connect neon\nor: ${BINARY_NAME} connect planetscale`;
   }
   const rows = providers.map((p) => ({
     provider: p.name,
@@ -224,7 +225,7 @@ export function formatProvidersTable(providers: ProviderRecord[], now = Date.now
 
 export function formatResourcesTable(resources: Resource[]): string {
   if (resources.length === 0) {
-    return "No resources discovered yet.\nRun: bun run combie sync";
+    return `No resources discovered yet.\nRun: ${BINARY_NAME} sync`;
   }
   const rows = resources.map((r) => ({
     type: r.kind,
@@ -263,7 +264,7 @@ export function formatChangesTable(
   now = Date.now(),
 ): string {
   if (changes.length === 0) {
-    return "No changes observed yet.\nRun: bun run combie sync";
+    return `No changes observed yet.\nRun: ${BINARY_NAME} sync`;
   }
   const rows = changes.map((change) => ({
     when: formatRelativeTime(change.observedAt, now),

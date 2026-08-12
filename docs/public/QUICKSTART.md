@@ -9,10 +9,10 @@ refresh, no webhooks. Allow ~20 minutes.
 
 ## 1. Requirements
 
-- **Bun** (>= 1.1) — Bun-only, does not run on Node: `curl -fsSL https://bun.sh/install | bash`
-- **git**
+- **macOS or Linux** — Combie also runs on Windows via WSL; native Windows support is planned
 - **Tokens**: at least one supported provider; GitHub + Vercel is the
   recommended beta stack and the rest are optional
+- No additional runtime required — the installed binary includes everything it needs
 
 | Provider    | What you need                                          |
 | ----------- | ------------------------------------------------------ |
@@ -24,27 +24,47 @@ refresh, no webhooks. Allow ~20 minutes.
 | PlanetScale | Service-token ID + secret pair (read access)           |
 
 Never set the same variable two ways — use **one** method per provider.
-## 2. Clone and install
+## 2. Install
+
 ```bash
-git clone <repository-url-from-your-invite>
+curl -fsSL https://combie.dev/install | sh
+```
+
+Verify:
+
+```bash
+combie --version
+```
+
+Expected output:
+
+```bash
+combie 0.1.0
+```
+
+The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To make this permanent, add that line to `~/.bashrc`, `~/.zshrc`, or `~/.profile`.
+
+**Build from source (alternative):** Clone the repository and run with Bun:
+
+```bash
+git clone https://github.com/combie-dev/combie
 cd combie
-git checkout <release-sha-from-your-invite>
 bun install --frozen-lockfile
 bun run combie help
 ```
 
-Your invite must provide the repository URL and exact release SHA. You should
-see the command list. Combie is not published to a registry and the closed-beta
-path does not use `bun link`; use `bun run combie` from the repository root.
-
-**Troubleshooting:** `bun: command not found` -> Bun missing or not on PATH
-(reinstall, new shell). `Could not find package` -> wrong directory or
-incomplete clone.
+If you see `Could not find package`, check that you are in the repository root after a complete clone.
 
 ## 3. Initialize
 
 ```bash
-bun run combie init
+combie init
 ```
 Expected output: `Initialized Combie at /path/to/cwd/.combie`.
 
@@ -65,10 +85,10 @@ Choose **one** method.
 
 ```bash
 export GITHUB_TOKEN=<token>
-bun run combie connect github --use-env
+combie connect github --use-env
 ```
 
-`GH_TOKEN` works too. Alternatives: `gh auth login` then `bun run combie
+`GH_TOKEN` works too. Alternatives: `gh auth login` then `combie
 connect github --use-gh` (reuse the authenticated GitHub CLI), or `bun run
 combie connect github --token <token>`.
 
@@ -87,7 +107,7 @@ exported in this shell. `GitHub CLI returned an empty token` -> run
 ## 5. Connect Vercel
 ```bash
 export VERCEL_TOKEN=<token>
-bun run combie connect vercel --use-env
+combie connect vercel --use-env
 ```
 
 Expected output:
@@ -105,7 +125,7 @@ record the team-scope gap in feedback.
 ## 6. (Optional) Connect Cloudflare
 ```bash
 export CLOUDFLARE_API_TOKEN=<token>
-bun run combie connect cloudflare --use-env
+combie connect cloudflare --use-env
 ```
 
 The token must be able to list the account and read Workers scripts, D1
@@ -118,7 +138,7 @@ returned account.
 ## 7. (Optional) Connect Sentry
 ```bash
 export SENTRY_AUTH_TOKEN=<token>
-bun run combie connect sentry --use-env
+combie connect sentry --use-env
 ```
 
 `SENTRY_TOKEN` works as an alternative name.
@@ -128,7 +148,7 @@ legacy token scopes).
 ## 8. (Optional) Connect Neon and PlanetScale
 ```bash
 export NEON_API_KEY=<key>
-bun run combie connect neon --use-env
+combie connect neon --use-env
 ```
 
 PlanetScale (ID and secret are both required):
@@ -136,16 +156,16 @@ PlanetScale (ID and secret are both required):
 ```bash
 export PLANETSCALE_SERVICE_TOKEN_ID=<id>
 export PLANETSCALE_SERVICE_TOKEN=<secret>
-bun run combie connect planetscale --use-env
+combie connect planetscale --use-env
 ```
 
 If the token can access multiple organizations, add the organization:
 
 ```bash
-bun run combie connect planetscale --organization <slug> --use-env
+combie connect planetscale --organization <slug> --use-env
 ```
 
-Alternative to env vars (ID + secret as flags): `bun run combie connect
+Alternative to env vars (ID + secret as flags): `combie connect
 planetscale --token-id <id> --token <secret>`.
 
 **A note on `--token` flags:** passing tokens directly as CLI flags can persist
@@ -153,7 +173,7 @@ them in your shell history. Prefer the env-var flow everywhere.
 
 ## 9. Sync
 ```bash
-bun run combie sync
+combie sync
 ```
 
 `sync` queries every connected provider and updates the local SQLite state:
@@ -164,7 +184,7 @@ Expected output: a per-provider summary. If one provider fails (bad token,
 network, rate limit), the others still sync; errors are reported per provider
 and the command exits non-zero if any provider failed.
 
-Sync a single provider: `bun run combie sync github`.
+Sync a single provider: `combie sync github`.
 
 **Troubleshooting:** `not initialized` -> run `init` first. `authentication
 failed` for a provider -> reconnect it (steps 4–8). `no supported resources
@@ -173,9 +193,9 @@ found` -> the account has none of the discoverable kinds (`worker`,
 
 ## 10. Inspect what you have
 ```bash
-bun run combie providers
-bun run combie resources
-bun run combie relationships
+combie providers
+combie resources
+combie relationships
 ```
 
 - `providers` — which providers are connected and when they last synced.
@@ -193,7 +213,7 @@ data produces no edges by design.
 
 ## 11. Choose a resource ID
 ```bash
-bun run combie resources
+combie resources
 ```
 
 Resource IDs have an exact format, `provider:kind:providerResourceId`:
@@ -210,7 +230,7 @@ repository) you recognize.
 
 ## 12. Investigate
 ```bash
-bun run combie investigate vercel:project:prj_abc123
+combie investigate vercel:project:prj_abc123
 ```
 
 The report is composed deterministically, offline, read-only, one hop. It
@@ -230,7 +250,7 @@ appears when a GitHub commit SHA exactly matches Vercel deployment commit
 evidence; partial or fuzzy matches never count.
 
 ## 13. Re-sync later
-Sync is operator-driven. For fresh state, run it again: `bun run combie sync`.
+Sync is operator-driven. For fresh state, run it again: `combie sync`.
 
 Read commands (`resources`, `relationships`, `changes`, `history`, `related`,
 `context`, `investigate`) never touch the network. Only `connect` and `sync`
@@ -239,8 +259,8 @@ do.
 ## 14. Verify offline behavior
 ```bash
 unset GITHUB_TOKEN GH_TOKEN VERCEL_TOKEN CLOUDFLARE_API_TOKEN SENTRY_AUTH_TOKEN SENTRY_TOKEN NEON_API_KEY PLANETSCALE_SERVICE_TOKEN_ID PLANETSCALE_SERVICE_TOKEN
-bun run combie resources
-bun run combie investigate <resource-id>
+combie resources
+combie investigate <resource-id>
 ```
 
 Both still work: they read only `.combie`. Nothing in the read path needs
@@ -254,13 +274,13 @@ Reset everything (including stored credentials):
 
 ```bash
 rm -rf .combie
-bun run combie init
+combie init
 ```
 
 ## 15. Troubleshooting basics
 | Symptom                        | Cause and fix                                                  |
 | ------------------------------ | -------------------------------------------------------------- |
-| `not initialized`              | Run `bun run combie init`.                                     |
+| `not initialized`              | Run `combie init`.                                     |
 | `unknown provider`             | Check spelling: `cloudflare`, `github`, `vercel`, `sentry`, `neon`, `planetscale`. |
 | `X_TOKEN is not set`           | Wrong env var name, or not exported in this shell.             |
 | `authentication failed`        | Token rejected. Verify value and scopes.                       |
