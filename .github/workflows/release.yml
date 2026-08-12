@@ -16,12 +16,17 @@ jobs:
           - os: ubuntu-latest
             target: bun-linux-x64
             artifact: combie-linux-x64
+            can_run: true
           - os: macos-latest
             target: bun-darwin-arm64
             artifact: combie-darwin-arm64
-          - os: macos-13
+            can_run: true
+          # Cross-compile Intel macOS from Apple Silicon runners.
+          # macos-13 (Intel) runners are scarce/deprecated and block releases.
+          - os: macos-latest
             target: bun-darwin-x64
             artifact: combie-darwin-x64
+            can_run: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -50,8 +55,14 @@ jobs:
         shell: bash
         run: |
           chmod +x ${{ matrix.artifact }}
-          ./${{ matrix.artifact }} --version
-          ./${{ matrix.artifact }} --help > /dev/null
+          file ${{ matrix.artifact }} || true
+          if [ "${{ matrix.can_run }}" = "true" ]; then
+            ./${{ matrix.artifact }} --version
+            ./${{ matrix.artifact }} --help > /dev/null
+          else
+            echo "Skipping execute smoke test for cross-compiled ${{ matrix.artifact }}"
+            test -s ${{ matrix.artifact }}
+          fi
 
       - name: Generate checksum
         shell: bash
