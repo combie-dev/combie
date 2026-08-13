@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { createInterface } from "node:readline/promises";
 import { resolveBaseDir } from "../storage/paths.ts";
 import { CombieError } from "../app/errors.ts";
 import { initCombie } from "../app/init.ts";
@@ -14,6 +15,13 @@ import {
   formatRelationshipsTable,
   formatChangesTable,
 } from "../app/list.ts";
+import {
+  formatAgentStatusTable,
+  inspectAgents,
+  removeAgents,
+  resolveAgentBackends,
+  setupAgents,
+} from "../app/agent.ts";
 import { getRelatedContext, formatRelatedContext } from "../app/related.ts";
 import { getResourceHistory, formatResourceHistory } from "../app/history.ts";
 import { getResourceContext, formatResourceContext } from "../app/context.ts";
@@ -42,6 +50,9 @@ Commands:
   context <resource-id>        Compose current, related, and Change context
   investigate <resource-id>    Compose one-hop investigation context around a resource
   mcp                          Start read-only MCP server over stdio
+  agent status                 Show MCP integration status for claude, codex, cursor
+  agent setup [agent...]       Configure MCP access for agents (default: all supported)
+  agent remove <agent...>      Remove Combie MCP access from agent configs
   version                      Show build version
   help                         Show this help
 
@@ -68,6 +79,7 @@ Resource references:
 
 Global:
   --dir <path>                 Combie state directory (default: ./.combie)
+  --yes                        Skip confirmation prompts (non-interactive)
   --help, -h                   Show help
   --version                    Show build version
 
@@ -90,6 +102,10 @@ Examples:
   ${BINARY_NAME} context github:repository:1001
   ${BINARY_NAME} investigate vercel:project:prj_abc
   ${BINARY_NAME} mcp
+  ${BINARY_NAME} agent status
+  ${BINARY_NAME} agent setup
+  ${BINARY_NAME} agent setup claude codex
+  ${BINARY_NAME} agent remove claude
 `;
 
 interface ParsedArgs {
@@ -137,6 +153,23 @@ function baseDirFromFlags(flags: Record<string, string | boolean>): string {
     return resolveBaseDir(dir);
   }
   return resolveBaseDir();
+}
+
+async function confirmAction(prompt: string, yes: boolean): Promise<boolean> {
+  if (yes) {
+    return true;
+  }
+  if (!process.stdout.isTTY) {
+    return true;
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(`${prompt} [Y/n] `);
+    const trimmed = answer.trim().toLowerCase();
+    return trimmed === "" || trimmed === "y" || trimmed === "yes";
+  } finally {
+    rl.close();
+  }
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -280,6 +313,71 @@ async function main(argv: string[]): Promise<number> {
       case "mcp": {
         await serveMcp({ baseDir });
         return 0;
+      }
+      case "agent": {
+        const sub = positionals[0];
+        const usage = `Usage: ${BINARY_NAME} agent <setup|status|remove> [agent...]\nAgents: claude, codex, cursor`;
+        if (!sub) {
+          console.error(usage);
+          return 1;
+        }
+        if (sub === "status") {
+          const statuses = inspectAgents(baseDir);
+          console.log(formatAgentStatusTable(statuses));
+          return 0;
+        }
+        if (sub === "setup") {
+          const names = positionals.length > 1 ? positionals.slice(1) : null;
+          const planned = resolveAgentBackends(names);
+          const configured = new Set(
+            inspectAgents(baseDir)
+              .filter((s) => s.status === "configured")
+              .map((s) => s.kind),
+          );
+          const toConfigure = planned.filter((b) => !configured.has(b.kind));
+          if (toConfigure.length === 0) {
+            console.log("All requested agents are already configured.");
+            return 0;
+          }
+          const ok = await confirmAction(
+            `Configure MCP access for ${toConfigure.map((b) => b.label).join(", ")}?`,
+            flags.yes === true,
+          );
+          if (!ok) {
+            console.log("Skipped. No changes made.");
+            return 0;
+          }
+          const results = setupAgents(names, baseDir);
+          for (const result of results) {
+            console.log(result.message);
+          }
+          return 0;
+        }
+        if (sub === "remove") {
+          const names = positionals.slice(1);
+          if (names.length === 0) {
+            console.error(
+              `Usage: ${BINARY_NAME} agent remove <agent...>\nAgents: claude, codex, cursor`,
+            );
+            return 1;
+          }
+          const backends = resolveAgentBackends(names);
+          const ok = await confirmAction(
+            `Remove Combie MCP access from ${backends.map((b) => b.label).join(", ")}?`,
+            flags.yes === true,
+          );
+          if (!ok) {
+            console.log("Skipped. No changes made.");
+            return 0;
+          }
+          const results = removeAgents(names);
+          for (const result of results) {
+            console.log(result.message);
+          }
+          return 0;
+        }
+        console.error(`Unknown agent command: ${sub}\n${usage}`);
+        return 1;
       }
       default:
         console.error(`Unknown command: ${command}\n\n${HELP.trimEnd()}`);
