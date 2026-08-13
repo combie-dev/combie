@@ -449,11 +449,20 @@ command = "node"
 
 describe("CLI agent commands", () => {
   let home: string;
+  let binDir: string;
   const origHome = process.env.HOME;
+  const origPath = process.env.PATH;
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "combie-cli-agent-"));
+    binDir = mkdtempSync(join(tmpdir(), "combie-cli-agent-bin-"));
+    for (const name of ["claude", "codex", "cursor"]) {
+      const fake = join(binDir, name);
+      writeFileSync(fake, "#!/bin/sh\n");
+      chmodSync(fake, 0o755);
+    }
     process.env.HOME = home;
+    process.env.PATH = binDir;
   });
 
   afterEach(() => {
@@ -462,7 +471,13 @@ describe("CLI agent commands", () => {
     } else {
       process.env.HOME = origHome;
     }
+    if (origPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = origPath;
+    }
     rmSync(home, { recursive: true, force: true });
+    rmSync(binDir, { recursive: true, force: true });
   });
 
   test("agent status prints the table", async () => {
