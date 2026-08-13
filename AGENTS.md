@@ -1,6 +1,11 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–014 implement the multi-provider connection loop through **Cloudflare**, **GitHub**, **Vercel**, **Sentry**, **Neon**, and **PlanetScale**.
+Combie is the open engineering context layer. Sprints 001–041B implement the
+local multi-provider context foundation through **Cloudflare**, **GitHub**,
+**Vercel**, **Sentry**, **Neon**, and **PlanetScale**, including deterministic
+Relationships, retained provider evidence, offline investigation, read-only MCP,
+release distribution, and guided agent setup. Sprint 042 is the active
+GitHub-first closed beta.
 
 ## Mandatory reading order before any substantive change
 
@@ -22,7 +27,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–013 complete (014 adds PlanetScale)
+## Current baseline: Sprints 001–041B complete (042 is active)
 
 Multi-provider connection loop:
 
@@ -30,23 +35,37 @@ Multi-provider connection loop:
 combie init
   → connect cloudflare | github | vercel | sentry | neon | planetscale
   → sync (all connected providers)
-  → providers | resources | changes | history | context | investigate
+  → providers | resources | relationships | changes | history | context
+  → investigate (deterministic, offline, one hop)
+  → agent setup | mcp (four read-only local tools)
 ```
 
 Supported resource kinds: `worker`, `database` (Cloudflare D1 / PlanetScale), `kv_namespace`, `zone`, `repository`, `project` (Vercel / Sentry / Neon).
 
 Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
 
-- **Anti-speculation rule:** build only what the active Sprint requires; no Investigation/Learning/Recommendation engines, MCP, AI layer, OTLP, execution policies, universal provider framework, or other roadmap concepts — not even as scaffolding.
-- Explicitly out of scope unless the active Sprint requires it: additional providers, Engineering Graph, memory, investigations, API server, SDK, hosted Combie.
+- Current proven graph scope: `source_for` (GitHub repository → Vercel
+  project) and `uses_domain_in` (Vercel project → Cloudflare zone), derived
+  only from exact provider evidence.
+- Current agent scope: exactly four local, offline, read-only MCP tools:
+  `list_resources`, `list_providers`, `get_related_context`, and
+  `investigate_resource`.
+- **Sprint 042 product freeze:** build only reproduced closed-beta blockers.
+  Do not predetermine or scaffold v0.5 Context Engine, additional providers,
+  broader ontology/identity, model reasoning, background sync, webhooks,
+  telemetry ingestion, operational learning, policy, or execution.
+- Explicitly out of scope during Sprint 042: new MCP tools or semantics, API,
+  SDK, hosted Combie, and in-product analytics or feedback collection.
 
 ## Repository layout
 
 ```text
 src/
   cli/                 CLI entry and commands
-  app/                 Application services (init, connect, sync, list)
-  domain/              Provider-independent Resource model
+  agent/               Claude Code, Codex, and Cursor MCP configuration
+  app/                 Application services and deterministic context composition
+  domain/              Provider-independent Resource, Relationship, and Change models
+  mcp/                 Local stdio read-only agent interface
   provider/            Minimal provider contract + registry
   providers/cloudflare  Cloudflare adapter (HTTP client, normalize, errors)
   providers/github      GitHub adapter (HTTP client, normalize, errors)
@@ -75,6 +94,9 @@ tests/                 bun:test suites (no live provider credentials required)
 - Multi-provider sync attempts each connected provider, persists successes, reports failures, and exits non-zero if any provider fails.
 - Commits only when authorized; conventional style (`feat(provider): …`, `fix(storage): …`).
 - When a Sprint completes, record Implemented / Deviations / Validation / Learnings / Canon Changes notes in the Sprint doc; never start the next Sprint.
+- During Sprint 042, collect only sanitized qualitative evidence through
+  invitation threads; never request credentials, authorization headers,
+  unredacted state databases, or private resource names.
 
 ## Commands
 

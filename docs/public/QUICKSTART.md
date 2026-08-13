@@ -10,8 +10,8 @@ refresh, no webhooks. Allow ~20 minutes.
 ## 1. Requirements
 
 - **macOS or Linux** — Combie also runs on Windows via WSL; native Windows support is planned
-- **Tokens**: at least one supported provider; GitHub + Vercel is the
-  recommended beta stack and the rest are optional
+- **Tokens**: GitHub is the validated first-cohort provider. The other
+  supported providers are optional and outside the GitHub-first beta promise.
 - No additional runtime required — the installed binary includes everything it needs
 
 | Provider    | What you need                                          |
@@ -39,7 +39,7 @@ combie --version
 Expected output:
 
 ```bash
-combie 0.1.0
+combie 0.1.1
 ```
 
 The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
@@ -104,7 +104,7 @@ exported in this shell. `GitHub CLI returned an empty token` -> run
 `gh auth login` first. `authentication failed` -> wrong token or missing
 `repo` read scope.
 
-## 5. Connect Vercel
+## 5. (Optional) Connect Vercel
 ```bash
 export VERCEL_TOKEN=<token>
 combie connect vercel --use-env
@@ -119,8 +119,8 @@ Credential stored in the local restricted-permission credentials file.
 
 **Troubleshooting:** same `is not set` / `authentication failed` checks as
 GitHub above. This beta does not pass a Vercel `teamId`; team-owned projects
-may therefore be absent. Use a personal-scope project for the first cohort or
-record the team-scope gap in feedback.
+may therefore be absent. Vercel is outside the validated GitHub-first cohort;
+use a personal-scope project only when intentionally testing this known gap.
 
 ## 6. (Optional) Connect Cloudflare
 ```bash
@@ -132,8 +132,8 @@ The token must be able to list the account and read Workers scripts, D1
 databases, KV namespaces, and zones. Discovery is all-or-nothing: if any of
 those calls is denied, Cloudflare sync fails with a permission error; it does
 not silently return an empty inventory. Tokens that can see multiple accounts
-are not supported in the first cohort because this beta selects the first
-returned account.
+are outside the validated cohort because this beta selects the first returned
+account.
 
 ## 7. (Optional) Connect Sentry
 ```bash
