@@ -250,6 +250,21 @@ Recommended initial order:
 5. OpenCode
 ```
 
+### Delivery status (Sprint 041B)
+
+Delivered for Claude Code, Codex, and Cursor only:
+
+```text
+combie agent status             detection + integration status table
+combie agent setup [agent...]   TTY-only [Y/n] confirm; --yes; non-TTY proceeds
+combie agent remove <agent...>  removes only the Combie MCP entry
+```
+
+MCP configuration is written to `~/.claude.json`, `~/.codex/config.toml`, and
+`~/.cursor/mcp.json`; an existing correct entry is left untouched, a stale
+entry is updated in place, and unrelated configuration is preserved. Pi,
+OpenCode, and other agents remain future planning items (deferred).
+
 ---
 
 ## 5. Pi Integration

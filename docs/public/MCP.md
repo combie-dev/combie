@@ -26,6 +26,27 @@ combie sync
 One provider is enough. Provider credentials are needed for `connect` and
 `sync`, but not for MCP reads after state has been synchronized.
 
+## Automatic setup (preferred)
+
+`combie agent setup` detects Claude Code, Codex, and Cursor, and configures the
+Combie MCP server for each detected agent:
+
+```bash
+combie agent status          # what will be configured
+combie agent setup           # configure everything (confirms on a TTY)
+combie agent setup claude codex
+combie agent setup --yes     # skip the confirmation prompt
+combie agent remove claude   # remove only the Combie MCP entry
+```
+
+It works without any agent installed (the entry is written for when the agent
+is installed later), never touches unrelated configuration, keeps an existing
+correct entry as-is, updates a stale entry in place, and refuses to edit a
+configuration it cannot safely read. To use a non-default state directory,
+pass `--dir` (the same value is embedded via `COMBIE_HOME`).
+
+The manual instructions below remain available as a fallback.
+
 ## Frozen beta contract
 
 - Transport: local stdio only; no HTTP, SSE, or hosted endpoint.
