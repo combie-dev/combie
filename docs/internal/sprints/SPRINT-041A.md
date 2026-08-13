@@ -2441,6 +2441,14 @@ Remaining from Sprint 041:
 - [ ] Fresh live provider sync on final build
 - [ ] GitHub + Vercel dogfood OR explicitly narrowed cohort
 
+> **Updated 2026-08-13 (release closure):** all four conditions are now closed
+> by the v0.1.1 publication on `github.com/combie-dev/combie` (URL + SHA
+> `1643252…`, Apache-2.0 LICENSE owner-approved, fresh live GitHub
+> connect/sync on the installed binary — 312 repositories, 611 workflow runs,
+> and the cohort explicitly narrowed to GitHub-only with owner approval).
+> See `docs/internal/beta/RELEASE.md`, `READINESS.md`, and `DOGFOOD.md` for
+> evidence. The Sprint 042 gate below is thereby cleared at v0.1.1.
+
 ## New Security Conditions
 
 - [x] SECURITY.md created with reporting channel
@@ -2479,6 +2487,12 @@ conditions:
 
 The **security gate** is now CLEARED. Sprint 042 may begin once the
 above release conditions are closed.
+
+> **Verdict 2026-08-13:** the security gate remains CLEARED (no new findings,
+> no re-scoring) and all four release conditions above are now closed by the
+> v0.1.1 publication (evidence in `RELEASE.md` / `READINESS.md` /
+> `DOGFOOD.md`). **Sprint 042 is READY TO BEGIN.** It has not started; no
+> Sprint 042 work is authorized in this release-closure commit.
 
 ## Canon Changes
 

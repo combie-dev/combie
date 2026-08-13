@@ -115,19 +115,40 @@ unredacted database. If logs may contain a secret, rotate it before sharing.
 
 ## Release conditions before invitations
 
-- [ ] Publish or grant access to a repository and insert its URL plus the final
+- [x] Publish or grant access to a repository and insert its URL plus the final
   Sprint 041 SHA into every invitation.
-- [ ] Add owner-approved license/beta-use terms, or explicitly grant beta-use
+  Evidence (2026-08-13): public repo `https://github.com/combie-dev/combie`
+  (Apache-2.0), release `v0.1.1` at tag `v0.1.1` → commit
+  `1643252bb3e02325534330857617321ec1ca2df`, three binaries plus three
+  `.sha256` files; every downloaded checksum matched; `combie --version`
+  reports `0.1.1`; the binary exposes exactly the four MCP tools.
+- [x] Add owner-approved license/beta-use terms, or explicitly grant beta-use
   permission in the invitation.
-- [ ] Complete one fresh live GitHub connect/sync using the public quickstart.
-- [ ] Complete one GitHub + Vercel live run, or explicitly narrow the cohort
+  Evidence (2026-08-13): `LICENSE` (Apache-2.0) and package.json
+  `"license": "Apache-2.0"` committed in the public repo; owner-approved.
+- [x] Complete one fresh live GitHub connect/sync using the public quickstart.
+  Evidence (2026-08-13): the installed v0.1.1 binary, fresh isolated state,
+  `connect github --use-gh` (account `sgr0691`), `sync github` →
+  312 repositories, 611 workflow runs recorded; second sync stable. Full
+  record in `DOGFOOD.md`.
+- [x] Complete one GitHub + Vercel live run, or explicitly narrow the cohort
   and invitation promise to a validated provider configuration.
+  Evidence (2026-08-13): cohort explicitly narrowed to the validated
+  GitHub-only configuration; owner-approved. Vercel remains a deferred
+  condition for a later cohort.
 - [x] Complete one natural-language Codex or Cursor MCP call against the final
   release commit and record the result in `DOGFOOD.md`.
+  Evidence (2026-08-13): Codex called `list_resources` through the installed
+  v0.1.1 binary against the live dogfood state and reported 312 repositories.
 - [x] Re-run `bun test`, `bun run typecheck`, secret scan, and clean-checkout
   install verification at the final SHA.
+  Evidence (2026-08-13): the v0.1.1 tag build ran the full suite on all three
+  matrix targets (linux-x64, darwin-arm64, darwin-x64) — 699 tests,
+  typecheck clean; clean install from `https://combie.dev/install` into an
+  isolated HOME produced the exact published binary hash.
 
-Until these boxes have real evidence, Sprint 042 invitations are blocked.
+All release conditions are closed. Sprint 042 invitations are unblocked at
+this commit.
 
 ## Rollback
 
@@ -137,3 +158,28 @@ unless credential exposure is suspected; in that case rotate the affected
 credential and remove the state directory. Fix the blocker in a new reviewed
 commit and issue a new pinned SHA. There is no auto-update or remote service to
 roll back.
+
+## Closure record — Sprint 041B / v0.1.1 (2026-08-13)
+
+The Sprint 041 note above pinned a repository checkout at `0.1.0`
+(`da038939`). Sprint 041B added automatic MCP agent setup and the release was
+published as **v0.1.1** through the release pipeline in
+`.github/workflows/release.yml`:
+
+- Public release: `https://github.com/combie-dev/combie/releases/tag/v0.1.1`
+- Public commit: `1643252bb3e02325534330857617321ec1ca2df`
+- Binaries: `combie-darwin-arm64`, `combie-darwin-x64`, `combie-linux-x64`
+  (+ `.sha256` each); checksums verified on download.
+- The "Not yet" line above ("no standalone binary") is superseded: a
+  standalone binary, installer (`install.sh` / `https://combie.dev/install`),
+  and tag-triggered release pipeline now exist. The four-tool read-only MCP
+  contract is unchanged.
+- Distribution defect found and fixed at the release gate: the agent CLI test
+  asserted a short-circuit message that only fires when agent executables are
+  detected in PATH, so CI hosts (no agents installed) failed the suite. The
+  test now uses stub executables in a temp bin dir on PATH
+  (fix `830384e`, public `1643252`); 699 tests pass on all matrix targets.
+- One deviation: the `v0.1.1` tag was force-updated once to the fixed commit
+  before any release object or artifact existed (CI tests had failed on the
+  first tag push); no release, artifact, or consumer was affected.
+- The v0.1.0 release (2026-08-12, tag → `c18e997`) remains untouched.

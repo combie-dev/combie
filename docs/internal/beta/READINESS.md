@@ -47,19 +47,28 @@ invitations remain blocked by the conditions below.
   discovery or call is claimed.
 - [x] **Beta audience, learning goals, support, safe bug reporting, rollback,
   known limitations, and release conditions are defined** in `RELEASE.md`.
-- [ ] **Accessible release artifact is ready.** This checkout has no git remote
-  or tag. The final invite still needs an accessible repository URL, exact
-  Sprint 041 SHA, and owner-approved license/beta-use terms.
-- [ ] **Fresh live provider journey is complete on the final build.** No valid
-  authorized provider credential or GitHub CLI login was available during this
-  run, so connect/sync cannot honestly be marked complete.
-- [ ] **Live multi-provider relationship/shared-commit dogfood is complete.** A
-  GitHub + Vercel run remains required, or the first cohort and invitation
-  promise must be narrowed to a validated provider configuration.
+- [x] **Accessible release artifact is ready.** Published as v0.1.1 on
+  `https://github.com/combie-dev/combie` (tag `v0.1.1` → commit
+  `1643252bb3e02325534330857617321ec1ca2df`) with three binaries + checksums,
+  Apache-2.0 LICENSE and license field committed, owner-approved. Downloaded
+  checksums matched; `combie --version` reports `0.1.1`; the binary exposes
+  exactly the four MCP tools. Evidence 2026-08-13.
+- [x] **Fresh live provider journey is complete on the final build.** The
+  installed v0.1.1 binary, in a fresh isolated state, ran
+  `connect github --use-gh` (account `sgr0691`) and a live `sync github`:
+  312 repositories, 611 workflow runs recorded, second sync stable. Recorded
+  in `DOGFOOD.md`. Evidence 2026-08-13.
+- [x] **Live multi-provider relationship/shared-commit dogfood is complete.**
+  The first cohort and invitation promise are explicitly narrowed to the
+  validated GitHub-only configuration; owner-approved. A GitHub + Vercel run
+  remains a deferred condition for a later cohort.
 - [x] **Release-SHA validation is complete.** Commit
   `da038939e1def0cf3b2888ec973a8ca465955425` passed a clean clone, frozen
   install, help/version/init, 624 tests, typecheck, committed-diff secret scan,
   and a natural Codex prompt that invoked both listing and investigation.
+  The v0.1.1 build (`1643252bb3e02325534330857617321ec1ca2df`) additionally
+  passed the full suite (699 tests) on all three CI matrix targets and a clean
+  installer install with matching published checksums.
 
 ## Classified findings
 
@@ -96,3 +105,14 @@ P2 deferred:
 enough for a small closed beta, but invitations must not start until the
 unchecked conditions above are either completed with evidence or explicitly
 narrowed in the invitation. Sprint 042 is therefore **blocked** at this commit.
+
+## Update 2026-08-13 — Sprint 041B / v0.1.1 closure
+
+The previously unchecked gate items (accessible release artifact, fresh live
+provider journey, multi-provider dogfood or narrowed cohort) are now closed
+with evidence above: v0.1.1 is published with verified artifacts, a fresh live
+GitHub connect/sync ran on the installed binary (312 repositories, 611
+workflow runs), and the cohort is explicitly narrowed to GitHub-only with
+owner approval. The release conditions in `RELEASE.md` are all satisfied.
+Sprint 042 is unblocked at commit `1643252bb3e02325534330857617321ec1ca2df`
+(public) / `830384e` (master).

@@ -294,3 +294,81 @@ substituted for dogfood.
 Decision from this run: **CONDITIONAL GO**. Product-level local/MCP blockers are
 fixed; Sprint 042 invitations remain blocked by the release conditions in
 `RELEASE.md`.
+
+---
+
+## Sprint 041B release-candidate run — 2026-08-13 (v0.1.1)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-08-13 |
+| Release | v0.1.1 — `https://github.com/combie-dev/combie/releases/tag/v0.1.1` |
+| Public commit | `1643252bb3e02325534330857617321ec1ca2df` (+ main) |
+| Private commits | `830384e` (test hermeticity fix) on `118a3c9` (Sprint 041B) |
+| Machine / OS | macOS 26.5.2, arm64 (darwin-arm64 binary validated) |
+| Distribution | standalone binary via `install.sh` (byte-identical sha
+  `89f621ef…` locally, in repo, and served at `https://combie.dev/install`) |
+| Providers connected | GitHub via `connect github --use-gh` (account `sgr0691`) |
+| Resources | 312 repositories (GitHub); 611 workflow runs recorded |
+| Relationships / evidence | workflow-run evidence: 176 repositories refreshed, 136 failed (prior evidence retained, bound ≤100 runs each) |
+| Investigate targets | `github:repository:1331212396` (combie-dev/combie) —
+  live release workflow run #3 `31553844937`, head sha `c18e997…`, branch
+  `v0.1.0`, success |
+| Agent runs | agent integration (Claude Code, Codex, Cursor setups) |
+| Security | credentials file mode `0600`; no provider env vars set on the
+  run; state in isolated home dirs |
+
+### Release pipeline (CI)
+
+- [x] `v0.1.1` tag push triggered `release.yml`; all three matrix targets
+  (bun-linux-x64, bun-darwin-arm64, bun-darwin-x64 cross-compile) and the
+  GitHub Release job succeeded.
+- [x] Artifacts: `combie-darwin-arm64`, `combie-darwin-x64`,
+  `combie-linux-x64` + `.sha256`; all downloaded checksums matched.
+- [x] Smoke tests (`--version` → `combie 0.1.1`, `--help`) passed in CI and on
+  the downloaded binary.
+- [x] MCP contract freeze on the distributed binary: exactly
+  `list_resources`, `list_providers`, `get_related_context`,
+  `investigate_resource`.
+
+### Scenario A — clean install (isolated HOME)
+
+- [x] `curl https://combie.dev/install` served the script byte-identical to
+  repo `install.sh` (sha `89f621ef…`).
+- [x] Installed into an isolated `$HOME` (`~/.local/bin/combie`); binary
+  SHA-256 matched the published `combie-darwin-arm64` exactly.
+- [x] `combie --version` → `combie 0.1.1` (release tag embedded via
+  `BUN_BUILD_VERSION`; installer resolves latest release dynamically, not the
+  `v0.1.0` fallback).
+
+### Scenario B — fresh live provider journey (final build)
+
+- [x] `connect github --use-gh` → account `sgr0691`, credential stored in
+  `0600` file.
+- [x] `sync github` on the installed binary: 312 repositories, 611 workflow
+  runs recorded (2 new: the v0.1.1 CI runs themselves).
+- [x] Second `sync` stable; `providers`, `resources`, `relationships`,
+  `changes`, `history`, and `investigate` all worked from the fresh state.
+
+### Scenarios H–I — real MCP client and agent (final build)
+
+- [x] `combie agent setup --yes` with the installed binary configured Claude
+  Code (`~/.claude.json`), Codex (`~/.codex/config.toml`), and Cursor
+  (`~/.cursor/mcp.json`) in an isolated HOME, each pointing at the installed
+  binary with `COMBIE_HOME` embedded.
+- [x] Real Codex CLI called through the installed binary (invocation override,
+  `default_tools_approval_mode="writes"`): listed the four tools and returned
+  312 repositories from the live dogfood state.
+- [ ] Cursor / Claude Code natural-language calls: configuration validation
+  only (agent binaries not exercised for a live prompt on this machine).
+
+### Sprint 041B findings
+
+| Finding | Severity | Outcome |
+| --- | --- | --- |
+| Agent CLI test depended on host PATH (agents present locally, absent on CI) | blocker / release gate | fixed: hermetic stub executables (`830384e` / `1643252`); 699 tests green on all matrix targets |
+| `mcp_servers.combie.env` override via Codex CLI `-c` not honored in `exec` | info | worked around by exporting `COMBIE_HOME` for the Codex process (env propagates to the MCP child, same mechanism the agent configs embed) |
+| `DEFAULT_VERSION="v0.1.0"` in `install.sh` is a fallback only (dynamic latest-release lookup) | nit | consistent with the established release process; no change |
+
+Decision from this run: **ALL RELEASE CONDITIONS CLOSED**. Sprint 042
+invitations are unblocked at v0.1.1.

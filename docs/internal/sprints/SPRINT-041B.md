@@ -562,6 +562,15 @@ GitHub + Vercel dogfood OR explicitly narrowed cohort
 
 Track them separately. They remain open and unchanged.
 
+> **Updated 2026-08-13 (release closure):** all four Sprint 041 conditions were
+> subsequently closed by the v0.1.1 publication — public release URL/SHA on
+> `github.com/combie-dev/combie` (tag `v0.1.1` → `1643252…`), Apache-2.0
+> LICENSE (owner-approved), fresh live GitHub sync on the installed binary
+> (312 repositories, 611 workflow runs), and the cohort explicitly narrowed to
+> GitHub-only (owner-approved). Evidence in `docs/internal/beta/RELEASE.md`,
+> `READINESS.md`, `DOGFOOD.md`. The only Sprint 041B fix at the release gate
+> was a hermetic test change (`830384e`); no product behavior changed.
+
 ## Sprint 042 Gate
 
 Sprint 042 remains **blocked** by the unresolved Sprint 041 release conditions
