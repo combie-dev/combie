@@ -2,6 +2,7 @@ import type { Relationship } from "../domain/relationship.ts";
 import type { Resource } from "../domain/resource.ts";
 import type { GitHubWorkflowRunEvidence } from "../providers/github/workflow-run.ts";
 import type { NeonOperationEvidence } from "../providers/neon/operation.ts";
+import type { SentryReleaseEvidence } from "../providers/sentry/release.ts";
 import type { VercelDeploymentEvidence } from "../providers/vercel/deployment.ts";
 import type { InvestigationContext } from "./investigate.ts";
 import type { RelatedDirection } from "./related.ts";
@@ -10,7 +11,8 @@ import type { RelatedDirection } from "./related.ts";
 export type ProviderActivityFamily =
   | "vercel_deployment"
   | "github_workflow_run"
-  | "neon_operation";
+  | "neon_operation"
+  | "sentry_release";
 
 /**
  * Refresh/authority class inherited from the source evidence authority.
@@ -59,6 +61,16 @@ export type ProviderActivityEntry =
       resourceId: string;
       relationships: ProviderActivityRelationship[];
       authority: ProviderActivityAuthority;
+    }
+  | {
+      family: "sentry_release";
+      evidence: SentryReleaseEvidence;
+      primaryTime: string;
+      primaryTimeField: "dateCreated";
+      role: "subject" | "related";
+      resourceId: string;
+      relationships: ProviderActivityRelationship[];
+      authority: ProviderActivityAuthority;
     };
 
 export interface ProviderActivityChronology {
@@ -80,6 +92,10 @@ interface RelatedActivitySource {
   operations: {
     authority: ProviderActivityAuthority;
     items: NeonOperationEvidence[];
+  } | null;
+  releases: {
+    authority: ProviderActivityAuthority;
+    items: SentryReleaseEvidence[];
   } | null;
 }
 
@@ -104,6 +120,8 @@ export function nativeEvidenceId(entry: ProviderActivityEntry): string {
       return String(entry.evidence.runId);
     case "neon_operation":
       return entry.evidence.operationId;
+    case "sentry_release":
+      return entry.evidence.version;
   }
 }
 
@@ -195,6 +213,26 @@ function collectOperations(
     : null;
 }
 
+function collectReleases(
+  authority: InvestigationContext["subjectReleases"],
+): {
+  authority: ProviderActivityAuthority;
+  items: SentryReleaseEvidence[];
+} | null {
+  if (authority.kind === "not_applicable") return null;
+  if (authority.kind === "populated") {
+    return { authority: "populated", items: authority.releases };
+  }
+  if (authority.kind === "empty") {
+    return authority.releases.length > 0
+      ? { authority: "empty", items: authority.releases }
+      : null;
+  }
+  return authority.releases.length > 0
+    ? { authority: "unknown", items: authority.releases }
+    : null;
+}
+
 function pushDeploymentEntries(
   entries: ProviderActivityEntry[],
   items: VercelDeploymentEvidence[],
@@ -258,6 +296,27 @@ function pushOperationEntries(
   }
 }
 
+function pushReleaseEntries(
+  entries: ProviderActivityEntry[],
+  items: SentryReleaseEvidence[],
+  authority: ProviderActivityAuthority,
+  role: "subject" | "related",
+  relationships: ProviderActivityRelationship[],
+): void {
+  for (const evidence of items) {
+    entries.push({
+      family: "sentry_release",
+      evidence,
+      primaryTime: evidence.dateCreated,
+      primaryTimeField: "dateCreated",
+      role,
+      resourceId: evidence.resourceId,
+      relationships,
+      authority,
+    });
+  }
+}
+
 /**
  * Pure temporal projection of provider-native evidence already present on an
  * InvestigationContext. One durable evidence object → one primary activity
@@ -301,6 +360,16 @@ export function composeProviderActivityChronology(
       [],
     );
   }
+  const subjectReleases = collectReleases(context.subjectReleases);
+  if (subjectReleases) {
+    pushReleaseEntries(
+      entries,
+      subjectReleases.items,
+      subjectReleases.authority,
+      "subject",
+      [],
+    );
+  }
 
   // Group related neighbors by Resource id so multi-edge neighbors dedupe
   // evidence while retaining every Relationship path (same pattern as timeline).
@@ -318,6 +387,7 @@ export function composeProviderActivityChronology(
         deployments: null,
         workflowRuns: null,
         operations: null,
+        releases: null,
       };
       relatedByResource.set(neighbor.resource.id, source);
     }
@@ -337,6 +407,9 @@ export function composeProviderActivityChronology(
     }
     if (!source.operations) {
       source.operations = collectOperations(neighbor.operations);
+    }
+    if (!source.releases) {
+      source.releases = collectReleases(neighbor.releases);
     }
   }
 
@@ -388,11 +461,26 @@ export function composeProviderActivityChronology(
         rels,
       );
     }
+    if (source.releases) {
+      const seen = new Set<string>();
+      const unique = source.releases.items.filter((release) => {
+        if (seen.has(release.version)) return false;
+        seen.add(release.version);
+        return true;
+      });
+      pushReleaseEntries(
+        entries,
+        unique,
+        source.releases.authority,
+        "related",
+        rels,
+      );
+    }
   }
 
   // Total order:
   //   primaryTime DESC
-  //   family ASC (github_workflow_run < neon_operation < vercel_deployment)
+  //   family ASC (github_workflow_run < neon_operation < sentry_release < vercel_deployment)
   //   nativeEvidenceId DESC (numeric for pure-digit ids; else string)
   entries.sort((left, right) => {
     const byTime = compareDescending(left.primaryTime, right.primaryTime);

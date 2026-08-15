@@ -2,6 +2,7 @@ import type { Relationship } from "../domain/relationship.ts";
 import type { DeploymentEvidenceAuthority } from "../providers/vercel/deployment.ts";
 import type { WorkflowRunEvidenceAuthority } from "../providers/github/workflow-run.ts";
 import type { NeonOperationEvidenceAuthority } from "../providers/neon/operation.ts";
+import type { ReleaseEvidenceAuthority } from "../providers/sentry/release.ts";
 import type { InvestigationContext } from "./investigate.ts";
 import {
   composeProviderActivityChronology,
@@ -65,6 +66,11 @@ export type InvestigationFactActivityRef =
       family: "neon_operation";
       primaryTimeField: "created_at";
       recordedStatus: string;
+    })
+  | (InvestigationFactActivityBase & {
+      family: "sentry_release";
+      primaryTimeField: "dateCreated";
+      recordedStatus: string | null;
     });
 
 export interface InvestigationFactAuthorityRef {
@@ -114,6 +120,10 @@ export type InvestigationFactStateSummary =
     })
   | (InvestigationFactStateSummaryBase & {
       family: "neon_operation";
+      field: "status";
+    })
+  | (InvestigationFactStateSummaryBase & {
+      family: "sentry_release";
       field: "status";
     });
 
@@ -377,6 +387,36 @@ function operationIds(
   );
 }
 
+function authorityFromReleases(
+  authority: Exclude<ReleaseEvidenceAuthority, { kind: "not_applicable" }>,
+): InvestigationFactAuthority {
+  if (authority.kind === "unknown") {
+    return { kind: "unknown", refreshObservedAt: null };
+  }
+  return { kind: authority.kind, refreshObservedAt: authority.observedAt };
+}
+
+function resultCountFromReleases(
+  authority: Exclude<ReleaseEvidenceAuthority, { kind: "not_applicable" }>,
+): number | null {
+  return authority.resultCount;
+}
+
+function lastSuccessAtFromReleases(
+  authority: Exclude<ReleaseEvidenceAuthority, { kind: "not_applicable" }>,
+): string | null {
+  if (authority.kind === "unknown") return authority.lastSuccessAt;
+  return authority.observedAt;
+}
+
+function releaseIds(
+  authority: Exclude<ReleaseEvidenceAuthority, { kind: "not_applicable" }>,
+): string[] {
+  return [...new Set(authority.releases.map((item) => item.version))].sort(
+    compareNativeIdDescending,
+  );
+}
+
 function collectAuthoritySources(
   context: InvestigationContext,
 ): MutableAuthoritySource[] {
@@ -417,6 +457,7 @@ function collectAuthoritySources(
     deployments: DeploymentEvidenceAuthority,
     runs: WorkflowRunEvidenceAuthority,
     operations: NeonOperationEvidenceAuthority,
+    releases: ReleaseEvidenceAuthority,
   ): void {
     if (deployments.kind !== "not_applicable") {
       upsert(
@@ -454,6 +495,18 @@ function collectAuthoritySources(
         lastSuccessAtFromOperations(operations),
       );
     }
+    if (releases.kind !== "not_applicable") {
+      upsert(
+        "sentry_release",
+        resourceId,
+        role,
+        relationships,
+        authorityFromReleases(releases),
+        releaseIds(releases),
+        resultCountFromReleases(releases),
+        lastSuccessAtFromReleases(releases),
+      );
+    }
   }
 
   addAuthorities(
@@ -463,6 +516,7 @@ function collectAuthoritySources(
     context.subjectDeployments,
     context.subjectWorkflowRuns,
     context.subjectOperations,
+    context.subjectReleases,
   );
 
   for (const neighbor of context.related) {
@@ -476,6 +530,7 @@ function collectAuthoritySources(
       neighbor.deployments,
       neighbor.workflowRuns,
       neighbor.operations,
+      neighbor.releases,
     );
   }
 
@@ -550,6 +605,14 @@ function activityRef(
       recordedConclusion: entry.evidence.conclusion,
     };
   }
+  if (entry.family === "sentry_release") {
+    return {
+      ...base,
+      family: entry.family,
+      primaryTimeField: entry.primaryTimeField,
+      recordedStatus: entry.evidence.status,
+    };
+  }
   return {
     ...base,
     family: entry.family,
@@ -589,6 +652,9 @@ function stateValue(
   if (evidence.family === "github_workflow_run") {
     if (field === "status") return evidence.recordedStatus;
     return field === "conclusion" ? evidence.recordedConclusion : null;
+  }
+  if (evidence.family === "sentry_release") {
+    return field === "status" ? evidence.recordedStatus : null;
   }
   return field === "status" ? evidence.recordedStatus : null;
 }
@@ -641,6 +707,17 @@ function stateSummary(
     };
   }
   if (family === "neon_operation" && field === "status") {
+    return {
+      kind: "provider_state_summary",
+      subjectResourceId,
+      family,
+      field,
+      totalCount: evidence.length,
+      groups: grouped,
+      evidence,
+    };
+  }
+  if (family === "sentry_release" && field === "status") {
     return {
       kind: "provider_state_summary",
       subjectResourceId,
@@ -725,6 +802,7 @@ export function composeInvestigationFacts(
   const families: ProviderActivityFamily[] = [
     "github_workflow_run",
     "neon_operation",
+    "sentry_release",
     "vercel_deployment",
   ];
   for (const family of families) {

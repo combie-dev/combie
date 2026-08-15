@@ -1,6 +1,6 @@
 # SPRINT-043 — Sentry Release Evidence
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-042 (complete)
 > **Authorized by:** SPRINT-042 next-phase decision (founder override, 2026-08-15)
 > **Roadmap:** v0.5 Investigation foundation + v0.3 Memory evidence depth
@@ -661,49 +661,143 @@ Never commit tokens, credentials, or private resource names.
 
 # Definition of Done
 
-- [ ] Sprint 043 active record exists
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] Sentry release client retrieval implemented (fixture-tested)
-- [ ] compact normalization + allowlist projection
-- [ ] SQLite persistence + pre-043 migration
-- [ ] sync integration with authority semantics
-- [ ] offline CLI `RELEASES` section in investigate output
-- [ ] provider-activity chronology includes Sentry releases
-- [ ] Known Facts / Missing Context remain truthful
-- [ ] MCP `investigate_resource` parity without new tools
-- [ ] full test suite and typecheck pass
-- [ ] no secrets in output, errors, or fixtures
-- [ ] completion notes finalized
-- [ ] Canon unchanged unless material evidence requires an update
+- [x] Sprint 043 active record exists
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] Sentry release client retrieval implemented (fixture-tested)
+- [x] compact normalization + allowlist projection
+- [x] SQLite persistence + pre-043 migration
+- [x] sync integration with authority semantics
+- [x] offline CLI `RELEASES` section in investigate output
+- [x] provider-activity chronology includes Sentry releases
+- [x] Known Facts / Missing Context remain truthful
+- [x] MCP `investigate_resource` parity without new tools
+- [x] full test suite and typecheck pass
+- [x] no secrets in output, errors, or fixtures
+- [x] completion notes finalized
+- [x] Canon unchanged unless material evidence requires an update
 
 ---
 
 # Completion Notes
 
-Complete this section only after implementation.
+## Baseline at start
+
+```text
+HEAD:          b8ba2af6ec0f9c0938fc53b4b6d3879f05a10b16
+public release: v0.1.1
+tests:         699 pass across 59 files
+typecheck:     clean
+MCP:           exactly four read-only tools
+Sentry today:  project discovery only
+```
+
+Worktree was clean. SPRINT-043 was the single Active sprint.
+
+## Repository Understanding
+
+1. Sentry projects are discovered org-first (`GET /organizations/`, then
+   `GET /organizations/{slug}/projects/`), deduped by numeric project id.
+   Org context is persisted on the project Resource as
+   `metadata.organization_slug` and `metadata.organization_id`.
+2. Exact identity is `sentry:project:<numeric-id>`.
+3. Vercel/GitHub/Neon evidence is not on the Provider contract. Each family
+   adds a client list method, a provider-local normalize/authority module,
+   store tables, and a `syncOne` hook after `applyResource`.
+4. Reusable: refresh authority (`success`/`failure`, resultCount,
+   lastSuccessfulObservedAt), upsert-without-Change, bounded pagination,
+   investigation headings, provider-activity family, Known Facts / Missing
+   Context. Sentry-specific: org slug + `?project=` filter, `version` identity,
+   nullable `dateReleased`, multi-project `projects[].id` binding.
+5. Release retrieval belongs in `syncOne` after Sentry project Resources are
+   applied, isolated from discovery success — same as GitHub workflow runs.
+6. Organization slug comes from persisted `metadata.organization_slug`. Missing
+   slug is a refresh failure, not known-empty.
+7. A fourth family adds another store pair and another investigation arm. That
+   is real duplication, but three prior families already shipped this way.
+8. A generic Event primitive is not earned.
+
+## Architecture Pressure
+
+1. Endpoint: official
+   `GET /api/0/organizations/{organization_id_or_slug}/releases/?project={project_id}`.
+   Project-scoped listing uses slug and is less stable; not used.
+2. Auth: bearer token; documented scopes include `project:read` (also
+   `project:releases` / `project:write` / `project:admin` / `org:ci`).
+3. Upsert key: Sentry `version` + exact project Resource id. Version is the
+   stable release identity used by Sentry API paths.
+4. Project identity: `projects[].id` (number or string), compared exactly to
+   `providerResourceId`.
+5. Mapping: `projects[].id` → `sentry:project:<id>`.
+6. Times: required `dateCreated`; optional nullable `dateReleased`.
+7. Primary ordering time: `dateCreated` DESC, then `version` DESC.
+8. Multi-project: persist one row per exact listed project id. A refresh for
+   project P binds only when `projects[]` includes P.
+9. Mutable lifecycle: later sync upserts status / `dateReleased` / `observedAt`
+   on the same `(version, resource_id)`.
+10. Pagination: existing Sentry `Link` parser; bound
+    `RELEASES_PER_PAGE=100`, `RELEASES_MAX_PAGES=1`. Caps appear in sync
+    summary. Not lifetime-complete.
+11. Request pressure: one bounded request per Sentry project per sync.
+12. No retention/completeness guarantee. Disappearance from a bounded page is
+    not deletion authority.
+13. Never persist authors, commits, lastCommit, lastDeploy, data, url, owner,
+    firstEvent, lastEvent, currentProjectMeta, userAgent, newGroups,
+    commitCount, deployCount, ref, DSN, tokens.
+14. Project discovery success is preserved when release refresh fails.
+    Refresh is `failure`; prior rows and last-success provenance are retained.
+15. Release deploy N+1 enrichment remains out of scope.
+16. Generic Event is not earned.
+17. Canon does not require a change.
 
 ## Implemented
 
-Pending.
+- `SentryClient.listOrganizationReleases` (org + exact project filter,
+  Link-bounded).
+- Compact `normalizeSentryRelease` allowlist + `composeReleaseAuthority`.
+- SQLite `sentry_releases` / `sentry_release_refresh` via existing
+  `CREATE TABLE IF NOT EXISTS` upgrade.
+- `syncSentryReleases` after Sentry project apply; GitHub-style isolation.
+- Offline CLI `RELEASES (newest first)` with populated / empty / unknown.
+- `provider-activity` family `sentry_release`.
+- Known Facts / Missing Context authority wording for Sentry releases.
+- MCP `investigate_resource` parity through existing chronology/facts keys
+  plus minimal additive `subjectReleases` / `related[].releases`.
+- One-hop neighbor RELEASES only through the existing investigation pattern.
 
 ## Deviations
 
-Pending.
+- Live Sentry dogfood was not run: no authorized `SENTRY_AUTH_TOKEN` /
+  `SENTRY_TOKEN` was present in the environment.
+- Deploy enrichment was not added (sprint default).
+- No new Relationship kinds. Neighbor RELEASES are only shown when a one-hop
+  edge already exists (tests seed an existing kind).
 
 ## Validation
 
-Pending.
+```text
+bun test:          728 pass across 64 files (was 699 / 59)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources
+live Sentry:       skipped (no authorized credential)
+```
 
 ## Learnings
 
-Pending.
+- Sentry `version` plus exact `projects[].id` is enough to bind releases
+  without slug matching or a generic Event type.
+- Org-scoped listing with `?project=` keeps project identity numeric and
+  avoids slug-unstable project-scoped URLs.
+- The fourth evidence family still fits the Vercel/GitHub/Neon envelope.
+  Duplication is real; abstraction is still not earned.
 
 ## Canon Changes
 
-None expected. Reassess only if implementation materially changes investigation
-or evidence semantics.
+None. VISION, ARCHITECTURE, and ROADMAP are unchanged. The four-tool MCP
+contract, relationship kinds, and Resource kinds are unchanged.
 
 ---
 

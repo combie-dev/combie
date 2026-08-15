@@ -150,6 +150,55 @@ export class SentryClient {
     return [...byId.values()];
   }
 
+  /**
+   * List organization releases filtered to one exact project id via
+   * GET /organizations/{organization_slug}/releases/?project={project_id}.
+   *
+   * Explicit bound: at most `maxPages` Link-header pages of `perPage`
+   * (default 1×100). Not complete lifetime history.
+   */
+  async listOrganizationReleases(
+    organizationSlug: string,
+    projectId: string,
+    options?: { perPage?: number; maxPages?: number },
+  ): Promise<unknown[]> {
+    const perPage = options?.perPage ?? 100;
+    const maxPages = options?.maxPages ?? 1;
+    const context = `List Sentry releases for organization ${organizationSlug} project ${projectId}`;
+    const initialPath =
+      `/organizations/${encodeURIComponent(organizationSlug)}/releases/` +
+      `?project=${encodeURIComponent(projectId)}&per_page=${perPage}`;
+
+    const all: unknown[] = [];
+    let pathOrUrl = initialPath;
+
+    for (let page = 0; page < maxPages; page++) {
+      const { body, headers } = await this.getJsonWithMeta<unknown>(
+        pathOrUrl,
+        context,
+      );
+
+      if (!Array.isArray(body)) {
+        throw new SentryApiError({
+          message: `${context}: expected a JSON array response.`,
+          status: 200,
+          endpoint: this.endpointLabel(pathOrUrl),
+        });
+      }
+
+      all.push(...body);
+      const nextUrl = parseSentryNextLink(
+        headers.get("Link") ?? headers.get("link"),
+      );
+      if (!nextUrl || body.length === 0) {
+        break;
+      }
+      pathOrUrl = nextUrl;
+    }
+
+    return all;
+  }
+
   private async paginateList<T>(
     initialPath: string,
     context: string,

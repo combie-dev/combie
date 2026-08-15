@@ -1,11 +1,11 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–042 implement the
+Combie is the open engineering context layer. Sprints 001–043 implement the
 local multi-provider context foundation through **Cloudflare**, **GitHub**,
 **Vercel**, **Sentry**, **Neon**, and **PlanetScale**, including deterministic
-Relationships, retained provider evidence, offline investigation, read-only MCP,
-release distribution, guided agent setup, and a concluded GitHub-first closed
-beta. Sprint 043 is the active Sentry release-evidence slice.
+Relationships, retained provider evidence (including Sentry releases), offline
+investigation, read-only MCP, release distribution, guided agent setup, and a
+concluded GitHub-first closed beta. No next sprint is Active.
 
 ## Mandatory reading order before any substantive change
 
@@ -27,7 +27,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–042 complete (043 is active)
+## Current baseline: Sprints 001–043 complete
 
 Multi-provider connection loop:
 
@@ -50,16 +50,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
 - Current agent scope: exactly four local, offline, read-only MCP tools:
   `list_resources`, `list_providers`, `get_related_context`, and
   `investigate_resource`.
-- **Sprint 043 scope:** add compact Sentry release evidence and surface it
-  through existing offline investigation and the frozen MCP path. The Sprint
-  042 closed-beta feature freeze has ended. Do not expand MCP tools or
-  schemas, add write paths, speculative relationships, a generic Event
-  abstraction, Sentry issues/error telemetry, additional providers, broader
-  ontology/identity, model reasoning, background sync, webhooks, telemetry
-  ingestion, operational learning, policy, or execution.
-- Explicitly out of scope unless Sprint 043 later authorizes a change: new
-  MCP tools or semantics, API, SDK, hosted Combie, and in-product analytics
-  or feedback collection.
+- **Shipped Sentry evidence:** compact release history on
+  `sentry:project:<id>`, offline `RELEASES`, and `sentry_release` provider
+  activity. Do not expand MCP tools or schemas, add write paths, speculative
+  relationships, a generic Event abstraction, Sentry issues/error telemetry,
+  additional providers, broader ontology/identity, model reasoning,
+  background sync, webhooks, telemetry ingestion, operational learning,
+  policy, or execution until a later sprint authorizes it.
+- Explicitly out of scope until a later sprint authorizes a change: new MCP
+  tools or semantics, API, SDK, hosted Combie, and in-product analytics or
+  feedback collection.
 
 ## Repository layout
 

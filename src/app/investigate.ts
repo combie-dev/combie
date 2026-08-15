@@ -20,6 +20,11 @@ import {
   type NeonOperationEvidence,
   type NeonOperationEvidenceAuthority,
 } from "../providers/neon/operation.ts";
+import {
+  composeReleaseAuthority,
+  type ReleaseEvidenceAuthority,
+  type SentryReleaseEvidence,
+} from "../providers/sentry/release.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { getResourceHistoryForResource } from "./history.ts";
@@ -76,6 +81,8 @@ export interface InvestigationNeighbor {
   workflowRuns: WorkflowRunEvidenceAuthority;
   /** Neon operation evidence for a one-hop Neon project neighbor. */
   operations: NeonOperationEvidenceAuthority;
+  /** Sentry release evidence for a one-hop Sentry project neighbor. */
+  releases: ReleaseEvidenceAuthority;
 }
 
 /**
@@ -92,6 +99,8 @@ export interface InvestigationContext {
   subjectWorkflowRuns: WorkflowRunEvidenceAuthority;
   /** Operation evidence for the subject (Neon projects only). */
   subjectOperations: NeonOperationEvidenceAuthority;
+  /** Release evidence for the subject (Sentry projects only). */
+  subjectReleases: ReleaseEvidenceAuthority;
 }
 
 export interface GetInvestigationContextOptions {
@@ -194,6 +203,25 @@ function loadNeonOperationAuthority(
   );
 }
 
+function loadReleaseAuthority(
+  store: Store,
+  resource: Resource | null,
+): ReleaseEvidenceAuthority {
+  if (
+    !resource ||
+    resource.provider !== "sentry" ||
+    resource.kind !== "project"
+  ) {
+    return { kind: "not_applicable" };
+  }
+  return composeReleaseAuthority(
+    resource.provider,
+    resource.kind,
+    store.getSentryReleaseRefresh(resource.id),
+    store.listSentryReleasesForResource(resource.id),
+  );
+}
+
 /**
  * Compose investigation context for an already-resolved subject Resource.
  * Reuses one-hop related-context and per-Resource history reads.
@@ -217,6 +245,7 @@ export function getInvestigationContextForResource(
       deployments: loadDeploymentAuthority(store, neighbor.resource),
       workflowRuns: loadWorkflowRunAuthority(store, neighbor.resource),
       operations: loadNeonOperationAuthority(store, neighbor.resource),
+      releases: loadReleaseAuthority(store, neighbor.resource),
     }),
   );
 
@@ -227,6 +256,7 @@ export function getInvestigationContextForResource(
     subjectDeployments: loadDeploymentAuthority(store, subject),
     subjectWorkflowRuns: loadWorkflowRunAuthority(store, subject),
     subjectOperations: loadNeonOperationAuthority(store, subject),
+    subjectReleases: loadReleaseAuthority(store, subject),
   };
 }
 
@@ -485,6 +515,69 @@ function formatWorkflowRunsBlock(
   );
 }
 
+function formatRelease(release: SentryReleaseEvidence): string {
+  const lines = [`version: ${release.version}`];
+  if (release.shortVersion) lines.push(`short version: ${release.shortVersion}`);
+  if (release.status) lines.push(`status: ${release.status}`);
+  lines.push(`created at: ${release.dateCreated}`);
+  if (release.dateReleased) {
+    lines.push(`released at: ${release.dateReleased}`);
+  }
+  lines.push(`observed by Combie at: ${release.observedAt}`);
+  return lines.join("\n");
+}
+
+function formatReleasesBlock(authority: ReleaseEvidenceAuthority): string {
+  if (authority.kind === "not_applicable") {
+    return "Release evidence does not apply to this resource.";
+  }
+  if (authority.kind === "unknown") {
+    const marker = formatDetailAuthorityMarker("unknown", {
+      retained: authority.releases.length,
+      resultCount: authority.resultCount,
+      message: authority.message,
+    });
+    if (authority.releases.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPrior recorded releases (may be stale):\n\n` +
+      authority.releases.map(formatRelease).join("\n\n")
+    );
+  }
+  if (authority.kind === "empty") {
+    const marker = formatDetailAuthorityMarker("empty", {
+      retained: authority.releases.length,
+      resultCount: authority.resultCount,
+      message: null,
+      emptyObservedAt: authority.observedAt,
+    });
+    if (authority.releases.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPreviously recorded releases (outside the latest successful response):\n\n` +
+      authority.releases.map(formatRelease).join("\n\n")
+    );
+  }
+  const marker = formatDetailAuthorityMarker("populated", {
+    retained: authority.releases.length,
+    resultCount: authority.resultCount,
+    message: null,
+  });
+  const boundNote =
+    authority.resultCount === 100
+      ? "\n(bounded: ≤100 most-recent releases per project)"
+      : "";
+  if (authority.releases.length === 0) {
+    return marker + boundNote;
+  }
+  return (
+    `${marker}${boundNote}\n\n` +
+    authority.releases.map(formatRelease).join("\n\n")
+  );
+}
+
 function formatNeonOperation(operation: NeonOperationEvidence): string {
   const lines = [
     `operation id: ${operation.operationId}`,
@@ -625,6 +718,13 @@ function formatRelatedSummary(item: InvestigationNeighbor): string {
         ? 0
         : item.operations.operations.length,
     ),
+    formatRelatedFamilyToken(
+      "releases",
+      item.releases.kind,
+      item.releases.kind === "not_applicable"
+        ? 0
+        : item.releases.releases.length,
+    ),
   ];
   for (const token of tokens) {
     if (token) parts.push(token);
@@ -688,6 +788,14 @@ function formatDetailedEvidence(context: InvestigationContext): string {
     ) {
       sections.push(
         `OPERATIONS (newest first)\n\n${formatNeonOperationsBlock(first.operations)}`,
+      );
+    }
+    if (
+      first.releases.kind !== "not_applicable" &&
+      first.releases.releases.length > 0
+    ) {
+      sections.push(
+        `RELEASES (newest first)\n\n${formatReleasesBlock(first.releases)}`,
       );
     }
     if (sections.length === 0) continue;
@@ -791,6 +899,15 @@ function formatProviderActivityEntry(entry: ProviderActivityEntry): string {
     );
   }
 
+  if (entry.family === "sentry_release") {
+    const release = entry.evidence;
+    const status = release.status != null ? ` status=${release.status}` : "";
+    return (
+      `${entry.primaryTime}  Sentry release  ${id}${status}  ` +
+      `${scope}  ${auth}  resource=${entry.resourceId}`
+    );
+  }
+
   const op = entry.evidence;
   return (
     `${entry.primaryTime}  Neon operation  ${id}  action=${op.action}  ` +
@@ -821,6 +938,9 @@ function providerActivityName(
   if (family === "github_workflow_run") {
     return count === 1 ? "GitHub workflow run" : "GitHub workflow runs";
   }
+  if (family === "sentry_release") {
+    return count === 1 ? "Sentry release" : "Sentry releases";
+  }
   return count === 1 ? "Neon operation" : "Neon operations";
 }
 
@@ -829,6 +949,7 @@ function providerAuthorityName(
 ): string {
   if (family === "vercel_deployment") return "Vercel deployment";
   if (family === "github_workflow_run") return "GitHub workflow-run";
+  if (family === "sentry_release") return "Sentry release";
   return "Neon operation";
 }
 
@@ -841,6 +962,9 @@ function providerEvidenceNoun(
   }
   if (family === "github_workflow_run") {
     return count === 1 ? "workflow run" : "workflow runs";
+  }
+  if (family === "sentry_release") {
+    return count === 1 ? "release" : "releases";
   }
   return count === 1 ? "operation" : "operations";
 }
@@ -872,6 +996,9 @@ function newestRecordedState(
   }
   if (activity.family === "github_workflow_run") {
     return { field: "conclusion", value: activity.recordedConclusion };
+  }
+  if (activity.family === "sentry_release") {
+    return { field: "status", value: activity.recordedStatus };
   }
   return { field: "status", value: activity.recordedStatus };
 }
@@ -1176,6 +1303,11 @@ export function formatInvestigationContext(
       ? ""
       : `\n\nOPERATIONS (newest first)\n\n${formatNeonOperationsBlock(context.subjectOperations)}`;
 
+  const subjectReleases =
+    context.subjectReleases.kind === "not_applicable"
+      ? ""
+      : `\n\nRELEASES (newest first)\n\n${formatReleasesBlock(context.subjectReleases)}`;
+
   const related =
     context.related.length === 0
       ? "No relationships discovered."
@@ -1206,7 +1338,8 @@ export function formatInvestigationContext(
     `${subjectChanges}` +
     `${subjectDeployments}` +
     `${subjectWorkflowRuns}` +
-    `${subjectOperations}\n\n` +
+    `${subjectOperations}` +
+    `${subjectReleases}\n\n` +
     `RELATED CONTEXT\n\n${related}` +
     `${sharedCommitBlock}\n\n` +
     `KNOWN PROVIDER ACTIVITY (newest first; incomplete)\n\n` +

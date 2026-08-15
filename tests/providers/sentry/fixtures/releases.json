@@ -1,0 +1,43 @@
+[
+  {
+    "id": 11,
+    "version": "frontend@1.2.0",
+    "shortVersion": "1.2.0",
+    "status": "open",
+    "dateCreated": "2026-08-09T12:00:00Z",
+    "dateReleased": "2026-08-09T12:05:00Z",
+    "url": "https://example.invalid/releases/frontend@1.2.0",
+    "data": { "secret": "should-not-persist" },
+    "authors": [{ "name": "Ada", "email": "ada@example.com" }],
+    "lastCommit": {
+      "id": "abc123",
+      "message": "ship it",
+      "author": { "email": "ada@example.com" }
+    },
+    "lastDeploy": { "environment": "production", "url": "https://example.invalid" },
+    "owner": { "email": "ada@example.com" },
+    "commitCount": 4,
+    "newGroups": 2,
+    "firstEvent": "2026-08-09T12:06:00Z",
+    "lastEvent": "2026-08-09T13:00:00Z",
+    "projects": [
+      {
+        "id": 450,
+        "slug": "combie",
+        "name": "combie"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "version": "frontend@1.1.0",
+    "shortVersion": "frontend@1.1.0",
+    "status": "open",
+    "dateCreated": "2026-08-08T09:00:00Z",
+    "dateReleased": null,
+    "projects": [
+      { "id": "450", "slug": "combie", "name": "combie" },
+      { "id": 451, "slug": "other", "name": "other" }
+    ]
+  }
+]

@@ -20,6 +20,7 @@ import {
 } from "./infer-vercel-cloudflare.ts";
 import { syncGitHubWorkflowRuns } from "./github-workflow-runs.ts";
 import { syncNeonOperations } from "./neon-operations.ts";
+import { syncSentryReleases } from "./sentry-releases.ts";
 import { syncVercelDeployments } from "./vercel-deployments.ts";
 
 export interface SyncOptions {
@@ -211,6 +212,15 @@ async function syncOne(
       observedAt: now,
     });
     evidenceLines.push(...operationSync.lines);
+  }
+  if (providerId === "sentry") {
+    const releaseSync = await syncSentryReleases({
+      store,
+      token,
+      projects: discovered.resources,
+      observedAt: now,
+    });
+    evidenceLines.push(...releaseSync.lines);
   }
 
   store.setLastSync(providerId, now);

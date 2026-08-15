@@ -166,6 +166,9 @@ function mockMultiProviderFetch(options?: {
           name: "Sentry Tester",
         });
       }
+      if (url.includes("/releases")) {
+        return Response.json([]);
+      }
       if (url.includes("/organizations/") && url.includes("/projects")) {
         if (options?.sentryFail) {
           return Response.json(

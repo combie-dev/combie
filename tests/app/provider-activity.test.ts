@@ -183,6 +183,7 @@ function context(
     subjectDeployments: NOT_APPLICABLE_DEPLOYMENTS,
     subjectWorkflowRuns: NOT_APPLICABLE_RUNS,
     subjectOperations: NOT_APPLICABLE_OPERATIONS,
+    subjectReleases: { kind: "not_applicable" as const },
     ...overrides,
   };
 }
@@ -257,6 +258,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: populatedRuns([run()]),
           operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
         },
         {
           relationship: usesDomain,
@@ -266,6 +268,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: NOT_APPLICABLE_RUNS,
           operations: populatedOperations([operation()]),
+          releases: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -321,6 +324,7 @@ describe("provider activity chronology composition", () => {
             run({ runId: 10, createdAt: at }),
           ]),
           operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
         },
         {
           relationship: relationship(
@@ -338,6 +342,7 @@ describe("provider activity chronology composition", () => {
             operation({ operationId: "op_a", createdAt: at }),
             operation({ operationId: "op_b", createdAt: at }),
           ]),
+          releases: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -466,6 +471,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: populatedRuns([run()]),
           operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -496,6 +502,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: NOT_APPLICABLE_RUNS,
           operations: populatedOperations([operation()]),
+          releases: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -534,6 +541,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: populatedRuns([sharedRun]),
           operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
         },
         {
           relationship: secondEdge,
@@ -543,6 +551,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: populatedRuns([sharedRun]),
           operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -573,6 +582,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: NOT_APPLICABLE_RUNS,
           operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -661,6 +671,7 @@ describe("provider activity chronology composition", () => {
           deployments: NOT_APPLICABLE_DEPLOYMENTS,
           workflowRuns: populatedRuns([run()]),
           operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -733,6 +744,7 @@ describe("provider activity chronology composition", () => {
             deployments: NOT_APPLICABLE_DEPLOYMENTS,
             workflowRuns: populatedRuns([run({ createdAt: item.githubAt })]),
             operations: NOT_APPLICABLE_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
           },
           {
             relationship: usesDomain,
@@ -744,6 +756,7 @@ describe("provider activity chronology composition", () => {
             operations: populatedOperations([
               operation({ createdAt: item.neonAt }),
             ]),
+            releases: { kind: "not_applicable" as const },
           },
         ],
       }));

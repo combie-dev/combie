@@ -21,6 +21,10 @@ import type {
   NeonOperationRefresh,
 } from "../providers/neon/operation.ts";
 import type {
+  SentryReleaseEvidence,
+  SentryReleaseRefresh,
+} from "../providers/sentry/release.ts";
+import type {
   VercelDeploymentEvidence,
   VercelDeploymentRefresh,
 } from "../providers/vercel/deployment.ts";
@@ -170,6 +174,31 @@ CREATE INDEX IF NOT EXISTS neon_operations_resource_created_id_idx
   ON neon_operations(resource_id, created_at DESC, operation_id DESC);
 
 CREATE TABLE IF NOT EXISTS neon_operation_refresh (
+  resource_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+  observed_at TEXT NOT NULL,
+  message TEXT,
+  result_count INTEGER,
+  last_success_observed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sentry_releases (
+  version TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'sentry',
+  project_id TEXT NOT NULL,
+  short_version TEXT,
+  status TEXT,
+  date_created TEXT NOT NULL,
+  date_released TEXT,
+  observed_at TEXT NOT NULL,
+  PRIMARY KEY (version, resource_id)
+);
+
+CREATE INDEX IF NOT EXISTS sentry_releases_resource_created_version_idx
+  ON sentry_releases(resource_id, date_created DESC, version DESC);
+
+CREATE TABLE IF NOT EXISTS sentry_release_refresh (
   resource_id TEXT PRIMARY KEY,
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
@@ -1086,6 +1115,117 @@ export class Store {
     };
   }
 
+  /**
+   * Insert or update Sentry release evidence by version + project Resource.
+   * A multi-project release is stored once per exact project binding.
+   * Does not create Resource Changes.
+   */
+  upsertSentryRelease(release: SentryReleaseEvidence): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO sentry_releases (
+           version, resource_id, provider, project_id,
+           short_version, status, date_created, date_released, observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(version, resource_id) DO UPDATE SET
+           provider = excluded.provider,
+           project_id = excluded.project_id,
+           short_version = excluded.short_version,
+           status = excluded.status,
+           date_created = excluded.date_created,
+           date_released = excluded.date_released,
+           observed_at = excluded.observed_at`,
+      )
+      .run(
+        release.version,
+        release.resourceId,
+        release.provider,
+        release.projectId,
+        release.shortVersion,
+        release.status,
+        release.dateCreated,
+        release.dateReleased,
+        release.observedAt,
+      );
+  }
+
+  /**
+   * Newest-first releases for an exact Sentry project Resource.
+   * Ordering: date_created DESC, version DESC.
+   */
+  listSentryReleasesForResource(resourceId: string): SentryReleaseEvidence[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT version, resource_id, provider, project_id,
+                short_version, status, date_created, date_released, observed_at
+         FROM sentry_releases
+         WHERE resource_id = ?
+         ORDER BY date_created DESC, version DESC`,
+      )
+      .all(resourceId) as SentryReleaseRow[];
+    return rows.map(mapSentryRelease);
+  }
+
+  countSentryReleases(): number {
+    const row = this.getDb()
+      .query(`SELECT COUNT(*) AS n FROM sentry_releases`)
+      .get() as { n: number };
+    return Number(row.n);
+  }
+
+  setSentryReleaseRefresh(refresh: SentryReleaseRefresh): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO sentry_release_refresh (
+           resource_id, status, observed_at, message, result_count,
+           last_success_observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(resource_id) DO UPDATE SET
+           status = excluded.status,
+           observed_at = excluded.observed_at,
+           message = excluded.message,
+           result_count = excluded.result_count,
+           last_success_observed_at = excluded.last_success_observed_at`,
+      )
+      .run(
+        refresh.resourceId,
+        refresh.status,
+        refresh.observedAt,
+        refresh.message,
+        refresh.resultCount,
+        refresh.lastSuccessfulObservedAt,
+      );
+  }
+
+  getSentryReleaseRefresh(resourceId: string): SentryReleaseRefresh | null {
+    const row = this.getDb()
+      .query(
+        `SELECT resource_id, status, observed_at, message, result_count,
+                last_success_observed_at
+         FROM sentry_release_refresh
+         WHERE resource_id = ?`,
+      )
+      .get(resourceId) as
+      | {
+          resource_id: string;
+          status: string;
+          observed_at: string;
+          message: string | null;
+          result_count: number | null;
+          last_success_observed_at: string | null;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      resourceId: row.resource_id,
+      status: row.status as "success" | "failure",
+      observedAt: row.observed_at,
+      message: row.message,
+      resultCount: row.result_count,
+      lastSuccessfulObservedAt: row.last_success_observed_at,
+    };
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
@@ -1346,6 +1486,32 @@ function mapNeonOperation(row: NeonOperationRow): NeonOperationEvidence {
     updatedAt: row.updated_at,
     retryAt: row.retry_at,
     totalDurationMs: row.total_duration_ms,
+    observedAt: row.observed_at,
+  };
+}
+
+interface SentryReleaseRow {
+  version: string;
+  resource_id: string;
+  provider: string;
+  project_id: string;
+  short_version: string | null;
+  status: string | null;
+  date_created: string;
+  date_released: string | null;
+  observed_at: string;
+}
+
+function mapSentryRelease(row: SentryReleaseRow): SentryReleaseEvidence {
+  return {
+    provider: "sentry",
+    version: row.version,
+    resourceId: row.resource_id,
+    projectId: row.project_id,
+    shortVersion: row.short_version,
+    status: row.status,
+    dateCreated: row.date_created,
+    dateReleased: row.date_released,
     observedAt: row.observed_at,
   };
 }

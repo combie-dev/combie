@@ -2,6 +2,7 @@ import type { Relationship } from "../domain/relationship.ts";
 import type { DeploymentEvidenceAuthority } from "../providers/vercel/deployment.ts";
 import type { WorkflowRunEvidenceAuthority } from "../providers/github/workflow-run.ts";
 import type { NeonOperationEvidenceAuthority } from "../providers/neon/operation.ts";
+import type { ReleaseEvidenceAuthority } from "../providers/sentry/release.ts";
 import type { InvestigationContext } from "./investigate.ts";
 import type { ProviderActivityFamily } from "./provider-activity.ts";
 import type { RelatedDirection } from "./related.ts";
@@ -40,7 +41,7 @@ export type MissingContextItem =
   | {
       kind: "never_successfully_refreshed";
       family: ProviderActivityFamily;
-      provider: "vercel" | "github" | "neon";
+      provider: "vercel" | "github" | "neon" | "sentry";
       scope: MissingContextScopeRef;
       retainedCount: number;
       latestAttemptObservedAt: string | null;
@@ -49,7 +50,7 @@ export type MissingContextItem =
   | {
       kind: "unknown_current_authority";
       family: ProviderActivityFamily;
-      provider: "vercel" | "github" | "neon";
+      provider: "vercel" | "github" | "neon" | "sentry";
       scope: MissingContextScopeRef;
       retainedCount: number;
       latestAttemptObservedAt: string | null;
@@ -72,6 +73,7 @@ interface MutableRelatedSource {
   deployments: DeploymentEvidenceAuthority;
   workflowRuns: WorkflowRunEvidenceAuthority;
   operations: NeonOperationEvidenceAuthority;
+  releases: ReleaseEvidenceAuthority;
 }
 
 function compareAscending(left: string, right: string): number {
@@ -119,7 +121,8 @@ function familyOrder(family: ProviderActivityFamily): number {
   // Stable organizational order — not importance.
   if (family === "github_workflow_run") return 0;
   if (family === "neon_operation") return 1;
-  return 2;
+  if (family === "sentry_release") return 2;
+  return 3;
 }
 
 function compareItems(left: MissingContextItem, right: MissingContextItem): number {
@@ -265,6 +268,51 @@ function pushWorkflowGap(
   });
 }
 
+function releaseRetainedCount(
+  authority: Exclude<ReleaseEvidenceAuthority, { kind: "not_applicable" }>,
+): number {
+  return authority.releases.length;
+}
+
+function pushReleaseGap(
+  items: MissingContextItem[],
+  authority: ReleaseEvidenceAuthority,
+  scope: MissingContextScopeRef,
+): void {
+  if (authority.kind === "not_applicable") return;
+  if (authority.kind === "empty" || authority.kind === "populated") return;
+  if (authority.kind !== "unknown") return;
+
+  const retainedCount = releaseRetainedCount(authority);
+  const prior = hasLastSuccessProvenance(
+    authority.lastSuccessAt,
+    authority.resultCount,
+  );
+  if (!prior) {
+    items.push({
+      kind: "never_successfully_refreshed",
+      family: "sentry_release",
+      provider: "sentry",
+      scope,
+      retainedCount,
+      latestAttemptObservedAt: authority.latestAttemptObservedAt,
+      message: authority.message,
+    });
+    return;
+  }
+  items.push({
+    kind: "unknown_current_authority",
+    family: "sentry_release",
+    provider: "sentry",
+    scope,
+    retainedCount,
+    latestAttemptObservedAt: authority.latestAttemptObservedAt,
+    lastSuccessfulObservedAt: authority.lastSuccessAt,
+    lastSuccessfulResultCount: authority.resultCount,
+    message: authority.message,
+  });
+}
+
 function pushOperationGap(
   items: MissingContextItem[],
   authority: NeonOperationEvidenceAuthority,
@@ -335,6 +383,7 @@ export function composeMissingContext(
   pushDeploymentGap(items, context.subjectDeployments, subjectScopeRef);
   pushWorkflowGap(items, context.subjectWorkflowRuns, subjectScopeRef);
   pushOperationGap(items, context.subjectOperations, subjectScopeRef);
+  pushReleaseGap(items, context.subjectReleases, subjectScopeRef);
 
   const relatedById = new Map<string, MutableRelatedSource>();
   for (const neighbor of context.related) {
@@ -354,6 +403,7 @@ export function composeMissingContext(
       deployments: neighbor.deployments,
       workflowRuns: neighbor.workflowRuns,
       operations: neighbor.operations,
+      releases: neighbor.releases,
     });
   }
 
@@ -365,6 +415,7 @@ export function composeMissingContext(
     pushDeploymentGap(items, source.deployments, scope);
     pushWorkflowGap(items, source.workflowRuns, scope);
     pushOperationGap(items, source.operations, scope);
+    pushReleaseGap(items, source.releases, scope);
   }
 
   // Combie graph knowledge only — does not claim external systems have no edges.
@@ -386,6 +437,7 @@ export function composeMissingContext(
 export function missingContextFamilyName(family: ProviderActivityFamily): string {
   if (family === "vercel_deployment") return "Vercel deployment";
   if (family === "github_workflow_run") return "GitHub workflow-run";
+  if (family === "sentry_release") return "Sentry release";
   return "Neon operation";
 }
 

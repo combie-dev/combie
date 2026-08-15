@@ -86,6 +86,7 @@ describe("Investigation timeline composition", () => {
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -131,11 +132,13 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const entry = composeInvestigationTimeline(context).entries[0]!;
@@ -181,6 +184,7 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
         {
           relationship: usesDomain,
@@ -192,11 +196,13 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -233,11 +239,13 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const first = composeInvestigationTimeline(context);
@@ -286,6 +294,7 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
         {
           relationship: usesDomain,
@@ -295,11 +304,13 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -354,6 +365,7 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
         {
           relationship: usesDomain,
@@ -363,11 +375,13 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const first = formatInvestigationContext(context);
@@ -423,6 +437,7 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
         {
           relationship: danglingEdge,
@@ -432,11 +447,13 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const timeline = composeInvestigationTimeline(context);
@@ -472,11 +489,13 @@ describe("Investigation timeline composition", () => {
           deployments: NO_DEPLOYMENTS,
           workflowRuns: NO_WORKFLOWS,
           operations: NO_OPERATIONS,
+          releases: NO_OPERATIONS,
         },
       ],
       subjectDeployments: NO_DEPLOYMENTS,
       subjectWorkflowRuns: NO_WORKFLOWS,
       subjectOperations: NO_OPERATIONS,
+      subjectReleases: NO_OPERATIONS,
     };
 
     const timeline = composeInvestigationTimeline(context);

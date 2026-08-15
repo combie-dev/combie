@@ -190,6 +190,7 @@ function context(
     subjectDeployments: NA_DEPLOYMENTS,
     subjectWorkflowRuns: NA_RUNS,
     subjectOperations: NA_OPERATIONS,
+    subjectReleases: { kind: "not_applicable" as const },
     ...overrides,
   };
 }
@@ -480,6 +481,7 @@ describe("investigation fact composition", () => {
             deployments: NA_DEPLOYMENTS,
             workflowRuns: populatedRuns([workflowRun({ runId: 9001 })]),
             operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -545,6 +547,7 @@ describe("investigation fact composition", () => {
       deployments: NA_DEPLOYMENTS,
       workflowRuns: populatedRuns([workflowRun()]),
       operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
     });
     const facts = composeInvestigationFacts(
       context({
@@ -633,6 +636,7 @@ describe("investigation fact composition", () => {
               workflowRun({ runId: 10, createdAt: at }),
             ]),
             operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -713,6 +717,7 @@ describe("investigation fact composition", () => {
       deployments: NA_DEPLOYMENTS,
       workflowRuns: emptyRuns,
       operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
     };
     const facts = composeInvestigationFacts(
       context({
@@ -766,6 +771,7 @@ describe("investigation fact composition", () => {
             deployments: NA_DEPLOYMENTS,
             workflowRuns: NA_RUNS,
             operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -786,6 +792,7 @@ describe("investigation fact composition", () => {
       deployments: NA_DEPLOYMENTS,
       workflowRuns: unknownRuns([]),
       operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
     }));
     const input = context({ subject: project, related });
     const before = JSON.stringify(input);
@@ -1064,6 +1071,7 @@ describe("known facts formatting", () => {
               }),
             ]),
             operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -1110,6 +1118,7 @@ describe("known facts formatting", () => {
             deployments: NA_DEPLOYMENTS,
             workflowRuns: populatedRuns([workflowRun()]),
             operations: NA_OPERATIONS,
+      releases: { kind: "not_applicable" as const },
           },
         ],
       }),
