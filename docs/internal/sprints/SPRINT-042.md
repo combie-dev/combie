@@ -1,7 +1,8 @@
 # SPRINT-042 — Closed Beta: First Users
 
-> **Status:** Active — preparation validated; Wave 1 invitations pending
+> **Status:** Complete — closed beta concluded by founder decision; next phase is Provider / Evidence Depth (Sentry operational evidence)
 > **Depends on:** SPRINT-041, SPRINT-041A, SPRINT-041B
+> **Closed:** 2026-08-15
 > **Type:** Product learning / founder-led closed beta
 > **Primary goal:** Validate whether real users can reach a useful, grounded
 > Combie investigation and use the resulting evidence to select one earned
@@ -358,17 +359,34 @@ For every blocker fix:
 
 # Completion Notes
 
-Complete this section only after the cohort and exit thresholds are real.
+The written cohort and exit thresholds were not fully evidenced in this
+repository. The founder closed the sprint on 2026-08-15 by explicit owner
+decision. Historical intent, the original decision rule, and the empty
+evidence ledger above are preserved. They are not rewritten to appear
+satisfied.
 
 ## Implemented
 
 - Sprint 042 rollout protocol and evidence ledger created.
 - Active release-facing baseline corrected in AGENTS and Quickstart.
 - No product capability added during preparation.
+- Feature development remained frozen; no reproduced P0 or P1 beta-blocker
+  fix was required in this repository.
+- Closed-beta invitations were sent and real user feedback was received
+  (founder-reported at handoff; see Next-Phase Decision). Anonymized tester
+  rows were not consolidated into this ledger.
+- The closed-beta decision phase is concluded. Sprint 043 is authorized as
+  the single next vertical slice.
 
 ## Deviations
 
-Pending cohort execution.
+- Cohort execution was not recorded in this document. The evidence table
+  (`W1-T1` … `W2-T2`) remains pending.
+- The written success thresholds (5+ installations, 3+ GitHub first syncs,
+  3+ grounded agent investigations with actionable qualitative feedback
+  recorded here) are not evidenced in the repository.
+- The next-phase branch is selected by founder override, not by the written
+  three-independent-tester rule. The original rule is unchanged.
 
 ## Validation
 
@@ -390,20 +408,110 @@ MCP read-only check: database SHA-256 unchanged after the call
 Codex setup: isolated config written and reported configured when detected
 ```
 
-Cohort thresholds and qualitative evidence remain pending.
+Repository record at closure (2026-08-15):
+
+```text
+HEAD:            f0d1f91
+public release:  v0.1.1
+tests:           699 pass across 59 files (unchanged product baseline)
+typecheck:       clean
+MCP:             exactly four read-only tools
+evidence ledger: all tester rows still pending
+P0 / P1:         none recorded against the closed-beta journey
+cohort expansion: not recorded
+```
+
+No product source or tests changed to close this sprint.
 
 ## Learnings
 
-Pending evidence from at least five testers.
+No anonymized tester quotes, counts, classifications, or next-capability
+requests are recorded in this sprint or in `docs/internal/beta/`. Invitation
+threads were the designated collection channel; they were not consolidated
+here.
+
+What the repository *does* record is maintainer/founder dogfood used to
+unblock invitations (Sprint 041B / this sprint's preparation): a live
+GitHub-first install, connect, sync, offline investigation, and four-tool
+MCP path on v0.1.1. That is not independent-tester evidence.
+
+The founder reports that closed-beta users were invited and that real user
+feedback was reviewed before concluding the decision phase. That review is
+not reproduced as fabricated ledger rows.
 
 ## Next-Phase Decision
 
-Pending. Do not create Sprint 043 before the decision rule is satisfied.
+### Original decision rule
+
+Unchanged. At sprint review, classify independent tester evidence into one
+of three branches — Identity / Ontology, v0.5 Context Engine, or Provider /
+Evidence Depth — when at least three independent testers share the same
+pressure. If no branch reaches that threshold, expand the cohort. Do not
+select a feature from isolated requests.
+
+### Actual observed evidence
+
+The written three-independent-tester threshold is **not** satisfied in the
+repository record.
+
+- Wave 1 / Wave 2 ledger rows remain `pending`.
+- No independent tester IDs, OS/arch, agent, install, sync, or grounded
+  investigation outcomes are recorded here.
+- No tester quote requesting Sentry, another evidence family, ontology
+  work, or a Context Engine is recorded here.
+- Cohort expansion within the 15-user limit is not recorded.
+- No unresolved P0 or P1 closed-beta blocker is recorded that should
+  prevent closure.
+- The August 2026 / Sprint 037 roadmap audit is pre-beta architectural
+  context. It is not a substitute for 042 tester evidence and is not the
+  authorization source for the next phase.
+
+### Founder decision / override
+
+On 2026-08-15 the product owner recorded this explicit override:
+
+- Sprint 042 closed-beta learning has been reviewed.
+- The founder has intentionally concluded the beta decision phase.
+- The founder is authorizing the Provider / Evidence Depth branch.
+- The selected next slice is Sentry operational evidence.
+- This override replaces the unmet quantitative threshold for the purpose
+  of choosing the next phase.
+- The reason is recorded here rather than retroactively changing the
+  evidence ledger or the original decision rule.
+
+Rationale, without inventing tester demand: Combie already persists Vercel
+deployments, GitHub workflow runs, and Neon operations. Sentry is a shipped
+connected provider whose investigations still have project discovery only.
+Sprint 019 ranked Sentry releases as the next Sentry evidence family. The
+roadmap's post-beta Provider / Evidence Depth branch is the matching
+capability. The founder chooses that branch and that one slice now.
+
+### Selected next branch
+
+```text
+Provider / Evidence Depth
+```
+
+### Selected implementation slice
+
+```text
+Sentry operational evidence (release history)
+```
+
+Sprint 043 must implement that one winning slice only. It must not treat
+the pre-beta roadmap audit as its authorization source.
 
 ## Canon Changes
 
-None during preparation. Reassess only if beta evidence materially changes
-product direction, architecture, or roadmap sequencing.
+- `SPRINT-042.md` status changes from Active to Complete.
+- `AGENTS.md` current baseline becomes Sprints 001–042 complete; Sprint 043
+  is the single active sprint; the Sprint 042 product freeze ends.
+- `SPRINT-043.md` is activated as the Sentry release-evidence slice,
+  authorized by this handoff.
+
+VISION, ARCHITECTURE, and ROADMAP are unchanged. The four-tool MCP
+contract, relationship semantics, Resource kinds, and provider contracts
+are unchanged.
 
 ---
 
@@ -423,10 +531,15 @@ product direction, architecture, or roadmap sequencing.
 - [ ] 3+ GitHub first syncs complete
 - [ ] 3+ grounded agent investigations complete
 - [ ] actionable qualitative feedback recorded
-- [ ] no unresolved P0 or P1 blocker
+- [x] no unresolved P0 or P1 blocker (none recorded against the closed-beta journey)
 - [ ] exactly one next-phase branch selected from repeated evidence
-- [ ] Sprint 043 proposed as one narrow vertical slice
-- [ ] completion notes finalized
+- [x] Sprint 043 proposed as one narrow vertical slice
+- [x] completion notes finalized
+
+Closure note (2026-08-15): this sprint is **Complete** by founder decision.
+Unchecked cohort and “repeated evidence” items remain historically unmet in
+this record. They are not rewritten to appear satisfied. The next-phase
+branch is recorded under Completion Notes as a founder override.
 
 ---
 

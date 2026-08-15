@@ -1,11 +1,11 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–041B implement the
+Combie is the open engineering context layer. Sprints 001–042 implement the
 local multi-provider context foundation through **Cloudflare**, **GitHub**,
 **Vercel**, **Sentry**, **Neon**, and **PlanetScale**, including deterministic
 Relationships, retained provider evidence, offline investigation, read-only MCP,
-release distribution, and guided agent setup. Sprint 042 is the active
-GitHub-first closed beta.
+release distribution, guided agent setup, and a concluded GitHub-first closed
+beta. Sprint 043 is the active Sentry release-evidence slice.
 
 ## Mandatory reading order before any substantive change
 
@@ -27,7 +27,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–041B complete (042 is active)
+## Current baseline: Sprints 001–042 complete (043 is active)
 
 Multi-provider connection loop:
 
@@ -50,12 +50,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
 - Current agent scope: exactly four local, offline, read-only MCP tools:
   `list_resources`, `list_providers`, `get_related_context`, and
   `investigate_resource`.
-- **Sprint 042 product freeze:** build only reproduced closed-beta blockers.
-  Do not predetermine or scaffold v0.5 Context Engine, additional providers,
-  broader ontology/identity, model reasoning, background sync, webhooks,
-  telemetry ingestion, operational learning, policy, or execution.
-- Explicitly out of scope during Sprint 042: new MCP tools or semantics, API,
-  SDK, hosted Combie, and in-product analytics or feedback collection.
+- **Sprint 043 scope:** add compact Sentry release evidence and surface it
+  through existing offline investigation and the frozen MCP path. The Sprint
+  042 closed-beta feature freeze has ended. Do not expand MCP tools or
+  schemas, add write paths, speculative relationships, a generic Event
+  abstraction, Sentry issues/error telemetry, additional providers, broader
+  ontology/identity, model reasoning, background sync, webhooks, telemetry
+  ingestion, operational learning, policy, or execution.
+- Explicitly out of scope unless Sprint 043 later authorizes a change: new
+  MCP tools or semantics, API, SDK, hosted Combie, and in-product analytics
+  or feedback collection.
 
 ## Repository layout
 
@@ -94,9 +98,8 @@ tests/                 bun:test suites (no live provider credentials required)
 - Multi-provider sync attempts each connected provider, persists successes, reports failures, and exits non-zero if any provider fails.
 - Commits only when authorized; conventional style (`feat(provider): …`, `fix(storage): …`).
 - When a Sprint completes, record Implemented / Deviations / Validation / Learnings / Canon Changes notes in the Sprint doc; never start the next Sprint.
-- During Sprint 042, collect only sanitized qualitative evidence through
-  invitation threads; never request credentials, authorization headers,
-  unredacted state databases, or private resource names.
+- Never request credentials, authorization headers, unredacted state
+  databases, or private resource names.
 
 ## Commands
 
