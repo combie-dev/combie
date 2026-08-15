@@ -372,3 +372,135 @@ fixed; Sprint 042 invitations remain blocked by the release conditions in
 
 Decision from this run: **ALL RELEASE CONDITIONS CLOSED**. Sprint 042
 invitations are unblocked at v0.1.1.
+
+---
+
+## Sprint 043 Sentry release-evidence live run — 2026-08-15
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-08-15 |
+| Sprint 043 commit | `d59080d6b384ad3b72580f300c5107ffd6993d70` |
+| Machine / OS | macOS (darwin, arm64) |
+| Bun | 1.3.5 |
+| Providers connected | Cloudflare + Vercel (pre-existing), Sentry (new, live) |
+| Resources | 1 Sentry project (`sentry:project:4511917355565056`, test project `combie-dogfood`) + pre-existing Cloudflare/Vercel resources |
+| Relationships | none (no edges exist in this org) |
+| Evidence populated | `sentry_release`: 3 releases recorded for 1 project |
+| Investigate targets | `sentry:project:4511917355565056` |
+| Security | token never echoed/logged/committed; credentials file `0600`; no secrets in any output or error |
+
+Scope note: Sprint 043 requires a live Sentry environment. The connected org
+(`sergio-3l`, account `sgr0691@gmail.com`) initially contained **zero
+projects**, which validated the real known-empty discovery path. The user then
+created the test project `combie-dogfood`, and — because the connected read
+token returned 403 on release creation — the maintainer created three test
+releases (`combie-dogfood@1.0.0`, `@1.0.1` with `dateReleased`,
+`@1.1.0`) with the user's write token. This is a user-authorized deviation
+from the strict read-only dogfood stance; the created test data remains in
+Sentry and can be deleted by the user.
+
+### Connection and discovery
+
+- [x] `connect sentry --use-env` → account `sgr0691@gmail.com`, credential
+  stored `0600`; `providers` shows Sentry Connected with no token exposure.
+- [x] Live sync against a real **empty org** (before the test project existed):
+  `✓ 0 resources` — discovery succeeded authoritatively, no error, no
+  false claims. Release refresh correctly did not run (no projects).
+- [x] After test project creation: `sync sentry` → `✓ 1 resource`,
+  `Release evidence: 1 project refreshed (bound: ≤100 most-recent releases each)`.
+
+### Sync and release refresh
+
+- [x] First populated sync: `3 releases recorded`.
+- [x] Repeated sync idempotent: still `3 releases recorded`, no duplicates.
+- [x] Known-empty release result validated live (0 releases before creation):
+  refresh ran, `authority: empty`, and the sync summary intentionally omits
+  the count line (by design, `sentry-releases.ts:149`).
+- [x] No false Resource Changes: `changes` and `history` remain empty for the
+  subject after two release refreshes.
+- [x] Exact project binding: Sentry reports all three releases under
+  `projects: [4511917355565056]`, matching `sentry:project:4511917355565056`.
+  Multi-project binding was not naturally present (single-project org).
+
+### CLI investigation (`investigate sentry:project:4511917355565056`)
+
+- [x] `RELEASES (newest first)`, `authority: populated` — ordering matches
+  provider truth: `1.0.1` → `1.1.0` → `1.0.0` (dateCreated DESC).
+- [x] Each release shows `created at` (provider-native), `released at` only
+  where the provider supplies it (`1.0.1`), and `observed by Combie at`
+  (distinct Combie observation time).
+- [x] `KNOWN FACTS`: "Of 3 Sentry releases held by Combie, 3 have recorded
+  status: open" + newest-activity fact with exact version and dateCreated.
+- [x] `MISSING CONTEXT`: no one-hop Relationships (truthful; no edges exist).
+- [x] `SUBJECT CHANGES` / `COMBIE OBSERVATIONS` remain empty — release history
+  does not pollute the Change timeline.
+
+### Provider activity
+
+- [x] `KNOWN PROVIDER ACTIVITY (newest first; incomplete)` contains exactly
+  the 3 `sentry_release` rows, newest first, `role=subject`,
+  `authority=populated`, with resource id and status.
+
+### Offline
+
+- [x] Proven by DB-only replay: copied `combie.db*` (no credentials file) to
+  an isolated dir, unset `SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN`, ran
+  `investigate` from `COMBIE_HOME` — identical `RELEASES` output with all
+  3 releases. No network, no credential, no environment dependency.
+
+### MCP parity
+
+- [x] stdio MCP server (same binary/state Codex would spawn) exposes exactly
+  4 tools: `list_resources`, `list_providers`, `get_related_context`,
+  `investigate_resource` — all read-only annotated.
+- [x] `investigate_resource` offline returns `subjectReleases`
+  `{kind: populated, resultCount: 3}` with the same 3 releases, same
+  version/status/dateCreated/dateReleased/observedAt values as the CLI;
+  `providerActivity` has 3 entries; `timeline` 0 entries — full CLI/MCP parity.
+- [x] Read-only regression: DB SHA-256 unchanged after calling all four tools.
+- [ ] Codex natural-language prompt: deferred — the current Codex config
+  (`~/.codex/config.toml`) points `COMBIE_HOME` at a deleted temp dir
+  (`agent status` reports stale). MCP was validated via direct stdio against
+  the repo state instead; refresh the agent configs to re-enable this path.
+
+### Agent questions (maintainer agent against grounded output)
+
+- "What releases does Combie know about for this project?" → fully answered
+  from persisted evidence: 3 releases, versions, status open, created/released
+  times, Combie observation time.
+- "What changed recently for this Sentry project?" → partially: the 3 newest
+  releases with times; what code changed in them is not persisted (commits
+  explicitly out of scope in Sprint 043).
+- "What operational activity happened recently?" → releases only; no
+  deploy/workflow/issue context exists for this org.
+- "Do you have enough evidence to explain what happened?" → no: nothing links
+  the releases to code, deploys, or errors.
+
+### Missing-context classification (observed only)
+
+| Gap | Question attempted | Evidence had | Evidence lacked | Blocked a useful answer? | Family |
+| --- | --- | --- | --- | --- | --- |
+| Release → code mapping | "what changed in 1.0.1?" | release version/time/status | commits/ref (not persisted by design) | partially | C (GitHub ↔ Sentry) |
+| Release → deployment state | "is 1.1.0 deployed/running?" | release metadata | deploy enrichment (deferred by design) | yes | B (deploy enrichment) |
+| Release → health | "did 1.0.1 cause errors?" | release metadata | issue/error evidence (out of scope by design) | yes | A (issues/error evidence) |
+| Cross-provider chain | "full investigation across GitHub/Vercel/Sentry" | release evidence | any Relationships/edges in this org | yes | C (relationships) |
+
+No evidence that a generic Event abstraction (family D) was needed.
+
+### Sprint 043 findings
+
+| Finding | Severity | Outcome |
+| --- | --- | --- |
+| No Sprint-043 correctness defects in live run | — | validated: populated/empty/known-empty authority, ordering, times, offline, MCP parity all correct |
+| Sync summary omits release-count line on known-empty | nit | by design (`sentry-releases.ts:149`); investigation still shows `authority: empty` |
+| `combie version` reports `0.1.0` from repo while release tag is v0.1.1 | nit | pre-existing packaging constant, unrelated to Sprint 043 |
+| Codex agent config points at a stale temp `COMBIE_HOME` | nit (environment) | MCP validated via direct stdio; re-run `combie agent setup` to refresh |
+| Connected read token cannot create releases (403) | info | expected; read-only scope is the correct product posture |
+
+Decision from this run: **SPRINT 043 VALIDATED LIVE** — connection, discovery
+(including a real known-empty org), bounded release refresh, populated and
+empty authority classes, offline investigation, and MCP parity all confirmed
+on the Sprint-043 build. No defects. The missing-context observations come
+from one small test org with no cross-provider edges; they are not sufficient
+to rank the next sprint direction.
