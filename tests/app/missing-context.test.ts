@@ -26,6 +26,14 @@ import type {
   DeploymentEvidenceAuthority,
   VercelDeploymentEvidence,
 } from "../../src/providers/vercel/deployment.ts";
+import type {
+  IssueEvidenceAuthority,
+  SentryIssueEvidence,
+} from "../../src/providers/sentry/issue.ts";
+import type {
+  ReleaseEvidenceAuthority,
+  SentryReleaseEvidence,
+} from "../../src/providers/sentry/release.ts";
 
 const OBSERVED_AT = "2026-08-09T12:00:00.000Z";
 const SUCCESS_AT = "2026-08-09T11:00:00.000Z";
@@ -180,6 +188,7 @@ function context(
     subjectWorkflowRuns: NA_RUNS,
     subjectOperations: NA_OPERATIONS,
     subjectReleases: { kind: "not_applicable" as const },
+    subjectIssues: { kind: "not_applicable" as const },
     ...overrides,
   };
 }
@@ -216,6 +225,7 @@ describe("composeMissingContext", () => {
           workflowRuns: unknownRuns([]),
           operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
         },
       ],
     });
@@ -252,6 +262,7 @@ describe("composeMissingContext", () => {
             },
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
         subjectDeployments: {
@@ -323,6 +334,7 @@ describe("composeMissingContext", () => {
             },
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -369,6 +381,7 @@ describe("composeMissingContext", () => {
               },
               operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
             },
           ],
         }),
@@ -423,6 +436,7 @@ describe("composeMissingContext", () => {
             workflowRuns: NA_RUNS,
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -475,6 +489,7 @@ describe("composeMissingContext", () => {
             workflowRuns: NA_RUNS,
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -551,6 +566,7 @@ describe("composeMissingContext", () => {
             }),
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -589,6 +605,7 @@ describe("composeMissingContext", () => {
             workflowRuns: NA_RUNS,
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -632,6 +649,7 @@ describe("composeMissingContext", () => {
             workflowRuns: unknownRuns([]),
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
           {
             relationship: edgeB,
@@ -642,6 +660,7 @@ describe("composeMissingContext", () => {
             workflowRuns: unknownRuns([]),
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -688,6 +707,70 @@ describe("composeMissingContext", () => {
     ]);
   });
 
+  test("coexisting retained releases and issues emit no deterministic linkage", () => {
+    const project = resource("sentry", "project", "450");
+    const items = composeMissingContext(
+      context({
+        subject: project,
+        subjectReleases: {
+          kind: "populated",
+          observedAt: OBSERVED_AT,
+          resultCount: 1,
+          releases: [
+            {
+              provider: "sentry",
+              version: "1.4.2",
+              resourceId: project.id,
+              projectId: "450",
+              shortVersion: null,
+              status: "open",
+              dateCreated: "2026-08-15T14:31:00.000Z",
+              dateReleased: null,
+              observedAt: OBSERVED_AT,
+            } satisfies SentryReleaseEvidence,
+          ],
+        } satisfies ReleaseEvidenceAuthority,
+        subjectIssues: {
+          kind: "populated",
+          observedAt: OBSERVED_AT,
+          resultCount: 1,
+          issues: [
+            {
+              provider: "sentry",
+              issueId: "1001",
+              resourceId: project.id,
+              projectId: "450",
+              shortId: "COMBIE-1",
+              status: "unresolved",
+              level: "error",
+              count: 42,
+              userCount: 7,
+              issueCategory: "error",
+              firstSeen: "2026-08-15T14:37:00.000Z",
+              lastSeen: "2026-08-15T15:08:00.000Z",
+              observedAt: OBSERVED_AT,
+            } satisfies SentryIssueEvidence,
+          ],
+        } satisfies IssueEvidenceAuthority,
+      }),
+    );
+    expect(items.some((item) => item.kind === "no_deterministic_release_issue_linkage")).toBe(
+      true,
+    );
+    const linkage = items.find(
+      (item) => item.kind === "no_deterministic_release_issue_linkage",
+    );
+    expect(linkage).toMatchObject({
+      releaseCount: 1,
+      issueCount: 1,
+      scope: { resourceId: project.id, role: "subject" },
+    });
+    expect(formatMissingContextItem(linkage!)).toContain(
+      "No deterministic evidence currently proves a Sentry release caused a Sentry issue",
+    );
+    expect(formatMissingContextItem(linkage!)).not.toContain("likely caused");
+  });
+
   test("does not mutate the input context", () => {
     const ctx = context({
       subject: resource("github", "repository", "101"),
@@ -730,6 +813,7 @@ describe("missing context CLI formatting", () => {
             },
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -800,6 +884,7 @@ describe("missing context CLI formatting", () => {
             },
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),

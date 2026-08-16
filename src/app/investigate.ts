@@ -21,6 +21,11 @@ import {
   type NeonOperationEvidenceAuthority,
 } from "../providers/neon/operation.ts";
 import {
+  composeIssueAuthority,
+  type IssueEvidenceAuthority,
+  type SentryIssueEvidence,
+} from "../providers/sentry/issue.ts";
+import {
   composeReleaseAuthority,
   type ReleaseEvidenceAuthority,
   type SentryReleaseEvidence,
@@ -83,6 +88,8 @@ export interface InvestigationNeighbor {
   operations: NeonOperationEvidenceAuthority;
   /** Sentry release evidence for a one-hop Sentry project neighbor. */
   releases: ReleaseEvidenceAuthority;
+  /** Sentry issue-aggregate evidence for a one-hop Sentry project neighbor. */
+  issues: IssueEvidenceAuthority;
 }
 
 /**
@@ -101,6 +108,8 @@ export interface InvestigationContext {
   subjectOperations: NeonOperationEvidenceAuthority;
   /** Release evidence for the subject (Sentry projects only). */
   subjectReleases: ReleaseEvidenceAuthority;
+  /** Issue-aggregate evidence for the subject (Sentry projects only). */
+  subjectIssues: IssueEvidenceAuthority;
 }
 
 export interface GetInvestigationContextOptions {
@@ -203,6 +212,25 @@ function loadNeonOperationAuthority(
   );
 }
 
+function loadIssueAuthority(
+  store: Store,
+  resource: Resource | null,
+): IssueEvidenceAuthority {
+  if (
+    !resource ||
+    resource.provider !== "sentry" ||
+    resource.kind !== "project"
+  ) {
+    return { kind: "not_applicable" };
+  }
+  return composeIssueAuthority(
+    resource.provider,
+    resource.kind,
+    store.getSentryIssueRefresh(resource.id),
+    store.listSentryIssuesForResource(resource.id),
+  );
+}
+
 function loadReleaseAuthority(
   store: Store,
   resource: Resource | null,
@@ -246,6 +274,7 @@ export function getInvestigationContextForResource(
       workflowRuns: loadWorkflowRunAuthority(store, neighbor.resource),
       operations: loadNeonOperationAuthority(store, neighbor.resource),
       releases: loadReleaseAuthority(store, neighbor.resource),
+      issues: loadIssueAuthority(store, neighbor.resource),
     }),
   );
 
@@ -257,6 +286,7 @@ export function getInvestigationContextForResource(
     subjectWorkflowRuns: loadWorkflowRunAuthority(store, subject),
     subjectOperations: loadNeonOperationAuthority(store, subject),
     subjectReleases: loadReleaseAuthority(store, subject),
+    subjectIssues: loadIssueAuthority(store, subject),
   };
 }
 
@@ -527,6 +557,71 @@ function formatRelease(release: SentryReleaseEvidence): string {
   return lines.join("\n");
 }
 
+function formatIssue(issue: SentryIssueEvidence): string {
+  const lines = [`issue id: ${issue.issueId}`];
+  if (issue.shortId) lines.push(`short id: ${issue.shortId}`);
+  if (issue.status) lines.push(`status: ${issue.status}`);
+  if (issue.level) lines.push(`level: ${issue.level}`);
+  if (issue.count != null) lines.push(`count: ${issue.count}`);
+  if (issue.userCount != null) lines.push(`user count: ${issue.userCount}`);
+  if (issue.issueCategory) lines.push(`category: ${issue.issueCategory}`);
+  lines.push(`first seen at: ${issue.firstSeen}`);
+  lines.push(`last seen at: ${issue.lastSeen}`);
+  lines.push(`observed by Combie at: ${issue.observedAt}`);
+  return lines.join("\n");
+}
+
+function formatIssuesBlock(authority: IssueEvidenceAuthority): string {
+  if (authority.kind === "not_applicable") {
+    return "Issue evidence does not apply to this resource.";
+  }
+  if (authority.kind === "unknown") {
+    const marker = formatDetailAuthorityMarker("unknown", {
+      retained: authority.issues.length,
+      resultCount: authority.resultCount,
+      message: authority.message,
+    });
+    if (authority.issues.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPrior recorded issues (may be stale):\n\n` +
+      authority.issues.map(formatIssue).join("\n\n")
+    );
+  }
+  if (authority.kind === "empty") {
+    const marker = formatDetailAuthorityMarker("empty", {
+      retained: authority.issues.length,
+      resultCount: authority.resultCount,
+      message: null,
+      emptyObservedAt: authority.observedAt,
+    });
+    if (authority.issues.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPreviously recorded issues (outside the latest successful response):\n\n` +
+      authority.issues.map(formatIssue).join("\n\n")
+    );
+  }
+  const marker = formatDetailAuthorityMarker("populated", {
+    retained: authority.issues.length,
+    resultCount: authority.resultCount,
+    message: null,
+  });
+  const boundNote =
+    authority.resultCount === 100
+      ? "\n(bounded: ≤100 most-recently-seen issues per project)"
+      : "";
+  if (authority.issues.length === 0) {
+    return marker + boundNote;
+  }
+  return (
+    `${marker}${boundNote}\n\n` +
+    authority.issues.map(formatIssue).join("\n\n")
+  );
+}
+
 function formatReleasesBlock(authority: ReleaseEvidenceAuthority): string {
   if (authority.kind === "not_applicable") {
     return "Release evidence does not apply to this resource.";
@@ -725,6 +820,11 @@ function formatRelatedSummary(item: InvestigationNeighbor): string {
         ? 0
         : item.releases.releases.length,
     ),
+    formatRelatedFamilyToken(
+      "issues",
+      item.issues.kind,
+      item.issues.kind === "not_applicable" ? 0 : item.issues.issues.length,
+    ),
   ];
   for (const token of tokens) {
     if (token) parts.push(token);
@@ -796,6 +896,14 @@ function formatDetailedEvidence(context: InvestigationContext): string {
     ) {
       sections.push(
         `RELEASES (newest first)\n\n${formatReleasesBlock(first.releases)}`,
+      );
+    }
+    if (
+      first.issues.kind !== "not_applicable" &&
+      first.issues.issues.length > 0
+    ) {
+      sections.push(
+        `ISSUES (most-recently-active first)\n\n${formatIssuesBlock(first.issues)}`,
       );
     }
     if (sections.length === 0) continue;
@@ -908,6 +1016,16 @@ function formatProviderActivityEntry(entry: ProviderActivityEntry): string {
     );
   }
 
+  if (entry.family === "sentry_issue") {
+    const issue = entry.evidence;
+    const status = issue.status != null ? ` status=${issue.status}` : "";
+    const level = issue.level != null ? ` level=${issue.level}` : "";
+    return (
+      `${entry.primaryTime}  Sentry issue  ${id}${status}${level}  ` +
+      `${scope}  ${auth}  resource=${entry.resourceId}`
+    );
+  }
+
   const op = entry.evidence;
   return (
     `${entry.primaryTime}  Neon operation  ${id}  action=${op.action}  ` +
@@ -941,6 +1059,9 @@ function providerActivityName(
   if (family === "sentry_release") {
     return count === 1 ? "Sentry release" : "Sentry releases";
   }
+  if (family === "sentry_issue") {
+    return count === 1 ? "Sentry issue" : "Sentry issues";
+  }
   return count === 1 ? "Neon operation" : "Neon operations";
 }
 
@@ -950,6 +1071,7 @@ function providerAuthorityName(
   if (family === "vercel_deployment") return "Vercel deployment";
   if (family === "github_workflow_run") return "GitHub workflow-run";
   if (family === "sentry_release") return "Sentry release";
+  if (family === "sentry_issue") return "Sentry issue";
   return "Neon operation";
 }
 
@@ -965,6 +1087,9 @@ function providerEvidenceNoun(
   }
   if (family === "sentry_release") {
     return count === 1 ? "release" : "releases";
+  }
+  if (family === "sentry_issue") {
+    return count === 1 ? "issue" : "issues";
   }
   return count === 1 ? "operation" : "operations";
 }
@@ -998,6 +1123,9 @@ function newestRecordedState(
     return { field: "conclusion", value: activity.recordedConclusion };
   }
   if (activity.family === "sentry_release") {
+    return { field: "status", value: activity.recordedStatus };
+  }
+  if (activity.family === "sentry_issue") {
     return { field: "status", value: activity.recordedStatus };
   }
   return { field: "status", value: activity.recordedStatus };
@@ -1308,6 +1436,11 @@ export function formatInvestigationContext(
       ? ""
       : `\n\nRELEASES (newest first)\n\n${formatReleasesBlock(context.subjectReleases)}`;
 
+  const subjectIssues =
+    context.subjectIssues.kind === "not_applicable"
+      ? ""
+      : `\n\nISSUES (most-recently-active first)\n\n${formatIssuesBlock(context.subjectIssues)}`;
+
   const related =
     context.related.length === 0
       ? "No relationships discovered."
@@ -1339,7 +1472,8 @@ export function formatInvestigationContext(
     `${subjectDeployments}` +
     `${subjectWorkflowRuns}` +
     `${subjectOperations}` +
-    `${subjectReleases}\n\n` +
+    `${subjectReleases}` +
+    `${subjectIssues}\n\n` +
     `RELATED CONTEXT\n\n${related}` +
     `${sharedCommitBlock}\n\n` +
     `KNOWN PROVIDER ACTIVITY (newest first; incomplete)\n\n` +

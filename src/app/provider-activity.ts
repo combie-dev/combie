@@ -2,6 +2,7 @@ import type { Relationship } from "../domain/relationship.ts";
 import type { Resource } from "../domain/resource.ts";
 import type { GitHubWorkflowRunEvidence } from "../providers/github/workflow-run.ts";
 import type { NeonOperationEvidence } from "../providers/neon/operation.ts";
+import type { SentryIssueEvidence } from "../providers/sentry/issue.ts";
 import type { SentryReleaseEvidence } from "../providers/sentry/release.ts";
 import type { VercelDeploymentEvidence } from "../providers/vercel/deployment.ts";
 import type { InvestigationContext } from "./investigate.ts";
@@ -12,7 +13,8 @@ export type ProviderActivityFamily =
   | "vercel_deployment"
   | "github_workflow_run"
   | "neon_operation"
-  | "sentry_release";
+  | "sentry_release"
+  | "sentry_issue";
 
 /**
  * Refresh/authority class inherited from the source evidence authority.
@@ -71,6 +73,16 @@ export type ProviderActivityEntry =
       resourceId: string;
       relationships: ProviderActivityRelationship[];
       authority: ProviderActivityAuthority;
+    }
+  | {
+      family: "sentry_issue";
+      evidence: SentryIssueEvidence;
+      primaryTime: string;
+      primaryTimeField: "lastSeen";
+      role: "subject" | "related";
+      resourceId: string;
+      relationships: ProviderActivityRelationship[];
+      authority: ProviderActivityAuthority;
     };
 
 export interface ProviderActivityChronology {
@@ -97,6 +109,10 @@ interface RelatedActivitySource {
     authority: ProviderActivityAuthority;
     items: SentryReleaseEvidence[];
   } | null;
+  issues: {
+    authority: ProviderActivityAuthority;
+    items: SentryIssueEvidence[];
+  } | null;
 }
 
 function compareDescending(left: string, right: string): number {
@@ -122,6 +138,8 @@ export function nativeEvidenceId(entry: ProviderActivityEntry): string {
       return entry.evidence.operationId;
     case "sentry_release":
       return entry.evidence.version;
+    case "sentry_issue":
+      return entry.evidence.issueId;
   }
 }
 
@@ -213,6 +231,26 @@ function collectOperations(
     : null;
 }
 
+function collectIssues(
+  authority: InvestigationContext["subjectIssues"],
+): {
+  authority: ProviderActivityAuthority;
+  items: SentryIssueEvidence[];
+} | null {
+  if (authority.kind === "not_applicable") return null;
+  if (authority.kind === "populated") {
+    return { authority: "populated", items: authority.issues };
+  }
+  if (authority.kind === "empty") {
+    return authority.issues.length > 0
+      ? { authority: "empty", items: authority.issues }
+      : null;
+  }
+  return authority.issues.length > 0
+    ? { authority: "unknown", items: authority.issues }
+    : null;
+}
+
 function collectReleases(
   authority: InvestigationContext["subjectReleases"],
 ): {
@@ -296,6 +334,27 @@ function pushOperationEntries(
   }
 }
 
+function pushIssueEntries(
+  entries: ProviderActivityEntry[],
+  items: SentryIssueEvidence[],
+  authority: ProviderActivityAuthority,
+  role: "subject" | "related",
+  relationships: ProviderActivityRelationship[],
+): void {
+  for (const evidence of items) {
+    entries.push({
+      family: "sentry_issue",
+      evidence,
+      primaryTime: evidence.lastSeen,
+      primaryTimeField: "lastSeen",
+      role,
+      resourceId: evidence.resourceId,
+      relationships,
+      authority,
+    });
+  }
+}
+
 function pushReleaseEntries(
   entries: ProviderActivityEntry[],
   items: SentryReleaseEvidence[],
@@ -370,6 +429,16 @@ export function composeProviderActivityChronology(
       [],
     );
   }
+  const subjectIssues = collectIssues(context.subjectIssues);
+  if (subjectIssues) {
+    pushIssueEntries(
+      entries,
+      subjectIssues.items,
+      subjectIssues.authority,
+      "subject",
+      [],
+    );
+  }
 
   // Group related neighbors by Resource id so multi-edge neighbors dedupe
   // evidence while retaining every Relationship path (same pattern as timeline).
@@ -388,6 +457,7 @@ export function composeProviderActivityChronology(
         workflowRuns: null,
         operations: null,
         releases: null,
+        issues: null,
       };
       relatedByResource.set(neighbor.resource.id, source);
     }
@@ -410,6 +480,9 @@ export function composeProviderActivityChronology(
     }
     if (!source.releases) {
       source.releases = collectReleases(neighbor.releases);
+    }
+    if (!source.issues) {
+      source.issues = collectIssues(neighbor.issues);
     }
   }
 
@@ -476,11 +549,26 @@ export function composeProviderActivityChronology(
         rels,
       );
     }
+    if (source.issues) {
+      const seen = new Set<string>();
+      const unique = source.issues.items.filter((issue) => {
+        if (seen.has(issue.issueId)) return false;
+        seen.add(issue.issueId);
+        return true;
+      });
+      pushIssueEntries(
+        entries,
+        unique,
+        source.issues.authority,
+        "related",
+        rels,
+      );
+    }
   }
 
   // Total order:
   //   primaryTime DESC
-  //   family ASC (github_workflow_run < neon_operation < sentry_release < vercel_deployment)
+  //   family ASC (github_workflow_run < neon_operation < sentry_issue < sentry_release < vercel_deployment)
   //   nativeEvidenceId DESC (numeric for pure-digit ids; else string)
   entries.sort((left, right) => {
     const byTime = compareDescending(left.primaryTime, right.primaryTime);

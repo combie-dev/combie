@@ -166,6 +166,9 @@ function mockMultiProviderFetch(options?: {
           name: "Sentry Tester",
         });
       }
+      if (url.includes("/issues")) {
+        return Response.json([]);
+      }
       if (url.includes("/releases")) {
         return Response.json([]);
       }
@@ -1038,6 +1041,32 @@ describe("multi-provider connection", () => {
     });
     expect(result.provider).toBe("Sentry");
     expect(result.accountId).toBe("sentry_user_1");
+  });
+
+  test("Sentry project discovery still succeeds when issue refresh is independently mocked", async () => {
+    initCombie(dir);
+    await connectProvider({
+      baseDir: dir,
+      providerId: "sentry",
+      token: "sn-tok",
+    });
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(true);
+
+    const { resources } = listResources({ baseDir: dir });
+    const sentry = resources.filter((resource) => resource.provider === "sentry");
+    expect(sentry).toHaveLength(2);
+    expect(sentry.every((resource) => resource.kind === "project")).toBe(true);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    for (const project of sentry) {
+      const refresh = store.getSentryIssueRefresh(project.id);
+      expect(refresh?.status).toBe("success");
+      expect(refresh?.resultCount).toBe(0);
+      expect(store.listSentryIssuesForResource(project.id)).toEqual([]);
+    }
+    store.close();
   });
 
   test("Cloudflare + GitHub + Vercel + Sentry coexist after quadruple connect and sync", async () => {

@@ -1,11 +1,12 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–043 implement the
+Combie is the open engineering context layer. Sprints 001–044 implement the
 local multi-provider context foundation through **Cloudflare**, **GitHub**,
 **Vercel**, **Sentry**, **Neon**, and **PlanetScale**, including deterministic
-Relationships, retained provider evidence (including Sentry releases), offline
-investigation, read-only MCP, release distribution, guided agent setup, and a
-concluded GitHub-first closed beta. No next sprint is Active.
+Relationships, retained provider evidence (including Sentry releases and
+Sentry issue aggregates), offline investigation, read-only MCP, release
+distribution, guided agent setup, and a concluded GitHub-first closed beta.
+No next sprint is Active.
 
 ## Mandatory reading order before any substantive change
 
@@ -27,7 +28,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–043 complete
+## Current baseline: Sprints 001–044 complete
 
 Multi-provider connection loop:
 
@@ -50,13 +51,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
 - Current agent scope: exactly four local, offline, read-only MCP tools:
   `list_resources`, `list_providers`, `get_related_context`, and
   `investigate_resource`.
-- **Shipped Sentry evidence:** compact release history on
-  `sentry:project:<id>`, offline `RELEASES`, and `sentry_release` provider
-  activity. Do not expand MCP tools or schemas, add write paths, speculative
-  relationships, a generic Event abstraction, Sentry issues/error telemetry,
-  additional providers, broader ontology/identity, model reasoning,
-  background sync, webhooks, telemetry ingestion, operational learning,
-  policy, or execution until a later sprint authorizes it.
+- **Shipped Sentry evidence:** compact release history and compact issue
+  aggregates on `sentry:project:<id>`, offline `RELEASES` and `ISSUES`,
+  and `sentry_release` / `sentry_issue` provider activity. Issue rows are
+  current-state snapshots (`firstSeen` / `lastSeen` / `count`), not an
+  occurrence log. Do not expand MCP tools or schemas, add write paths,
+  speculative relationships, a generic Event abstraction, Sentry
+  occurrence-level error events (Class D), additional providers, broader
+  ontology/identity, model reasoning, background sync, webhooks, telemetry
+  ingestion, operational learning, policy, or execution until a later
+  sprint authorizes it.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.

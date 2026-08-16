@@ -79,6 +79,7 @@ describe("MCP stdio contract", () => {
         "providerActivity",
         "timeline",
         "subjectReleases",
+        "subjectIssues",
         "sharedCommitContext",
       ]) {
         expect(result.structuredContent).toHaveProperty(key);

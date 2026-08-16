@@ -183,6 +183,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           workflowRuns: n.workflowRuns,
           operations: n.operations,
           releases: n.releases,
+          issues: n.issues,
         }));
 
         return {
@@ -200,6 +201,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             subjectWorkflowRuns: ctx.subjectWorkflowRuns,
             subjectOperations: ctx.subjectOperations,
             subjectReleases: ctx.subjectReleases,
+            subjectIssues: ctx.subjectIssues,
             related,
             knownFacts: composeInvestigationFacts(ctx),
             missingContext: composeMissingContext(ctx),

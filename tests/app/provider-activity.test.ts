@@ -22,6 +22,10 @@ import type {
 import type {
   WorkflowRunEvidenceAuthority,
 } from "../../src/providers/github/workflow-run.ts";
+import type {
+  IssueEvidenceAuthority,
+  SentryIssueEvidence,
+} from "../../src/providers/sentry/issue.ts";
 
 const CREATED_AT = "2026-08-08T08:00:00.000Z";
 
@@ -184,6 +188,7 @@ function context(
     subjectWorkflowRuns: NOT_APPLICABLE_RUNS,
     subjectOperations: NOT_APPLICABLE_OPERATIONS,
     subjectReleases: { kind: "not_applicable" as const },
+    subjectIssues: { kind: "not_applicable" as const },
     ...overrides,
   };
 }
@@ -230,6 +235,46 @@ describe("provider activity chronology composition", () => {
     expect(chronology.entries[0]!.evidence).toBe(only);
   });
 
+  test("projects Sentry issues only, ordered by lastSeen", () => {
+    const older: SentryIssueEvidence = {
+      provider: "sentry",
+      issueId: "old",
+      resourceId: "sentry:project:450",
+      projectId: "450",
+      shortId: null,
+      status: "unresolved",
+      level: "error",
+      count: 1,
+      userCount: 1,
+      issueCategory: "error",
+      firstSeen: "2026-08-15T12:00:00.000Z",
+      lastSeen: "2026-08-15T12:00:00.000Z",
+      observedAt: "2026-08-15T16:00:00.000Z",
+    };
+    const newer: SentryIssueEvidence = {
+      ...older,
+      issueId: "new",
+      lastSeen: "2026-08-15T15:08:00.000Z",
+    };
+    const authority: IssueEvidenceAuthority = {
+      kind: "populated",
+      observedAt: "2026-08-15T16:00:00.000Z",
+      resultCount: 2,
+      issues: [older, newer],
+    };
+    const chronology = composeProviderActivityChronology(
+      context({
+        subject: resource("sentry", "project", "450", "combie"),
+        subjectIssues: authority,
+      }),
+    );
+
+    expect(chronology.entries).toHaveLength(2);
+    expect(chronology.entries.every((e) => e.family === "sentry_issue")).toBe(true);
+    expect(chronology.entries.map((e) => nativeEvidenceId(e))).toEqual(["new", "old"]);
+    expect(chronology.entries[0]!.primaryTimeField).toBe("lastSeen");
+  });
+
   test("projects all three families from subject and one-hop neighbors", () => {
     const subject = resource("vercel", "project", "prj_subject", "application");
     const repository = resource("github", "repository", "915052094", "application");
@@ -259,6 +304,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: populatedRuns([run()]),
           operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
         {
           relationship: usesDomain,
@@ -269,6 +315,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: NOT_APPLICABLE_RUNS,
           operations: populatedOperations([operation()]),
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -325,6 +372,7 @@ describe("provider activity chronology composition", () => {
           ]),
           operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
         {
           relationship: relationship(
@@ -343,6 +391,7 @@ describe("provider activity chronology composition", () => {
             operation({ operationId: "op_b", createdAt: at }),
           ]),
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -472,6 +521,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: populatedRuns([run()]),
           operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -503,6 +553,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: NOT_APPLICABLE_RUNS,
           operations: populatedOperations([operation()]),
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -542,6 +593,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: populatedRuns([sharedRun]),
           operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
         {
           relationship: secondEdge,
@@ -552,6 +604,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: populatedRuns([sharedRun]),
           operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -583,6 +636,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: NOT_APPLICABLE_RUNS,
           operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -672,6 +726,7 @@ describe("provider activity chronology composition", () => {
           workflowRuns: populatedRuns([run()]),
           operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
         },
       ],
     }));
@@ -745,6 +800,7 @@ describe("provider activity chronology composition", () => {
             workflowRuns: populatedRuns([run({ createdAt: item.githubAt })]),
             operations: NOT_APPLICABLE_OPERATIONS,
           releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
           },
           {
             relationship: usesDomain,
@@ -757,6 +813,7 @@ describe("provider activity chronology composition", () => {
               operation({ createdAt: item.neonAt }),
             ]),
             releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
           },
         ],
       }));

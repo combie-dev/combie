@@ -2,6 +2,7 @@ import type { Relationship } from "../domain/relationship.ts";
 import type { DeploymentEvidenceAuthority } from "../providers/vercel/deployment.ts";
 import type { WorkflowRunEvidenceAuthority } from "../providers/github/workflow-run.ts";
 import type { NeonOperationEvidenceAuthority } from "../providers/neon/operation.ts";
+import type { IssueEvidenceAuthority } from "../providers/sentry/issue.ts";
 import type { ReleaseEvidenceAuthority } from "../providers/sentry/release.ts";
 import type { InvestigationContext } from "./investigate.ts";
 import type { ProviderActivityFamily } from "./provider-activity.ts";
@@ -65,6 +66,16 @@ export type MissingContextItem =
         role: "subject";
         relationships: [];
       };
+    }
+  | {
+      kind: "no_deterministic_release_issue_linkage";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [];
+      };
+      releaseCount: number;
+      issueCount: number;
     };
 
 interface MutableRelatedSource {
@@ -74,6 +85,7 @@ interface MutableRelatedSource {
   workflowRuns: WorkflowRunEvidenceAuthority;
   operations: NeonOperationEvidenceAuthority;
   releases: ReleaseEvidenceAuthority;
+  issues: IssueEvidenceAuthority;
 }
 
 function compareAscending(left: string, right: string): number {
@@ -121,22 +133,26 @@ function familyOrder(family: ProviderActivityFamily): number {
   // Stable organizational order — not importance.
   if (family === "github_workflow_run") return 0;
   if (family === "neon_operation") return 1;
-  if (family === "sentry_release") return 2;
-  return 3;
+  if (family === "sentry_issue") return 2;
+  if (family === "sentry_release") return 3;
+  return 4;
 }
 
 function compareItems(left: MissingContextItem, right: MissingContextItem): number {
   const category = (item: MissingContextItem): number => {
     if (item.kind === "never_successfully_refreshed") return 0;
     if (item.kind === "unknown_current_authority") return 1;
-    return 2; // no_known_relationships last among implemented categories
+    if (item.kind === "no_deterministic_release_issue_linkage") return 2;
+    return 3; // no_known_relationships last among implemented categories
   };
   const byCategory = category(left) - category(right);
   if (byCategory !== 0) return byCategory;
 
   if (
     left.kind === "no_known_relationships" ||
-    right.kind === "no_known_relationships"
+    right.kind === "no_known_relationships" ||
+    left.kind === "no_deterministic_release_issue_linkage" ||
+    right.kind === "no_deterministic_release_issue_linkage"
   ) {
     return compareAscending(left.scope.resourceId, right.scope.resourceId);
   }
@@ -146,12 +162,22 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
 
   const byFamily =
     familyOrder(
-      (left as Exclude<MissingContextItem, { kind: "no_known_relationships" }>)
-        .family,
+      (
+        left as Exclude<
+          MissingContextItem,
+          | { kind: "no_known_relationships" }
+          | { kind: "no_deterministic_release_issue_linkage" }
+        >
+      ).family,
     ) -
     familyOrder(
-      (right as Exclude<MissingContextItem, { kind: "no_known_relationships" }>)
-        .family,
+      (
+        right as Exclude<
+          MissingContextItem,
+          | { kind: "no_known_relationships" }
+          | { kind: "no_deterministic_release_issue_linkage" }
+        >
+      ).family,
     );
   if (byFamily !== 0) return byFamily;
 
@@ -274,6 +300,59 @@ function releaseRetainedCount(
   return authority.releases.length;
 }
 
+function issueRetainedCount(
+  authority: Exclude<IssueEvidenceAuthority, { kind: "not_applicable" }>,
+): number {
+  return authority.issues.length;
+}
+
+function pushIssueGap(
+  items: MissingContextItem[],
+  authority: IssueEvidenceAuthority,
+  scope: MissingContextScopeRef,
+): void {
+  if (authority.kind === "not_applicable") return;
+  if (authority.kind === "empty" || authority.kind === "populated") return;
+  if (authority.kind !== "unknown") return;
+
+  const retainedCount = issueRetainedCount(authority);
+  const prior = hasLastSuccessProvenance(
+    authority.lastSuccessAt,
+    authority.resultCount,
+  );
+  if (!prior) {
+    items.push({
+      kind: "never_successfully_refreshed",
+      family: "sentry_issue",
+      provider: "sentry",
+      scope,
+      retainedCount,
+      latestAttemptObservedAt: authority.latestAttemptObservedAt,
+      message: authority.message,
+    });
+    return;
+  }
+  items.push({
+    kind: "unknown_current_authority",
+    family: "sentry_issue",
+    provider: "sentry",
+    scope,
+    retainedCount,
+    latestAttemptObservedAt: authority.latestAttemptObservedAt,
+    lastSuccessfulObservedAt: authority.lastSuccessAt,
+    lastSuccessfulResultCount: authority.resultCount,
+    message: authority.message,
+  });
+}
+
+function retainedEvidenceCount(
+  authority: ReleaseEvidenceAuthority | IssueEvidenceAuthority,
+): number {
+  if (authority.kind === "not_applicable") return 0;
+  if ("releases" in authority) return authority.releases.length;
+  return authority.issues.length;
+}
+
 function pushReleaseGap(
   items: MissingContextItem[],
   authority: ReleaseEvidenceAuthority,
@@ -384,6 +463,7 @@ export function composeMissingContext(
   pushWorkflowGap(items, context.subjectWorkflowRuns, subjectScopeRef);
   pushOperationGap(items, context.subjectOperations, subjectScopeRef);
   pushReleaseGap(items, context.subjectReleases, subjectScopeRef);
+  pushIssueGap(items, context.subjectIssues, subjectScopeRef);
 
   const relatedById = new Map<string, MutableRelatedSource>();
   for (const neighbor of context.related) {
@@ -404,6 +484,7 @@ export function composeMissingContext(
       workflowRuns: neighbor.workflowRuns,
       operations: neighbor.operations,
       releases: neighbor.releases,
+      issues: neighbor.issues,
     });
   }
 
@@ -416,6 +497,22 @@ export function composeMissingContext(
     pushWorkflowGap(items, source.workflowRuns, scope);
     pushOperationGap(items, source.operations, scope);
     pushReleaseGap(items, source.releases, scope);
+    pushIssueGap(items, source.issues, scope);
+  }
+
+  const subjectReleaseCount = retainedEvidenceCount(context.subjectReleases);
+  const subjectIssueCount = retainedEvidenceCount(context.subjectIssues);
+  if (subjectReleaseCount > 0 && subjectIssueCount > 0) {
+    items.push({
+      kind: "no_deterministic_release_issue_linkage",
+      scope: {
+        resourceId: context.subject.id,
+        role: "subject",
+        relationships: [],
+      },
+      releaseCount: subjectReleaseCount,
+      issueCount: subjectIssueCount,
+    });
   }
 
   // Combie graph knowledge only — does not claim external systems have no edges.
@@ -438,6 +535,7 @@ export function missingContextFamilyName(family: ProviderActivityFamily): string
   if (family === "vercel_deployment") return "Vercel deployment";
   if (family === "github_workflow_run") return "GitHub workflow-run";
   if (family === "sentry_release") return "Sentry release";
+  if (family === "sentry_issue") return "Sentry issue";
   return "Neon operation";
 }
 
@@ -450,6 +548,15 @@ export function formatMissingContextItem(item: MissingContextItem): string {
     return (
       `No one-hop Relationships are currently known to Combie for ` +
       `${item.scope.resourceId}.`
+    );
+  }
+
+  if (item.kind === "no_deterministic_release_issue_linkage") {
+    return (
+      `No deterministic evidence currently proves a Sentry release caused a ` +
+      `Sentry issue for ${item.scope.resourceId} ` +
+      `(${item.releaseCount} release${item.releaseCount === 1 ? "" : "s"}, ` +
+      `${item.issueCount} issue${item.issueCount === 1 ? "" : "s"} retained).`
     );
   }
 

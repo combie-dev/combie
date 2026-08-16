@@ -19,6 +19,10 @@ import type {
   NeonOperationEvidenceAuthority,
 } from "../../src/providers/neon/operation.ts";
 import type {
+  IssueEvidenceAuthority,
+  SentryIssueEvidence,
+} from "../../src/providers/sentry/issue.ts";
+import type {
   DeploymentEvidenceAuthority,
   VercelDeploymentEvidence,
 } from "../../src/providers/vercel/deployment.ts";
@@ -180,6 +184,52 @@ function unknownOperations(
   };
 }
 
+function sentryIssue(
+  overrides: Partial<SentryIssueEvidence> = {},
+): SentryIssueEvidence {
+  return {
+    provider: "sentry",
+    issueId: "1001",
+    resourceId: "sentry:project:450",
+    projectId: "450",
+    shortId: "COMBIE-1",
+    status: "unresolved",
+    level: "error",
+    count: 42,
+    userCount: 7,
+    issueCategory: "error",
+    firstSeen: "2026-08-09T10:00:00.000Z",
+    lastSeen: "2026-08-09T11:00:00.000Z",
+    observedAt: OBSERVED_AT,
+    ...overrides,
+  };
+}
+
+function populatedIssues(
+  items: SentryIssueEvidence[],
+  resultCount: number | null = items.length,
+): IssueEvidenceAuthority {
+  return {
+    kind: "populated",
+    observedAt: OBSERVED_AT,
+    resultCount,
+    issues: items,
+  };
+}
+
+function unknownIssues(
+  items: SentryIssueEvidence[],
+): IssueEvidenceAuthority {
+  return {
+    kind: "unknown",
+    issues: items,
+    latestAttemptObservedAt: null,
+    lastSuccessAt: null,
+    resultCount: null,
+    message: null,
+  };
+}
+
 function context(
   overrides: Partial<InvestigationContext> = {},
 ): InvestigationContext {
@@ -191,6 +241,7 @@ function context(
     subjectWorkflowRuns: NA_RUNS,
     subjectOperations: NA_OPERATIONS,
     subjectReleases: { kind: "not_applicable" as const },
+    subjectIssues: { kind: "not_applicable" as const },
     ...overrides,
   };
 }
@@ -382,6 +433,83 @@ describe("investigation fact composition", () => {
     });
   });
 
+  test("Sentry issue facts preserve populated, empty, and unknown authority", () => {
+    const empty = composeInvestigationFacts(
+      context({
+        subject: resource("sentry", "project", "450"),
+        subjectIssues: {
+          kind: "empty",
+          observedAt: OBSERVED_AT,
+          resultCount: null,
+          issues: [],
+        },
+      }),
+    );
+    expect(empty[0]).toMatchObject({
+      kind: "provider_evidence_authority",
+      source: {
+        family: "sentry_issue",
+        authority: { kind: "empty", refreshObservedAt: OBSERVED_AT },
+        locallyHeldNativeIds: [],
+      },
+    });
+
+    const unknown = composeInvestigationFacts(
+      context({
+        subject: resource("sentry", "project", "450"),
+        subjectIssues: unknownIssues([
+          sentryIssue({ issueId: "1002" }),
+          sentryIssue({ issueId: "1001" }),
+        ]),
+      }),
+    );
+    expect(unknown[0]).toMatchObject({
+      kind: "provider_evidence_authority",
+      source: {
+        family: "sentry_issue",
+        authority: { kind: "unknown", refreshObservedAt: null },
+        locallyHeldNativeIds: ["1002", "1001"],
+      },
+    });
+    expect(
+      unknown.some(
+        (fact) =>
+          fact.kind === "provider_evidence_authority" &&
+          fact.source.authority.kind === "empty",
+      ),
+    ).toBe(false);
+
+    const populated = composeInvestigationFacts(
+      context({
+        subject: resource("sentry", "project", "450"),
+        subjectIssues: populatedIssues(
+          [
+            sentryIssue({ issueId: "1002" }),
+            sentryIssue({ issueId: "1001" }),
+          ],
+          3,
+        ),
+      }),
+    );
+    expect(populated[0]).toMatchObject({
+      kind: "provider_evidence_authority",
+      source: {
+        family: "sentry_issue",
+        authority: { kind: "populated", refreshObservedAt: OBSERVED_AT },
+        locallyHeldNativeIds: ["1002", "1001"],
+      },
+    });
+
+    const output = formatInvestigationContext(
+      context({
+        subject: resource("sentry", "project", "450"),
+        subjectIssues: unknownIssues([sentryIssue({ issueId: "1001" })]),
+      }),
+    );
+    expect(output).not.toContain("caused");
+    expect(output).not.toContain("triggered");
+  });
+
   test("preserves provider-native state fields without one generic state enum", () => {
     const githubFacts = composeInvestigationFacts(
       context({
@@ -482,6 +610,7 @@ describe("investigation fact composition", () => {
             workflowRuns: populatedRuns([workflowRun({ runId: 9001 })]),
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -548,6 +677,7 @@ describe("investigation fact composition", () => {
       workflowRuns: populatedRuns([workflowRun()]),
       operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
     });
     const facts = composeInvestigationFacts(
       context({
@@ -637,6 +767,7 @@ describe("investigation fact composition", () => {
             ]),
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -718,6 +849,7 @@ describe("investigation fact composition", () => {
       workflowRuns: emptyRuns,
       operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
     };
     const facts = composeInvestigationFacts(
       context({
@@ -772,6 +904,7 @@ describe("investigation fact composition", () => {
             workflowRuns: NA_RUNS,
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -793,6 +926,7 @@ describe("investigation fact composition", () => {
       workflowRuns: unknownRuns([]),
       operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
     }));
     const input = context({ subject: project, related });
     const before = JSON.stringify(input);
@@ -1072,6 +1206,7 @@ describe("known facts formatting", () => {
             ]),
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),
@@ -1119,6 +1254,7 @@ describe("known facts formatting", () => {
             workflowRuns: populatedRuns([workflowRun()]),
             operations: NA_OPERATIONS,
       releases: { kind: "not_applicable" as const },
+      issues: { kind: "not_applicable" as const },
           },
         ],
       }),

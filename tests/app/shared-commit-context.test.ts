@@ -130,6 +130,7 @@ function contextFromVercelSubject(options: {
     subjectWorkflowRuns: { kind: "not_applicable" },
     subjectOperations: { kind: "not_applicable" },
     subjectReleases: { kind: "not_applicable" },
+    subjectIssues: { kind: "not_applicable" },
     related: includeRel
       ? [
           {
@@ -153,6 +154,7 @@ function contextFromVercelSubject(options: {
             } as InvestigationContext["subjectWorkflowRuns"],
             operations: { kind: "not_applicable" },
         releases: { kind: "not_applicable" },
+        issues: { kind: "not_applicable" },
           },
         ]
       : [],
@@ -176,6 +178,7 @@ function contextFromGitHubSubject(options: {
     },
     subjectOperations: { kind: "not_applicable" },
     subjectReleases: { kind: "not_applicable" },
+    subjectIssues: { kind: "not_applicable" },
     related: [
       {
         relationship: rel,
@@ -191,6 +194,7 @@ function contextFromGitHubSubject(options: {
         workflowRuns: { kind: "not_applicable" },
         operations: { kind: "not_applicable" },
         releases: { kind: "not_applicable" },
+        issues: { kind: "not_applicable" },
       },
     ],
   };
@@ -326,6 +330,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
       },
       subjectOperations: { kind: "not_applicable" },
       subjectReleases: { kind: "not_applicable" },
+    subjectIssues: { kind: "not_applicable" },
       related: [
         {
           relationship: sourceFor(),
@@ -341,6 +346,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
           workflowRuns: { kind: "not_applicable" },
           operations: { kind: "not_applicable" },
         releases: { kind: "not_applicable" },
+        issues: { kind: "not_applicable" },
         },
         {
           relationship: relB,
@@ -363,6 +369,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
           workflowRuns: { kind: "not_applicable" },
           operations: { kind: "not_applicable" },
         releases: { kind: "not_applicable" },
+        issues: { kind: "not_applicable" },
         },
       ],
     };
@@ -440,6 +447,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
         workflowRuns: { kind: "not_applicable" as const },
         operations: { kind: "not_applicable" as const },
         releases: { kind: "not_applicable" as const },
+        issues: { kind: "not_applicable" as const },
       };
       const b = {
         relationship: relB,
@@ -462,6 +470,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
         workflowRuns: { kind: "not_applicable" as const },
         operations: { kind: "not_applicable" as const },
         releases: { kind: "not_applicable" as const },
+        issues: { kind: "not_applicable" as const },
       };
       return {
         subject: repo(),
@@ -478,6 +487,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
         },
         subjectOperations: { kind: "not_applicable" },
         subjectReleases: { kind: "not_applicable" },
+    subjectIssues: { kind: "not_applicable" },
         related: relatedOrder === "ab" ? [a, b] : [b, a],
       };
     }
@@ -531,6 +541,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
       subjectWorkflowRuns: { kind: "not_applicable" },
       subjectOperations: { kind: "not_applicable" },
       subjectReleases: { kind: "not_applicable" },
+    subjectIssues: { kind: "not_applicable" },
       related: [
         {
           relationship: uses,
@@ -541,6 +552,7 @@ describe("composeSharedCommitContext (Sprint 035)", () => {
           workflowRuns: { kind: "not_applicable" },
           operations: { kind: "not_applicable" },
         releases: { kind: "not_applicable" },
+        issues: { kind: "not_applicable" },
         },
       ],
     };

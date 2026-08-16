@@ -21,6 +21,10 @@ import type {
   NeonOperationRefresh,
 } from "../providers/neon/operation.ts";
 import type {
+  SentryIssueEvidence,
+  SentryIssueRefresh,
+} from "../providers/sentry/issue.ts";
+import type {
   SentryReleaseEvidence,
   SentryReleaseRefresh,
 } from "../providers/sentry/release.ts";
@@ -199,6 +203,35 @@ CREATE INDEX IF NOT EXISTS sentry_releases_resource_created_version_idx
   ON sentry_releases(resource_id, date_created DESC, version DESC);
 
 CREATE TABLE IF NOT EXISTS sentry_release_refresh (
+  resource_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+  observed_at TEXT NOT NULL,
+  message TEXT,
+  result_count INTEGER,
+  last_success_observed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sentry_issues (
+  issue_id TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'sentry',
+  project_id TEXT NOT NULL,
+  short_id TEXT,
+  status TEXT,
+  level TEXT,
+  count INTEGER,
+  user_count INTEGER,
+  issue_category TEXT,
+  first_seen TEXT NOT NULL,
+  last_seen TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  PRIMARY KEY (issue_id, resource_id)
+);
+
+CREATE INDEX IF NOT EXISTS sentry_issues_resource_last_seen_id_idx
+  ON sentry_issues(resource_id, last_seen DESC, issue_id DESC);
+
+CREATE TABLE IF NOT EXISTS sentry_issue_refresh (
   resource_id TEXT PRIMARY KEY,
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
@@ -1197,12 +1230,132 @@ export class Store {
       );
   }
 
+  /**
+   * Insert or update Sentry issue-aggregate evidence by issue id + project
+   * Resource. Does not create Resource Changes.
+   */
+  upsertSentryIssue(issue: SentryIssueEvidence): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO sentry_issues (
+           issue_id, resource_id, provider, project_id, short_id,
+           status, level, count, user_count, issue_category,
+           first_seen, last_seen, observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(issue_id, resource_id) DO UPDATE SET
+           provider = excluded.provider,
+           project_id = excluded.project_id,
+           short_id = excluded.short_id,
+           status = excluded.status,
+           level = excluded.level,
+           count = excluded.count,
+           user_count = excluded.user_count,
+           issue_category = excluded.issue_category,
+           first_seen = excluded.first_seen,
+           last_seen = excluded.last_seen,
+           observed_at = excluded.observed_at`,
+      )
+      .run(
+        issue.issueId,
+        issue.resourceId,
+        issue.provider,
+        issue.projectId,
+        issue.shortId,
+        issue.status,
+        issue.level,
+        issue.count,
+        issue.userCount,
+        issue.issueCategory,
+        issue.firstSeen,
+        issue.lastSeen,
+        issue.observedAt,
+      );
+  }
+
+  /**
+   * Most-recently-seen-first issues for an exact Sentry project Resource.
+   * Ordering: last_seen DESC, issue_id DESC.
+   */
+  listSentryIssuesForResource(resourceId: string): SentryIssueEvidence[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT issue_id, resource_id, provider, project_id, short_id,
+                status, level, count, user_count, issue_category,
+                first_seen, last_seen, observed_at
+         FROM sentry_issues
+         WHERE resource_id = ?
+         ORDER BY last_seen DESC, issue_id DESC`,
+      )
+      .all(resourceId) as SentryIssueRow[];
+    return rows.map(mapSentryIssue);
+  }
+
+  countSentryIssues(): number {
+    const row = this.getDb()
+      .query(`SELECT COUNT(*) AS n FROM sentry_issues`)
+      .get() as { n: number };
+    return Number(row.n);
+  }
+
+  setSentryIssueRefresh(refresh: SentryIssueRefresh): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO sentry_issue_refresh (
+           resource_id, status, observed_at, message, result_count,
+           last_success_observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(resource_id) DO UPDATE SET
+           status = excluded.status,
+           observed_at = excluded.observed_at,
+           message = excluded.message,
+           result_count = excluded.result_count,
+           last_success_observed_at = excluded.last_success_observed_at`,
+      )
+      .run(
+        refresh.resourceId,
+        refresh.status,
+        refresh.observedAt,
+        refresh.message,
+        refresh.resultCount,
+        refresh.lastSuccessfulObservedAt,
+      );
+  }
+
   getSentryReleaseRefresh(resourceId: string): SentryReleaseRefresh | null {
     const row = this.getDb()
       .query(
         `SELECT resource_id, status, observed_at, message, result_count,
                 last_success_observed_at
          FROM sentry_release_refresh
+         WHERE resource_id = ?`,
+      )
+      .get(resourceId) as
+      | {
+          resource_id: string;
+          status: string;
+          observed_at: string;
+          message: string | null;
+          result_count: number | null;
+          last_success_observed_at: string | null;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      resourceId: row.resource_id,
+      status: row.status as "success" | "failure",
+      observedAt: row.observed_at,
+      message: row.message,
+      resultCount: row.result_count,
+      lastSuccessfulObservedAt: row.last_success_observed_at,
+    };
+  }
+
+  getSentryIssueRefresh(resourceId: string): SentryIssueRefresh | null {
+    const row = this.getDb()
+      .query(
+        `SELECT resource_id, status, observed_at, message, result_count,
+                last_success_observed_at
+         FROM sentry_issue_refresh
          WHERE resource_id = ?`,
       )
       .get(resourceId) as
@@ -1512,6 +1665,40 @@ function mapSentryRelease(row: SentryReleaseRow): SentryReleaseEvidence {
     status: row.status,
     dateCreated: row.date_created,
     dateReleased: row.date_released,
+    observedAt: row.observed_at,
+  };
+}
+
+interface SentryIssueRow {
+  issue_id: string;
+  resource_id: string;
+  provider: string;
+  project_id: string;
+  short_id: string | null;
+  status: string | null;
+  level: string | null;
+  count: number | null;
+  user_count: number | null;
+  issue_category: string | null;
+  first_seen: string;
+  last_seen: string;
+  observed_at: string;
+}
+
+function mapSentryIssue(row: SentryIssueRow): SentryIssueEvidence {
+  return {
+    provider: "sentry",
+    issueId: row.issue_id,
+    resourceId: row.resource_id,
+    projectId: row.project_id,
+    shortId: row.short_id,
+    status: row.status,
+    level: row.level,
+    count: row.count,
+    userCount: row.user_count,
+    issueCategory: row.issue_category,
+    firstSeen: row.first_seen,
+    lastSeen: row.last_seen,
     observedAt: row.observed_at,
   };
 }

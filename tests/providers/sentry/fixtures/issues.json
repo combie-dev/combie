@@ -1,0 +1,53 @@
+[
+  {
+    "id": "1001",
+    "shortId": "COMBIE-1",
+    "title": "TypeError: user.email is undefined",
+    "culprit": "checkout.ts in pay",
+    "level": "error",
+    "status": "unresolved",
+    "firstSeen": "2026-08-15T14:37:00Z",
+    "lastSeen": "2026-08-15T15:08:00Z",
+    "count": "42",
+    "userCount": 7,
+    "issueCategory": "error",
+    "assignedTo": {
+      "type": "user",
+      "id": "9",
+      "name": "Ada Lovelace",
+      "email": "ada@example.com"
+    },
+    "metadata": {
+      "title": "should-not-persist"
+    },
+    "permalink": "https://example.invalid/issues/1001/",
+    "shareId": "abc",
+    "tags": [{ "key": "browser", "name": "Browser" }],
+    "stats": { "24h": [[1541455200, 473]] },
+    "activity": [],
+    "firstRelease": { "version": "1.4.2" },
+    "matchingEventId": "deadbeef",
+    "project": {
+      "id": "450",
+      "name": "combie-dogfood",
+      "slug": "combie-dogfood"
+    }
+  },
+  {
+    "id": "1002",
+    "shortId": "COMBIE-2",
+    "title": "Timeout talking to payments",
+    "level": "warning",
+    "status": "resolved",
+    "firstSeen": "2026-08-14T10:00:00Z",
+    "lastSeen": "2026-08-15T12:00:00Z",
+    "count": 3,
+    "userCount": 1,
+    "issueCategory": "error",
+    "project": {
+      "id": "450",
+      "name": "combie-dogfood",
+      "slug": "combie-dogfood"
+    }
+  }
+]
