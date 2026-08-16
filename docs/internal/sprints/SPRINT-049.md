@@ -601,21 +601,21 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 049 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: compare saved snapshot to live compose of the same
+- [x] Sprint 049 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: compare saved snapshot to live compose of the same
       subject
-- [ ] if earned: snapshot vs current vs authority-clock claims stay
+- [x] if earned: snapshot vs current vs authority-clock claims stay
       distinct; snapshot is not rewritten
-- [ ] if earned: no Incident / Decision / Action / Outcome; no
+- [x] if earned: no Incident / Decision / Action / Outcome; no
       persisted lifecycle status; MCP still four tools
-- [ ] if not earned: rejection documented; do not invent an Engine or
+- [x] if not earned: rejection documented; do not invent an Engine or
       start Operational Memory
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged unless material semantics require an update
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged unless material semantics require an update
 
 ---
 
@@ -626,3 +626,125 @@ git diff --check
 > composition differs from a live compose. It must not decide what
 > happened, record what people did, or treat the snapshot as current
 > truth.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-16)
+
+```text
+HEAD:          330ab8ccad729a291134eed6d2188b008699b2ac
+tests:         849 pass across 75 files
+typecheck:     clean
+worktree:      clean
+MCP:           exactly four read-only tools
+Sprint 048:    Complete
+Sprint 049:    Active
+```
+
+## Repository Understanding
+
+1. **Compare is a pure function.** All section data already lives on
+   `InvestigationContext`; the left side is the deserialized snapshot
+   JSON and the right side is a live `getInvestigationContext` of the
+   same subject id. No new store surface.
+2. **Stable identity keys.** Relationship id; neighbor Resource id;
+   fact kind + family + scope (`provider_state_summary` adds field,
+   `code_mapping_relationship` adds relationshipId,
+   `shared_commit_relationship` adds relationshipId + commitSha);
+   missing-context kind + scope (+ family / relationshipId /
+   commitSha for the item-specific kinds); shared-commit group
+   relationshipKind + relationshipId + commitSha; correspondence
+   commitSha. `newest_provider_activity`,
+   `provider_activity_summary`, `provider_activity_scope`, and
+   `resource_change_summary` are one-per-context and key by kind.
+3. **Clocks are not identity.** Authority kind, observedAt /
+   lastSuccessAt, resultCount, latestAttemptObservedAt, and retained
+   count must never mark a fact changed; a separate AUTHORITY CLOCKS
+   section owns drift, gated on equal retained native identities so a
+   structural change is not double-reported.
+4. **CLI shape.** `--compare` is a flag on `investigation <id>`;
+   subject absence is the reported status `subject_missing` (exit 0,
+   snapshot still identifiable) — matching the Failure/Unknown
+   semantics above, not a command failure.
+5. **No deleteResource exists.** subject_missing tests remove the
+   subject row via raw SQL on the store DB.
+
+## Architecture Pressure
+
+1. No persistence: the comparison is ephemeral; no `comparedAt` or
+   status columns; the snapshot row is never rewritten.
+2. Reopen without `--compare` is byte-identical 048 behavior.
+3. No snapshot/trigger/hypotheses/recommendation leakage into the
+   snapshot document or any new surface.
+4. No Incident / Decision / Action / Outcome and no lifecycle status.
+5. No MCP tool; the four read-only tools stay untouched.
+6. No auto-save.
+7. `MAX_INVESTIGATION_FACTS = 5` unchanged — each side compares over
+   its own capped fact list; no fact-budget redesign.
+8. Canon: AGENTS.md operational baseline only.
+
+## Implemented
+
+- `src/app/compare-investigation.ts` — `InvestigationCompare` types,
+  pure `compareInvestigationContexts(snapshot, current, comparedAt)`,
+  `compareInvestigationToCurrent` (maps `RESOURCE_NOT_FOUND` from the
+  live compose to `subject_missing`, propagates everything else), and
+  `formatInvestigationCompare`
+- Eight bounded sections in fixed order: SUBJECT, RELATIONSHIPS,
+  RELATED RESOURCES, KNOWN FACTS, MISSING CONTEXT, SHARED COMMIT
+  CONTEXT, SHARED COMMIT CORRESPONDENCE, AUTHORITY CLOCKS
+- Statuses: SAME / CHANGED / SNAPSHOT ONLY / CURRENT ONLY, plus
+  DANGLING for a retained edge whose neighbor Resource is gone;
+  subject fields report unavailable when the subject is missing
+- CLI: `investigation <id> --compare` + HELP text; `subject_missing`
+  renders with the snapshot id and exits 0
+- MCP: unchanged (exactly four tools)
+
+## Deviations
+
+- **subject_missing exits 0.** A missing subject Resource is a
+  reported status of a successful compare, not a command failure
+  (SPRINT-049 Failure/Unknown semantics). Live `investigate` of a
+  missing Resource still exits 1.
+- **KNOWN FACTS content excludes clock fields.** Facts compare on
+  identity content only (`locallyHeldNativeIds`, state groups,
+  family counts, scope resources, selected native id, change ids,
+  repository); authority-clock drift is owned exclusively by
+  AUTHORITY CLOCKS.
+- **Dogfood** used an isolated `--dir` store with synthetic fixtures
+  (no new provider tokens); no live provider state was required.
+
+## Validation
+
+```text
+bun test:          865 pass across 76 files (was 849 / 75)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources (unchanged)
+live (isolated):   unchanged store → MATCH across all sections;
+                   rename + new release + refresh flip → SUBJECT
+                   CHANGED, KNOWN FACTS SNAPSHOT/CURRENT ONLY,
+                   MISSING CONTEXT SNAPSHOT ONLY;
+                   deleted subject → subject_missing, exit 0,
+                   snapshot reopenable and listed
+```
+
+## Learnings
+
+- The unknown-authority fact for a never-refreshed family (e.g.
+  `sentry_issue` with zero retained rows) sorts before `sentry_release`
+  in KNOWN FACTS; tests must select the authority item by family.
+- A rename is itself a recorded Change, so a renamed subject
+  legitimately gains a current-only `resource_change_summary` fact
+  alongside the SUBJECT name drift.
+- AUTHORITY CLOCKS must gate on retained identity equality: when
+  native ids differ, the change is structural (KNOWN FACTS), not a
+  clock drift.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL unchanged. AGENTS.md baseline
+becomes Sprints 001–049 complete. Sprint 050 is not started.

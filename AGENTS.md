@@ -10,8 +10,10 @@ guided agent setup, and a concluded GitHub-first closed beta. Sprint 047 shipped
 same-SHA release↔deployment correspondence (two proven edges; no new
 Relationship). Sprint 048 shipped the smallest durable Investigation snapshot
 (list + reopen of an explicit `investigate --save`; not the
-Investigation Engine). Sprint 049 is the active compare-to-current slice
-(ROADMAP v0.6 Investigation leftover after 048; not Operational Memory,
+Investigation Engine). Sprint 049 shipped compare-to-current: `investigation
+<id> --compare` diffs one retained snapshot against a live one-hop compose of
+the same subject (SAME / SNAPSHOT ONLY / CURRENT ONLY / AUTHORITY CLOCK),
+a ROADMAP v0.6 Investigation leftover after 048; not Operational Memory,
 not the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
@@ -34,7 +36,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–048 complete (049 is active)
+## Current baseline: Sprints 001–049 complete (050 not started)
 
 Multi-provider connection loop:
 
@@ -95,13 +97,15 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   fact-budget redesign, Sentry deploy N+1, new MCP tools, graph
   mutation, multi-hop, generic Event/Correlation abstractions, or
   execution.
-- **Sprint 049 scope:** compare one saved Investigation snapshot to a
-  live one-hop compose of the same subject (bounded SAME / SNAPSHOT
-  ONLY / CURRENT ONLY / AUTHORITY CLOCK). Do not persist the
-  comparison, rewrite the snapshot, add Investigation lifecycle
-  status, Incident / Decision / Action / Outcome, hypotheses,
-  ContextPack, fact-budget redesign, new MCP tools, graph mutation,
-  or execution.
+- **Sprint 049 shipped:** compare one saved Investigation snapshot to a
+  live one-hop compose of the same subject (`investigation <id>
+  --compare`), bounded to SAME / SNAPSHOT ONLY / CURRENT ONLY /
+  AUTHORITY CLOCK per section. The comparison is ephemeral, persists
+  nothing, and never rewrites the snapshot; a missing subject Resource
+  is the reported status `subject_missing` (exit 0), not a command
+  failure. Do not add Investigation lifecycle status, Incident /
+  Decision / Action / Outcome, hypotheses, ContextPack, fact-budget
+  redesign, new MCP tools, graph mutation, multi-hop, or execution.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.

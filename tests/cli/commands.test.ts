@@ -2,10 +2,12 @@ import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { main } from "../../src/cli/index.ts";
 import { formatRelationshipsTable } from "../../src/app/list.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
+import { dbPath } from "../../src/storage/paths.ts";
 import { Store } from "../../src/storage/store.ts";
 import type { ResourceLabel } from "../../src/app/list.ts";
 
@@ -575,6 +577,122 @@ describe("CLI commands", () => {
     expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
     expect(reopened.stdout).toContain("not current provider truth");
     expect(reopened.stdout).toContain("cli-sentry");
+  });
+
+  test("investigation --compare diffs the snapshot against the current compose", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "cmp450",
+      kind: "project",
+      name: "cmp-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-cmp",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const idMatch = saved.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(idMatch).not.toBeNull();
+    const id = idMatch![1]!;
+
+    const store2 = new Store(dir);
+    store2.init();
+    store2.applyResource(
+      createResource({
+        provider: "sentry",
+        providerResourceId: "cmp450",
+        kind: "project",
+        name: "cmp-sentry-renamed",
+        metadata: { organization_slug: "acme" },
+      }),
+      { id: "obs-cmp-2", observedAt: "2026-08-16T13:00:00.000Z" },
+    );
+    store2.close();
+
+    const compared = await capture(() =>
+      main(["investigation", id, "--compare", "--dir", dir]),
+    );
+    expect(compared.code).toBe(0);
+    expect(compared.stdout).toContain("INVESTIGATION COMPARE");
+    expect(compared.stdout).toContain(`Snapshot: ${id}`);
+    expect(compared.stdout).toContain(`Subject: ${project.id}`);
+    expect(compared.stdout).toContain("current status: available");
+    expect(compared.stdout).toContain("cmp-sentry → cmp-sentry-renamed (CHANGED)");
+    expect(compared.stdout).toContain("RELATIONSHIPS");
+    expect(compared.stdout).toContain("AUTHORITY CLOCKS");
+    expect(compared.stdout).not.toContain("subject_missing");
+
+    const reopened = await capture(() =>
+      main(["investigation", id, "--dir", dir]),
+    );
+    expect(reopened.code).toBe(0);
+    expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
+    expect(reopened.stdout).not.toContain("INVESTIGATION COMPARE");
+  });
+
+  test("investigation --compare reports subject_missing and still exits 0", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "cmp451",
+      kind: "project",
+      name: "cmp-gone",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-cmp-gone",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const idMatch = saved.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    const id = idMatch![1]!;
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${project.id}'`);
+    db.close();
+
+    const compared = await capture(() =>
+      main(["investigation", id, "--compare", "--dir", dir]),
+    );
+    expect(compared.code).toBe(0);
+    expect(compared.stdout).toContain(`Snapshot: ${id}`);
+    expect(compared.stdout).toContain("subject_missing");
+    expect(compared.stdout).toContain("remains reopenable");
+    expect(compared.stdout).not.toContain("RELATIONSHIPS");
+
+    const listed = await capture(() =>
+      main(["investigations", "--dir", dir]),
+    );
+    expect(listed.stdout).toContain(id);
+  });
+
+  test("investigation requires an id and help lists --compare", async () => {
+    const usage = await capture(() =>
+      main(["investigation", "--dir", dir]),
+    );
+    expect(usage.code).toBe(1);
+    expect(usage.stderr).toContain("investigation <investigation-id> [--compare]");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("--compare");
+    expect(help.stdout).toContain(
+      'With "investigation <id>": compare snapshot to current compose',
+    );
   });
 
   test("context renders empty, related-only, and history-only states", async () => {

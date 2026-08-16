@@ -37,6 +37,10 @@ import {
   listInvestigations,
   saveInvestigation,
 } from "../app/investigations.ts";
+import {
+  compareInvestigationToCurrent,
+  formatInvestigationCompare,
+} from "../app/compare-investigation.ts";
 import { serveMcp } from "../mcp/server.ts";
 import { BINARY_NAME, VERSION } from "./constants.ts";
 
@@ -58,7 +62,7 @@ Commands:
   context <resource-id>        Compose current, related, and Change context
   investigate <resource-id>    Compose one-hop investigation context around a resource
   investigations               List saved investigation snapshots
-  investigation <id>           Reopen a saved investigation snapshot
+  investigation <id>           Reopen a saved investigation snapshot (--compare: diff against current compose)
   mcp                          Start read-only MCP server over stdio
   agent status                 Show MCP integration status for claude, codex, cursor
   agent setup [agent...]       Configure MCP access for agents (default: all supported)
@@ -85,6 +89,7 @@ Resources options:
 
 Investigate options:
   --save                       Persist a retained investigation snapshot
+  --compare                    With "investigation <id>": compare snapshot to current compose
 
 Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId
@@ -117,6 +122,7 @@ Examples:
   ${BINARY_NAME} investigate vercel:project:prj_abc --save
   ${BINARY_NAME} investigations
   ${BINARY_NAME} investigation inv:…
+  ${BINARY_NAME} investigation inv:… --compare
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
   ${BINARY_NAME} agent setup
@@ -342,9 +348,17 @@ async function main(argv: string[]): Promise<number> {
         const investigationId = positionals[0];
         if (!investigationId) {
           console.error(
-            `Usage: ${BINARY_NAME} investigation <investigation-id>\nList ids: ${BINARY_NAME} investigations`,
+            `Usage: ${BINARY_NAME} investigation <investigation-id> [--compare]\nList ids: ${BINARY_NAME} investigations`,
           );
           return 1;
+        }
+        if (flags.compare === true) {
+          const comparison = compareInvestigationToCurrent({
+            baseDir,
+            investigationId,
+          });
+          console.log(formatInvestigationCompare(comparison));
+          return 0;
         }
         const saved = getSavedInvestigation(baseDir, investigationId);
         console.log(formatSavedInvestigation(saved));
