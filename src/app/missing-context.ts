@@ -9,7 +9,10 @@ import {
   parseCodeMappings,
 } from "../providers/sentry/code-mapping.ts";
 import type { InvestigationContext } from "./investigate.ts";
-import { composeSharedCommitContext } from "./shared-commit-context.ts";
+import {
+  composeSharedCommitContext,
+  composeSharedCommitCorrespondences,
+} from "./shared-commit-context.ts";
 import type { ProviderActivityFamily } from "./provider-activity.ts";
 import type { RelatedDirection } from "./related.ts";
 
@@ -113,6 +116,20 @@ export type MissingContextItem =
       relationshipId: string;
       sourceResourceId: string;
       targetResourceId: string;
+    }
+  | {
+      kind: "shared_commit_correspondence_missing";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [];
+      };
+      commitSha: string;
+      groupRelationshipKind: "source_for" | "code_mapped_to";
+      groupRelationshipId: string;
+      missingRelationshipKind: "source_for" | "code_mapped_to";
+      /** True when the other family exists in one-hop scope but lacks a group for this SHA. */
+      otherKindInScope: boolean;
     };
 
 interface MutableRelatedSource {
@@ -182,8 +199,9 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
     if (item.kind === "code_mapping_refresh_unknown") return 2;
     if (item.kind === "no_deterministic_release_issue_linkage") return 3;
     if (item.kind === "code_mapped_to_without_shared_commit") return 4;
-    if (item.kind === "code_mapping_unmatched_repository") return 5;
-    return 6; // no_known_relationships last among implemented categories
+    if (item.kind === "shared_commit_correspondence_missing") return 5;
+    if (item.kind === "code_mapping_unmatched_repository") return 6;
+    return 7; // no_known_relationships last among implemented categories
   };
   const byCategory = category(left) - category(right);
   if (byCategory !== 0) return byCategory;
@@ -198,7 +216,9 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
     left.kind === "code_mapping_unmatched_repository" ||
     right.kind === "code_mapping_unmatched_repository" ||
     left.kind === "code_mapped_to_without_shared_commit" ||
-    right.kind === "code_mapped_to_without_shared_commit"
+    right.kind === "code_mapped_to_without_shared_commit" ||
+    left.kind === "shared_commit_correspondence_missing" ||
+    right.kind === "shared_commit_correspondence_missing"
   ) {
     return compareAscending(left.scope.resourceId, right.scope.resourceId);
   }
@@ -216,6 +236,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapping_refresh_unknown" }
           | { kind: "code_mapping_unmatched_repository" }
           | { kind: "code_mapped_to_without_shared_commit" }
+          | { kind: "shared_commit_correspondence_missing" }
         >
       ).family,
     ) -
@@ -228,6 +249,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapping_refresh_unknown" }
           | { kind: "code_mapping_unmatched_repository" }
           | { kind: "code_mapped_to_without_shared_commit" }
+          | { kind: "shared_commit_correspondence_missing" }
         >
       ).family,
     );
@@ -638,6 +660,56 @@ export function composeMissingContext(
     });
   }
 
+  // Sprint 047: a shared-commit group whose counterpart family has no group
+  // for the same exact SHA is truthful Missing Context. When the other family
+  // is in one-hop scope, the gap is per-SHA. When it is not, the family is
+  // outside one-hop scope for Vercel/Sentry subjects — stated as a scope
+  // boundary, never as a prompt to add a provider.
+  const allSharedGroups = composeSharedCommitContext(context);
+  const correspondenceGroups = composeSharedCommitCorrespondences(
+    allSharedGroups,
+  );
+  const correspondenceShas = new Set(
+    correspondenceGroups.map((c) => c.commitSha),
+  );
+  const shasByKind = new Map<"source_for" | "code_mapped_to", Set<string>>();
+  for (const group of allSharedGroups) {
+    let set = shasByKind.get(group.relationshipKind);
+    if (!set) {
+      set = new Set<string>();
+      shasByKind.set(group.relationshipKind, set);
+    }
+    set.add(group.commitSha);
+  }
+  const kindsInScope = new Set(
+    context.related.map((neighbor) => neighbor.relationship.kind),
+  );
+  const otherKind = (kind: "source_for" | "code_mapped_to") =>
+    kind === "source_for" ? "code_mapped_to" : "source_for";
+  for (const group of allSharedGroups) {
+    if (correspondenceShas.has(group.commitSha)) continue;
+    const missing = otherKind(group.relationshipKind);
+    const otherInScope = kindsInScope.has(missing);
+    if (!otherInScope) {
+      if (context.subject.provider !== "vercel" && context.subject.provider !== "sentry") {
+        continue;
+      }
+    }
+    items.push({
+      kind: "shared_commit_correspondence_missing",
+      scope: {
+        resourceId: context.subject.id,
+        role: "subject",
+        relationships: [],
+      },
+      commitSha: group.commitSha,
+      groupRelationshipKind: group.relationshipKind,
+      groupRelationshipId: group.relationshipId,
+      missingRelationshipKind: missing,
+      otherKindInScope: otherInScope,
+    });
+  }
+
   // Combie graph knowledge only — does not claim external systems have no edges.
   if (context.related.length === 0) {
     items.push({
@@ -713,6 +785,29 @@ export function formatMissingContextItem(item: MissingContextItem): string {
       `A code_mapped_to relationship exists (${item.relationshipId}), ` +
       `but no full Git commit SHA is currently held on both a GitHub ` +
       `workflow run and a Sentry release.`
+    );
+  }
+
+  if (item.kind === "shared_commit_correspondence_missing") {
+    if (item.otherKindInScope) {
+      return (
+        `A ${item.groupRelationshipKind} shared-commit group exists for ` +
+        `commit ${item.commitSha}, but this context has no ` +
+        `${item.missingRelationshipKind} group for that commit.`
+      );
+    }
+    // One-hop scope boundary for Vercel/Sentry subjects — a truthful
+    // statement about investigation scope, not a recommendation to add
+    // a provider.
+    if (item.missingRelationshipKind === "code_mapped_to") {
+      return (
+        `Sentry release evidence is outside this Vercel subject's ` +
+        `one-hop scope.`
+      );
+    }
+    return (
+      `Vercel deployment evidence is outside this Sentry subject's ` +
+      `one-hop scope.`
     );
   }
 

@@ -1489,3 +1489,163 @@ describe("shared_commit_relationship facts (Sprint 046)", () => {
     ).toBe(false);
   });
 });
+
+describe("shared_commit_correspondence facts (Sprint 047)", () => {
+  const SHA = "abc123def4567890abc123def4567890abc123de";
+  const REPO_ID = "github:repository:101";
+  const VER_ID = "vercel:project:prj_app";
+  const SENTRY_ID = "sentry:project:450";
+  const SOURCE_FOR_REL = `rel:${REPO_ID}:source_for:${VER_ID}`;
+  const CODE_MAPPED_REL = `rel:${REPO_ID}:code_mapped_to:${SENTRY_ID}`;
+
+  function sourceForRel() {
+    return createRelationship({
+      sourceResourceId: REPO_ID,
+      targetResourceId: VER_ID,
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "acme/demo",
+        githubRepoId: "101",
+      },
+    });
+  }
+
+  function codeMappedToRel() {
+    return createRelationship({
+      sourceResourceId: REPO_ID,
+      targetResourceId: SENTRY_ID,
+      kind: "code_mapped_to",
+      evidence: {
+        source: "sentry",
+        mechanism: "code_mapping",
+        repository: "acme/demo",
+      },
+    });
+  }
+
+  function sentryRelease(
+    overrides: Partial<SentryReleaseEvidence> = {},
+  ): SentryReleaseEvidence {
+    return {
+      provider: "sentry",
+      version: "frontend@1.2.0",
+      resourceId: SENTRY_ID,
+      projectId: "450",
+      shortVersion: "1.2.0",
+      status: "open",
+      dateCreated: OBSERVED_AT,
+      dateReleased: null,
+      observedAt: OBSERVED_AT,
+      gitCommitSha: SHA,
+      ...overrides,
+    };
+  }
+
+  function hubContext() {
+    return context({
+      subject: resource("github", "repository", "101"),
+      subjectWorkflowRuns: populatedRuns([workflowRun({ headSha: SHA })]),
+      related: [
+        {
+          relationship: sourceForRel(),
+          direction: "outbound",
+          resource: resource("vercel", "project", "prj_app"),
+          changes: [],
+          deployments: populatedDeployments([deployment({ gitCommitSha: SHA })]),
+          workflowRuns: NA_RUNS,
+          operations: NA_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
+        },
+        {
+          relationship: codeMappedToRel(),
+          direction: "outbound",
+          resource: resource("sentry", "project", "450"),
+          changes: [],
+          deployments: NA_DEPLOYMENTS,
+          workflowRuns: NA_RUNS,
+          operations: NA_OPERATIONS,
+          releases: {
+            kind: "populated",
+            observedAt: OBSERVED_AT,
+            resultCount: 1,
+            releases: [sentryRelease()],
+          },
+          issues: { kind: "not_applicable" as const },
+        },
+      ],
+    });
+  }
+
+  test("hub with the same SHA on both edges stays budget-full; no correspondence fact displaces authority facts", () => {
+    // A correspondence requires a workflow run, a Vercel deployment, and a
+    // Sentry release in scope, so the hub always yields at least six fact
+    // candidates against MAX_INVESTIGATION_FACTS = 5 (summary, scope,
+    // newest, code mapping, shared-commit relationship). The correspondence
+    // is not a Known Fact; it surfaces via SHARED COMMIT CONTEXT and MCP.
+    const facts = composeInvestigationFacts(hubContext());
+    expect(facts.length).toBe(MAX_INVESTIGATION_FACTS);
+    expect(
+      facts.some((f) => f.kind === "provider_activity_summary"),
+    ).toBe(true);
+    expect(
+      facts.some((f) => f.kind === "shared_commit_relationship"),
+    ).toBe(true);
+    expect(facts.some((f) => f.kind === "provider_evidence_authority")).toBe(
+      false,
+    );
+  });
+
+  test("never displaces higher-priority authority facts when the budget is full", () => {
+    const facts = composeInvestigationFacts(
+      context({
+        subject: resource("github", "repository", "101"),
+        subjectWorkflowRuns: unknownRuns([
+          workflowRun({ runId: 9002, conclusion: "failure", headSha: SHA }),
+        ]),
+        related: [
+          {
+            relationship: sourceForRel(),
+            direction: "outbound",
+            resource: resource("vercel", "project", "prj_app"),
+            changes: [],
+            deployments: unknownDeployments([
+              deployment({ gitCommitSha: SHA }),
+            ]),
+            workflowRuns: NA_RUNS,
+            operations: NA_OPERATIONS,
+            releases: { kind: "not_applicable" as const },
+            issues: { kind: "not_applicable" as const },
+          },
+          {
+            relationship: codeMappedToRel(),
+            direction: "outbound",
+            resource: resource("sentry", "project", "450"),
+            changes: [],
+            deployments: NA_DEPLOYMENTS,
+            workflowRuns: NA_RUNS,
+            operations: NA_OPERATIONS,
+            releases: {
+              kind: "unknown",
+              releases: [sentryRelease()],
+              latestAttemptObservedAt: null,
+              lastSuccessAt: null,
+              resultCount: null,
+              message: null,
+            },
+            issues: { kind: "not_applicable" as const },
+          },
+        ],
+      }),
+    );
+    expect(facts.length).toBe(MAX_INVESTIGATION_FACTS);
+    expect(
+      facts.some((f) => f.kind === "provider_evidence_authority"),
+    ).toBe(true);
+    expect(
+      facts.some((f) => f.kind === "shared_commit_relationship"),
+    ).toBe(false);
+  });
+});

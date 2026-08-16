@@ -1116,3 +1116,329 @@ describe("code_mapped_to_without_shared_commit (Sprint 046)", () => {
     expect(text).not.toContain("triggered");
   });
 });
+
+describe("shared_commit_correspondence_missing (Sprint 047)", () => {
+  const REPO_ID = "github:repository:101";
+  const VER_ID = "vercel:project:prj_app";
+  const SENTRY_ID = "sentry:project:450";
+  const SHA_A = "abc123def4567890abc123def4567890abc123de";
+  const SHA_B = "fff111aaa222bbb333ccc444ddd555eee666fff7";
+  const SOURCE_FOR_REL = `rel:${REPO_ID}:source_for:${VER_ID}`;
+  const CODE_MAPPED_REL = `rel:${REPO_ID}:code_mapped_to:${SENTRY_ID}`;
+
+  function sourceForRel() {
+    return createRelationship({
+      sourceResourceId: REPO_ID,
+      targetResourceId: VER_ID,
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "acme/demo",
+        githubRepoId: "101",
+      },
+    });
+  }
+
+  function codeMappedToRel() {
+    return createRelationship({
+      sourceResourceId: REPO_ID,
+      targetResourceId: SENTRY_ID,
+      kind: "code_mapped_to",
+      evidence: {
+        source: "sentry",
+        mechanism: "code_mapping",
+        repository: "acme/demo",
+      },
+    });
+  }
+
+  function sentryRelease(
+    overrides: Partial<SentryReleaseEvidence> = {},
+  ): SentryReleaseEvidence {
+    return {
+      provider: "sentry",
+      version: "frontend@1.2.0",
+      resourceId: SENTRY_ID,
+      projectId: "450",
+      shortVersion: "1.2.0",
+      status: "open",
+      dateCreated: OBSERVED_AT,
+      dateReleased: null,
+      observedAt: OBSERVED_AT,
+      gitCommitSha: SHA_A,
+      ...overrides,
+    };
+  }
+
+  function populatedDeployments(
+    items: VercelDeploymentEvidence[],
+  ): DeploymentEvidenceAuthority {
+    return {
+      kind: "populated",
+      observedAt: OBSERVED_AT,
+      resultCount: items.length,
+      deployments: items,
+    };
+  }
+
+  function populatedRuns(
+    items: GitHubWorkflowRunEvidence[],
+  ): WorkflowRunEvidenceAuthority {
+    return {
+      kind: "populated",
+      observedAt: OBSERVED_AT,
+      resultCount: items.length,
+      runs: items,
+    };
+  }
+
+  function populatedReleases(
+    items: SentryReleaseEvidence[],
+  ): ReleaseEvidenceAuthority {
+    return {
+      kind: "populated",
+      observedAt: OBSERVED_AT,
+      resultCount: items.length,
+      releases: items,
+    };
+  }
+
+  function hubContext(options: {
+    runs: GitHubWorkflowRunEvidence[];
+    deployments: VercelDeploymentEvidence[];
+    releases: SentryReleaseEvidence[];
+  }): InvestigationContext {
+    return context({
+      subject: resource("github", "repository", "101"),
+      subjectWorkflowRuns: populatedRuns(options.runs),
+      related: [
+        {
+          relationship: sourceForRel(),
+          direction: "outbound",
+          resource: resource("vercel", "project", "prj_app"),
+          changes: [],
+          deployments: populatedDeployments(options.deployments),
+          workflowRuns: NA_RUNS,
+          operations: NA_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
+        },
+        {
+          relationship: codeMappedToRel(),
+          direction: "outbound",
+          resource: resource("sentry", "project", "450"),
+          changes: [],
+          deployments: NA_DEPLOYMENTS,
+          workflowRuns: NA_RUNS,
+          operations: NA_OPERATIONS,
+          releases: populatedReleases(options.releases),
+          issues: { kind: "not_applicable" as const },
+        },
+      ],
+    });
+  }
+
+  function vercelSubjectContext(options: {
+    runs: GitHubWorkflowRunEvidence[];
+    deployments: VercelDeploymentEvidence[];
+  }): InvestigationContext {
+    return context({
+      subject: resource("vercel", "project", "prj_app"),
+      subjectDeployments: populatedDeployments(options.deployments),
+      related: [
+        {
+          relationship: sourceForRel(),
+          direction: "inbound",
+          resource: resource("github", "repository", "101"),
+          changes: [],
+          deployments: NA_DEPLOYMENTS,
+          workflowRuns: populatedRuns(options.runs),
+          operations: NA_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
+        },
+      ],
+    });
+  }
+
+  function sentrySubjectContext(options: {
+    runs: GitHubWorkflowRunEvidence[];
+    releases: SentryReleaseEvidence[];
+  }): InvestigationContext {
+    return context({
+      subject: resource("sentry", "project", "450"),
+      subjectReleases: populatedReleases(options.releases),
+      related: [
+        {
+          relationship: codeMappedToRel(),
+          direction: "inbound",
+          resource: resource("github", "repository", "101"),
+          changes: [],
+          deployments: NA_DEPLOYMENTS,
+          workflowRuns: populatedRuns(options.runs),
+          operations: NA_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
+        },
+      ],
+    });
+  }
+
+  test("both families in scope but no shared SHA → one item per direction", () => {
+    const items = composeMissingContext(
+      hubContext({
+        runs: [
+          workflowRun({ headSha: SHA_A }),
+          workflowRun({ runId: 9002, headSha: SHA_B }),
+        ],
+        deployments: [deployment({ gitCommitSha: SHA_A })],
+        releases: [sentryRelease({ gitCommitSha: SHA_B })],
+      }),
+    );
+    expect(items).toContainEqual({
+      kind: "shared_commit_correspondence_missing",
+      scope: { resourceId: REPO_ID, role: "subject", relationships: [] },
+      commitSha: SHA_A,
+      groupRelationshipKind: "source_for",
+      groupRelationshipId: SOURCE_FOR_REL,
+      missingRelationshipKind: "code_mapped_to",
+      otherKindInScope: true,
+    });
+    expect(items).toContainEqual({
+      kind: "shared_commit_correspondence_missing",
+      scope: { resourceId: REPO_ID, role: "subject", relationships: [] },
+      commitSha: SHA_B,
+      groupRelationshipKind: "code_mapped_to",
+      groupRelationshipId: CODE_MAPPED_REL,
+      missingRelationshipKind: "source_for",
+      otherKindInScope: true,
+    });
+  });
+
+  test("both families in scope sharing the same SHA close the gap", () => {
+    const items = composeMissingContext(
+      hubContext({
+        runs: [workflowRun({ headSha: SHA_A })],
+        deployments: [deployment({ gitCommitSha: SHA_A })],
+        releases: [sentryRelease({ gitCommitSha: SHA_A })],
+      }),
+    );
+    expect(
+      items.some((item) => item.kind === "shared_commit_correspondence_missing"),
+    ).toBe(false);
+  });
+
+  test("Vercel subject: Sentry release family is out of one-hop scope", () => {
+    const items = composeMissingContext(
+      vercelSubjectContext({
+        runs: [workflowRun({ headSha: SHA_A })],
+        deployments: [deployment({ gitCommitSha: SHA_A })],
+      }),
+    );
+    expect(items).toContainEqual({
+      kind: "shared_commit_correspondence_missing",
+      scope: { resourceId: VER_ID, role: "subject", relationships: [] },
+      commitSha: SHA_A,
+      groupRelationshipKind: "source_for",
+      groupRelationshipId: SOURCE_FOR_REL,
+      missingRelationshipKind: "code_mapped_to",
+      otherKindInScope: false,
+    });
+  });
+
+  test("Sentry subject: Vercel deployment family is out of one-hop scope", () => {
+    const items = composeMissingContext(
+      sentrySubjectContext({
+        runs: [workflowRun({ headSha: SHA_A })],
+        releases: [sentryRelease({ gitCommitSha: SHA_A })],
+      }),
+    );
+    expect(items).toContainEqual({
+      kind: "shared_commit_correspondence_missing",
+      scope: { resourceId: SENTRY_ID, role: "subject", relationships: [] },
+      commitSha: SHA_A,
+      groupRelationshipKind: "code_mapped_to",
+      groupRelationshipId: CODE_MAPPED_REL,
+      missingRelationshipKind: "source_for",
+      otherKindInScope: false,
+    });
+  });
+
+  test("GitHub subject whose scope lacks the other family → no item", () => {
+    const items = composeMissingContext(
+      context({
+        subject: resource("github", "repository", "101"),
+        subjectWorkflowRuns: populatedRuns([workflowRun({ headSha: SHA_A })]),
+        related: [
+          {
+            relationship: sourceForRel(),
+            direction: "outbound",
+            resource: resource("vercel", "project", "prj_app"),
+            changes: [],
+            deployments: populatedDeployments([
+              deployment({ gitCommitSha: SHA_A }),
+            ]),
+            workflowRuns: NA_RUNS,
+            operations: NA_OPERATIONS,
+            releases: { kind: "not_applicable" as const },
+            issues: { kind: "not_applicable" as const },
+          },
+        ],
+      }),
+    );
+    expect(
+      items.some((item) => item.kind === "shared_commit_correspondence_missing"),
+    ).toBe(false);
+  });
+
+  test("formatMissingContextItem renders safe wording for both situations", () => {
+    const inScope: MissingContextItem = {
+      kind: "shared_commit_correspondence_missing",
+      scope: { resourceId: REPO_ID, role: "subject", relationships: [] },
+      commitSha: SHA_A,
+      groupRelationshipKind: "source_for",
+      groupRelationshipId: SOURCE_FOR_REL,
+      missingRelationshipKind: "code_mapped_to",
+      otherKindInScope: true,
+    };
+    const text = formatMissingContextItem(inScope);
+    expect(text).toContain(
+      `A source_for shared-commit group exists for commit ${SHA_A}`,
+    );
+    expect(text).toContain("no code_mapped_to group for that commit");
+    expect(text).not.toContain("caused");
+    expect(text).not.toContain("triggered");
+    expect(text).not.toContain("connect");
+
+    const outOfScope: MissingContextItem = {
+      kind: "shared_commit_correspondence_missing",
+      scope: { resourceId: VER_ID, role: "subject", relationships: [] },
+      commitSha: SHA_A,
+      groupRelationshipKind: "source_for",
+      groupRelationshipId: SOURCE_FOR_REL,
+      missingRelationshipKind: "code_mapped_to",
+      otherKindInScope: false,
+    };
+    const out = formatMissingContextItem(outOfScope);
+    expect(out).toContain(
+      "outside this Vercel subject's one-hop scope",
+    );
+    expect(out).not.toContain("connect");
+    expect(out).not.toContain("add a provider");
+    expect(out).not.toContain("caused");
+
+    const sentryOut: MissingContextItem = {
+      kind: "shared_commit_correspondence_missing",
+      scope: { resourceId: SENTRY_ID, role: "subject", relationships: [] },
+      commitSha: SHA_A,
+      groupRelationshipKind: "code_mapped_to",
+      groupRelationshipId: CODE_MAPPED_REL,
+      missingRelationshipKind: "source_for",
+      otherKindInScope: false,
+    };
+    expect(formatMissingContextItem(sentryOut)).toContain(
+      "outside this Sentry subject's one-hop scope",
+    );
+  });
+});

@@ -428,3 +428,221 @@ describe("investigate shared commit context (Sprint 046)", () => {
     }
   });
 });
+
+describe("investigate shared commit correspondence (Sprint 047)", () => {
+  function seedHub(store: Store) {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "915052094",
+      kind: "repository",
+      name: "demo",
+      metadata: { fullName: "acme/demo", owner: "acme" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_demo_hub",
+      kind: "project",
+      name: "demo-hub",
+      metadata: { accountId: "team_1" },
+    });
+    const sentryProject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { organizationSlug: "acme" },
+    });
+    store.applyResource(repository, {
+      id: "repo-baseline",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.applyResource(project, {
+      id: "proj-baseline",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.applyResource(sentryProject, {
+      id: "sentry-baseline",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/demo",
+          githubRepoId: "915052094",
+        },
+      }),
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: sentryProject.id,
+        kind: "code_mapped_to",
+        evidence: {
+          source: "sentry",
+          mechanism: "code_mapping",
+          repository: "acme/demo",
+        },
+      }),
+    );
+    return { repository, project, sentryProject };
+  }
+
+  function refreshRun(store: Store, repositoryId: string) {
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: repositoryId,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+  }
+
+  test("CLI surfaces the same-commit correspondence through both proven edges", () => {
+    const store = openStore();
+    const { repository, project, sentryProject } = seedHub(store);
+    store.upsertGitHubWorkflowRun(run());
+    refreshRun(store, repository.id);
+    store.upsertVercelDeployment(dep());
+    store.setVercelDeploymentRefresh({
+      resourceId: project.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.upsertSentryRelease(sentryRelease());
+    store.setSentryReleaseRefresh({
+      resourceId: sentryProject.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.close();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("network must not be used during investigate");
+    }) as unknown as typeof fetch;
+
+    try {
+      const out = formatInvestigationContext(
+        getInvestigationContext({ baseDir: dir, resourceRef: repository.id }),
+      );
+      expect(out).toContain("SHARED COMMIT CONTEXT");
+      expect(out).toContain("Same-commit correspondence");
+      expect(out).toContain(
+        `rel:${repository.id}:source_for:${project.id}`,
+      );
+      expect(out).toContain(
+        `rel:${repository.id}:code_mapped_to:${sentryProject.id}`,
+      );
+      expect(out).toContain(SHA);
+      expect(out).not.toContain("triggered");
+      expect(out).not.toContain("caused by");
+      expect(out).not.toContain("deployed by");
+      expect(out).not.toContain("same incident");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("Vercel subject does not invent a correspondence; MISSING CONTEXT is truthful", () => {
+    const store = openStore();
+    const { repository, project, sentryProject } = seedHub(store);
+    store.upsertGitHubWorkflowRun(run());
+    refreshRun(store, repository.id);
+    store.upsertVercelDeployment(dep());
+    store.setVercelDeploymentRefresh({
+      resourceId: project.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.upsertSentryRelease(sentryRelease());
+    store.setSentryReleaseRefresh({
+      resourceId: sentryProject.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.close();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("network must not be used during investigate");
+    }) as unknown as typeof fetch;
+
+    try {
+      const out = formatInvestigationContext(
+        getInvestigationContext({ baseDir: dir, resourceRef: project.id }),
+      );
+      expect(out).not.toContain("Same-commit correspondence");
+      expect(out).toContain("MISSING CONTEXT");
+      expect(out).toContain(
+        "Sentry release evidence is outside this Vercel subject's one-hop scope",
+      );
+      expect(out).not.toContain("connect a Sentry");
+      expect(out).not.toContain("add a provider");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("offline and read-only for the correspondence path", () => {
+    const store = openStore();
+    const { repository, project, sentryProject } = seedHub(store);
+    store.upsertGitHubWorkflowRun(run());
+    refreshRun(store, repository.id);
+    store.upsertVercelDeployment(dep());
+    store.setVercelDeploymentRefresh({
+      resourceId: project.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.upsertSentryRelease(sentryRelease());
+    store.setSentryReleaseRefresh({
+      resourceId: sentryProject.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.close();
+
+    const before = dbHash();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("network must not be used");
+    }) as unknown as typeof fetch;
+    try {
+      const a = formatInvestigationContext(
+        getInvestigationContext({ baseDir: dir, resourceRef: repository.id }),
+      );
+      const b = formatInvestigationContext(
+        getInvestigationContext({ baseDir: dir, resourceRef: repository.id }),
+      );
+      expect(a).toBe(b);
+      expect(a).toContain("Same-commit correspondence");
+      expect(dbHash()).toBe(before);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

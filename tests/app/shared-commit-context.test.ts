@@ -6,6 +6,7 @@ import type { VercelDeploymentEvidence } from "../../src/providers/vercel/deploy
 import type { SentryReleaseEvidence } from "../../src/providers/sentry/release.ts";
 import {
   composeSharedCommitContext,
+  composeSharedCommitCorrespondences,
   type GitCommitEvidenceGroup,
 } from "../../src/app/shared-commit-context.ts";
 import type { InvestigationContext } from "../../src/app/investigate.ts";
@@ -1037,6 +1038,253 @@ describe("formatSharedCommitContext (Sprint 046)", () => {
     expect(text).toContain("dpl_1");
     expect(text).toContain(`${REPO_ID} source_for ${PROJECT_ID}`);
     expect(text).not.toContain("Sentry releases");
+  });
+});
+
+describe("composeSharedCommitCorrespondences (Sprint 047)", () => {
+  function hubContext(options: {
+    runs: GitHubWorkflowRunEvidence[];
+    deployments: VercelDeploymentEvidence[];
+    releases: SentryReleaseEvidence[];
+    secondVercelProject?: {
+      resource: ReturnType<typeof project>;
+      deployment: VercelDeploymentEvidence;
+    };
+  }): InvestigationContext {
+    const related: InvestigationContext["related"] = [
+      {
+        relationship: sourceFor(),
+        direction: "outbound",
+        resource: project(),
+        changes: [],
+        deployments: {
+          kind: "populated",
+          observedAt: "2026-08-09T12:00:00.000Z",
+          resultCount: options.deployments.length,
+          deployments: options.deployments,
+        },
+        workflowRuns: { kind: "not_applicable" },
+        operations: { kind: "not_applicable" },
+        releases: { kind: "not_applicable" },
+        issues: { kind: "not_applicable" },
+      },
+      {
+        relationship: codeMappedTo(),
+        direction: "outbound",
+        resource: sentryProject(),
+        changes: [],
+        deployments: { kind: "not_applicable" },
+        workflowRuns: { kind: "not_applicable" },
+        operations: { kind: "not_applicable" },
+        releases: {
+          kind: "populated",
+          observedAt: "2026-08-09T12:00:00.000Z",
+          resultCount: options.releases.length,
+          releases: options.releases,
+        },
+        issues: { kind: "not_applicable" },
+      },
+    ];
+    if (options.secondVercelProject) {
+      related.push({
+        relationship: createRelationship({
+          sourceResourceId: REPO_ID,
+          targetResourceId: options.secondVercelProject.resource.id,
+          kind: "source_for",
+          evidence: {
+            source: "vercel",
+            mechanism: "git_repository_reference",
+            repository: "acme/demo",
+            githubRepoId: "101",
+          },
+        }),
+        direction: "outbound",
+        resource: options.secondVercelProject.resource,
+        changes: [],
+        deployments: {
+          kind: "populated",
+          observedAt: "2026-08-09T12:00:00.000Z",
+          resultCount: 1,
+          deployments: [options.secondVercelProject.deployment],
+        },
+        workflowRuns: { kind: "not_applicable" },
+        operations: { kind: "not_applicable" },
+        releases: { kind: "not_applicable" },
+        issues: { kind: "not_applicable" },
+      });
+    }
+    return {
+      subject: repo(),
+      subjectChanges: [],
+      subjectDeployments: { kind: "not_applicable" },
+      subjectWorkflowRuns: {
+        kind: "populated",
+        observedAt: "2026-08-09T12:00:00.000Z",
+        resultCount: options.runs.length,
+        runs: options.runs,
+      },
+      subjectOperations: { kind: "not_applicable" },
+      subjectReleases: { kind: "not_applicable" },
+      subjectIssues: { kind: "not_applicable" },
+      related,
+    };
+  }
+
+  test("GitHub hub with both edges on the same exact SHA yields one correspondence", () => {
+    const groups = composeSharedCommitContext(
+      hubContext({
+        runs: [run()],
+        deployments: [dep()],
+        releases: [release()],
+      }),
+    );
+    expect(
+      groups.map((group) => group.relationshipKind).sort(),
+    ).toEqual(["code_mapped_to", "source_for"]);
+    const correspondences = composeSharedCommitCorrespondences(groups);
+    expect(correspondences).toHaveLength(1);
+    expect(correspondences[0]).toEqual({
+      commitSha: SHA_A,
+      sourceForRelationshipId: REL_ID,
+      codeMappedToRelationshipId: REL_CMT_ID,
+      githubRepositoryId: REPO_ID,
+    });
+  });
+
+  test("no correspondence when the two families share no exact SHA", () => {
+    const groups = composeSharedCommitContext(
+      hubContext({
+        runs: [
+          run({ headSha: SHA_A }),
+          run({ runId: 9002, headSha: SHA_B }),
+        ],
+        deployments: [dep()],
+        releases: [release({ gitCommitSha: SHA_B })],
+      }),
+    );
+    expect(groups.length).toBeGreaterThanOrEqual(2);
+    expect(composeSharedCommitCorrespondences(groups)).toEqual([]);
+  });
+
+  test("Vercel subject holds only the source_for family — no correspondence", () => {
+    const groups = composeSharedCommitContext(
+      contextFromVercelSubject({
+        runs: [run()],
+        deployments: [dep()],
+      }),
+    );
+    expect(composeSharedCommitCorrespondences(groups)).toEqual([]);
+  });
+
+  test("Sentry subject holds only the code_mapped_to family — no correspondence", () => {
+    const groups = composeSharedCommitContext(
+      contextFromSentrySubject({
+        runs: [run()],
+        releases: [release()],
+      }),
+    );
+    expect(composeSharedCommitCorrespondences(groups)).toEqual([]);
+  });
+
+  test("collapses multiple same-kind groups sharing a SHA into one correspondence", () => {
+    const secondProject = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_b",
+      kind: "project",
+      name: "demo-b",
+      metadata: {},
+    });
+    const groups = composeSharedCommitContext(
+      hubContext({
+        runs: [run()],
+        deployments: [dep()],
+        releases: [release()],
+        secondVercelProject: {
+          resource: secondProject,
+          deployment: dep({
+            uid: "dpl_2",
+            resourceId: secondProject.id,
+            projectId: "prj_b",
+          }),
+        },
+      }),
+    );
+    const correspondences = composeSharedCommitCorrespondences(groups);
+    expect(correspondences).toHaveLength(1);
+    expect(correspondences[0]).toMatchObject({
+      commitSha: SHA_A,
+      sourceForRelationshipId: REL_ID,
+      codeMappedToRelationshipId: REL_CMT_ID,
+    });
+  });
+
+  test("is pure and deterministic under reversed neighbor order", () => {
+    const ctx = hubContext({
+      runs: [run()],
+      deployments: [dep()],
+      releases: [release()],
+    });
+    const reversed = { ...ctx, related: [...ctx.related].reverse() };
+    const first = composeSharedCommitCorrespondences(
+      composeSharedCommitContext(ctx),
+    );
+    const second = composeSharedCommitCorrespondences(
+      composeSharedCommitContext(reversed),
+    );
+    expect(second).toEqual(first);
+    expect(
+      composeSharedCommitCorrespondences(composeSharedCommitContext(ctx)),
+    ).toEqual(first);
+  });
+
+  test("does not mutate input groups", () => {
+    const groups = composeSharedCommitContext(
+      hubContext({
+        runs: [run()],
+        deployments: [dep()],
+        releases: [release()],
+      }),
+    );
+    const before = JSON.stringify(groups);
+    composeSharedCommitCorrespondences(groups);
+    expect(JSON.stringify(groups)).toBe(before);
+  });
+
+  test("formatSharedCommitContext renders the correspondence note naming both relationship ids", () => {
+    const groups = composeSharedCommitContext(
+      hubContext({
+        runs: [run()],
+        deployments: [dep()],
+        releases: [release()],
+      }),
+    );
+    const text = formatSharedCommitContext(
+      groups,
+      composeSharedCommitCorrespondences(groups),
+    );
+    expect(text).toContain("Same-commit correspondence");
+    expect(text).toContain(REL_ID);
+    expect(text).toContain(REL_CMT_ID);
+    expect(text).toContain(SHA_A);
+    expect(text).toContain(
+      "Vercel deployment and Sentry release evidence reference the same exact Git commit",
+    );
+    expect(text).not.toContain("triggered");
+    expect(text).not.toContain("caused by");
+    expect(text).not.toContain("deployed by");
+    expect(text).not.toContain("same incident");
+  });
+
+  test("formatSharedCommitContext without correspondences stays byte-identical", () => {
+    const groups = composeSharedCommitContext(
+      contextFromVercelSubject({
+        runs: [run()],
+        deployments: [dep()],
+      }),
+    );
+    const text = formatSharedCommitContext(groups);
+    expect(text).toContain("SHARED COMMIT CONTEXT");
+    expect(text).not.toContain("Same-commit correspondence");
   });
 });
 

@@ -1042,5 +1042,13 @@ export function composeInvestigationFacts(
     });
   }
 
+  // Sprint 047: a same-SHA release↔deployment correspondence always trails
+  // summary/scope/newest/code-mapping/shared-commit candidates (a
+  // correspondence requires run + deployment + release activity in scope, so
+  // at least 6 candidates exist against MAX_INVESTIGATION_FACTS = 5). The
+  // budget rule therefore never emits a correspondence Known Fact; the
+  // correspondence surfaces through SHARED COMMIT CONTEXT and MCP instead.
+  // Recorded in SPRINT-047 completion notes (Deviation).
+
   return candidates.slice(0, MAX_INVESTIGATION_FACTS);
 }

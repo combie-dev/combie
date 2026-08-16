@@ -5,7 +5,10 @@ import { composeInvestigationFacts } from "../app/investigation-facts.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
 import { composeProviderActivityChronology } from "../app/provider-activity.ts";
-import { composeSharedCommitContext } from "../app/shared-commit-context.ts";
+import {
+  composeSharedCommitContext,
+  composeSharedCommitCorrespondences,
+} from "../app/shared-commit-context.ts";
 import { composeInvestigationTimeline } from "../app/timeline.ts";
 import { safeJson } from "./serialization.ts";
 
@@ -155,6 +158,8 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           fields: c.fields,
         }));
 
+        const sharedCommitGroups = composeSharedCommitContext(ctx);
+
         const related = ctx.related.map((n) => ({
           direction: n.direction,
           relationship: {
@@ -207,7 +212,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             missingContext: composeMissingContext(ctx),
             providerActivity: composeProviderActivityChronology(ctx),
             timeline: composeInvestigationTimeline(ctx),
-            sharedCommitContext: composeSharedCommitContext(ctx),
+            sharedCommitContext: sharedCommitGroups,
+            sharedCommitCorrespondences: composeSharedCommitCorrespondences(
+              sharedCommitGroups,
+            ),
           }) as Record<string, unknown>,
         };
       } catch (err) {

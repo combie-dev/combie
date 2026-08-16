@@ -309,3 +309,87 @@ function indexReleasesBySha(
   }
   return map;
 }
+
+/**
+ * One exact Git commit referenced by Vercel deployment evidence through a
+ * proven source_for Relationship and by Sentry release evidence through a
+ * proven code_mapped_to Relationship in the same InvestigationContext.
+ *
+ * Ephemeral correspondence of provider evidence — not a durable association,
+ * not a Vercel↔Sentry Relationship, not lineage or causality.
+ */
+export interface SharedCommitCorrespondence {
+  /** Canonical full Git commit SHA shared by both groups. */
+  commitSha: string;
+  /** Relationship id of the proven source_for group. */
+  sourceForRelationshipId: string;
+  /** Relationship id of the proven code_mapped_to group. */
+  codeMappedToRelationshipId: string;
+  /** GitHub repository Resource id shared by both relationship sources. */
+  githubRepositoryId: string;
+}
+
+function compareAscending(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * Pure, deterministic, offline projection of same-SHA release↔deployment
+ * correspondence across shared-commit groups already composed from an
+ * InvestigationContext.
+ *
+ * Sprint 047 conditions (all required):
+ * 1. a source_for group with at least one deployment member
+ * 2. a code_mapped_to group with at least one release member
+ * 3. exact equality of canonical full commit SHAs
+ * 4. both relationships share the same GitHub repository source Resource
+ *
+ * One correspondence per SHA (multiple same-kind groups sharing a SHA
+ * collapse; deterministic group order decides). Does not mutate input.
+ */
+export function composeSharedCommitCorrespondences(
+  groups: GitCommitEvidenceGroup[],
+): SharedCommitCorrespondence[] {
+  const sourceForGroups = groups
+    .filter(
+      (group) =>
+        group.relationshipKind === "source_for" &&
+        group.deployments.length > 0,
+    )
+    .sort((left, right) =>
+      compareAscending(left.relationshipId, right.relationshipId),
+    );
+  const mappedBySha = new Map<string, GitCommitEvidenceGroup>();
+  for (const group of groups) {
+    if (
+      group.relationshipKind !== "code_mapped_to" ||
+      group.releases.length === 0
+    ) {
+      continue;
+    }
+    const existing = mappedBySha.get(group.commitSha);
+    if (!existing || group.relationshipId < existing.relationshipId) {
+      mappedBySha.set(group.commitSha, group);
+    }
+  }
+
+  const correspondences: SharedCommitCorrespondence[] = [];
+  const seenShas = new Set<string>();
+  for (const group of sourceForGroups) {
+    if (seenShas.has(group.commitSha)) continue;
+    const mapped = mappedBySha.get(group.commitSha);
+    if (!mapped || mapped.sourceResourceId !== group.sourceResourceId) continue;
+    seenShas.add(group.commitSha);
+    correspondences.push({
+      commitSha: group.commitSha,
+      sourceForRelationshipId: group.relationshipId,
+      codeMappedToRelationshipId: mapped.relationshipId,
+      githubRepositoryId: group.sourceResourceId,
+    });
+  }
+
+  correspondences.sort((left, right) =>
+    compareAscending(left.commitSha, right.commitSha),
+  );
+  return correspondences;
+}

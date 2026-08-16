@@ -1,14 +1,14 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–046 implement the
+Combie is the open engineering context layer. Sprints 001–047 implement the
 local multi-provider context foundation through **Cloudflare**, **GitHub**,
 **Vercel**, **Sentry**, **Neon**, and **PlanetScale**, including deterministic
 Relationships (including GitHub↔Sentry `code_mapped_to`), retained provider
 evidence (including Sentry releases, release commit identities, and Sentry
 issue aggregates), offline investigation, read-only MCP, release distribution,
-guided agent setup, and a concluded GitHub-first closed beta. Sprint 047 is the active same-SHA
-release↔deployment correspondence slice (two proven edges; no new
-Relationship).
+guided agent setup, and a concluded GitHub-first closed beta. Sprint 047 shipped
+same-SHA release↔deployment correspondence (two proven edges; no new
+Relationship); Sprint 048 is not started.
 
 ## Mandatory reading order before any substantive change
 
@@ -30,7 +30,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–046 complete (047 is active)
+## Current baseline: Sprints 001–047 complete (048 is not started)
 
 Multi-provider connection loop:
 
@@ -69,16 +69,20 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   SHA when the provider supplies a full SHA, and extend existing
   ephemeral shared-commit grouping to `code_mapped_to` only (ROADMAP
   v0.5 Safe Semantic Boundary).
-- **Sprint 047 scope:** when one investigation already holds both a
+- **Sprint 047 shipped:** when one investigation already holds both a
   `source_for` and a `code_mapped_to` shared-commit group for the same
-  exact SHA, surface that Vercel deployment and Sentry release records
-  reference that commit through those two proven edges. Do not add a
-  Vercel↔Sentry Relationship, multi-hop traversal, Sentry deploy N+1,
-  version-string joins, release↔issue joins, new MCP tools, a generic
-  Event or Correlation abstraction, Class D events, a durable
-  Investigation object, additional providers, model reasoning,
-  background sync, webhooks, telemetry ingestion, operational learning,
-  policy, or execution.
+  exact SHA, Combie surfaces that those Vercel deployment and Sentry
+  release records reference the commit through those two proven edges —
+  a read-time `SharedCommitCorrespondence` (one per SHA) shown in the
+  CLI SHARED COMMIT CONTEXT note and an additive
+  `sharedCommitCorrespondences` MCP field, plus a
+  `shared_commit_correspondence_missing` Missing Context item for
+  one-sided groups. No Vercel↔Sentry Relationship, multi-hop
+  traversal, Sentry deploy N+1, version-string joins, release↔issue
+  joins, new MCP tools, a generic Event or Correlation abstraction,
+  Class D events, a durable Investigation object, additional providers,
+  model reasoning, background sync, webhooks, telemetry ingestion,
+  operational learning, policy, or execution.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.

@@ -59,7 +59,9 @@ import {
 } from "./timeline.ts";
 import {
   composeSharedCommitContext,
+  composeSharedCommitCorrespondences,
   type GitCommitEvidenceGroup,
+  type SharedCommitCorrespondence,
 } from "./shared-commit-context.ts";
 
 /**
@@ -1363,9 +1365,13 @@ function formatMissingContext(context: InvestigationContext): string {
  * Compact SHARED COMMIT CONTEXT section.
  * Omitted entirely when no eligible groups exist (supplemental surface).
  * Never implies lineage, trigger, or current latest-response membership.
+ * Sprint 047: an optional correspondence list adds a short note that Vercel
+ * deployment and Sentry release evidence reference the same exact Git commit
+ * through the two already-proven Relationships.
  */
 export function formatSharedCommitContext(
   groups: GitCommitEvidenceGroup[],
+  correspondences: SharedCommitCorrespondence[] = [],
 ): string {
   if (groups.length === 0) return "";
 
@@ -1430,7 +1436,22 @@ export function formatSharedCommitContext(
     return lines.join("\n");
   });
 
-  return `SHARED COMMIT CONTEXT\n\n${blocks.join("\n\n")}`;
+  const correspondenceNotes = correspondences.map((correspondence) => {
+    const lines: string[] = [
+      `• Vercel deployment and Sentry release evidence reference the same exact Git commit ${correspondence.commitSha} within already-proven source_for and code_mapped_to relationships`,
+      `• source_for: ${correspondence.sourceForRelationshipId}`,
+      `• code_mapped_to: ${correspondence.codeMappedToRelationshipId}`,
+    ];
+    return lines.join("\n");
+  });
+  const correspondenceSection =
+    correspondenceNotes.length === 0
+      ? ""
+      : `\n\nSame-commit correspondence\n\n${correspondenceNotes.join("\n\n")}`;
+
+  return (
+    `SHARED COMMIT CONTEXT\n\n${blocks.join("\n\n")}` + correspondenceSection
+  );
 }
 
 /** Deterministic CLI presentation of investigation context. */
@@ -1486,7 +1507,10 @@ export function formatInvestigationContext(
           .join("\n\n");
 
   const sharedCommitGroups = composeSharedCommitContext(context);
-  const sharedCommitSection = formatSharedCommitContext(sharedCommitGroups);
+  const sharedCommitSection = formatSharedCommitContext(
+    sharedCommitGroups,
+    composeSharedCommitCorrespondences(sharedCommitGroups),
+  );
   const sharedCommitBlock =
     sharedCommitSection === "" ? "" : `\n\n${sharedCommitSection}`;
 

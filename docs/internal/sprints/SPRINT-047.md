@@ -1,6 +1,6 @@
 # SPRINT-047 — Same-SHA Release + Deployment through Two Proven Edges
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-046 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.5 exact cross-provider
 > shared evidence + Safe Semantic Boundary; Sprint 046 leftover
@@ -483,3 +483,143 @@ git diff --check
 > say a deployment and a release share a commit through `source_for`
 > and `code_mapped_to`. It must not say they are the same event, or
 > that either caused the other.**
+
+---
+
+# Completion Notes (Sprint 047)
+
+## Phase 1 — Repository Understanding Report
+
+1. **Which subjects hold both groups?** Only a GitHub-repository hub
+   subject naturally has both one-hop neighbors: `source_for` brings
+   Vercel deployment evidence (workflow run + deployment with
+   `gitCommitSha`), `code_mapped_to` brings Sentry release evidence
+   (workflow run + release with `gitCommitSha`). A Vercel subject holds
+   only its `source_for` group; a Sentry subject only its
+   `code_mapped_to` group. One-hop geometry is therefore hub-only for a
+   correspondence.
+2. **Correspondence as a pure function.** `composeSharedCommitContext()`
+   already returns `GitCommitEvidenceGroup[]` with `relationshipKind`,
+   `commitSha`, `sourceResourceId`, `deployments`, and `releases`.
+   `composeSharedCommitCorrespondences(groups)` is a pure read-time
+   derivation — no storage, no provider reads, no new identifiers.
+3. **Truthful one-sided Missing Context.** When only one edge's group
+   exists, the other edge is either absent (UNKNOWN in-scope wording)
+   or out of one-hop scope (Vercel/Sentry subject: state the boundary;
+   never prompt to connect a provider).
+4. **Generic Correlation engine not earned.** One composer, two proven
+   relationship kinds, exact canonical SHA, both groups in the same
+   context — Anti-Overengineering rules apply; no generic abstraction.
+
+## Phase 2 — Architecture Pressure Report
+
+1. **Provider-native Vercel↔Sentry project id without DSN/env?** No
+   (Sprint 007 stands). No change; the earned join remains SHA + two
+   proven edges sharing a GitHub repository.
+2. **Sentry release-deploy N+1?** Not called. No compact secret-safe
+   deploy id was needed; this slice is exactly the two persisted SHAs
+   and two relationship ids. No new slice triggered.
+3. **One-hop prevents correspondence except on the GitHub hub?** Yes.
+   Vercel and Sentry subjects cannot satisfy both conditions — correct
+   one-hop behavior, documented, no second hop walked.
+4. **Canon change?** None until implementation; AGENTS.md baseline
+   update after completion (below). No conflict with VISION /
+   ARCHITECTURE / ROADMAP / SKILL.
+
+## Implemented
+
+- `SharedCommitCorrespondence { commitSha, sourceForRelationshipId,
+  codeMappedToRelationshipId, githubRepositoryId }` +
+  `composeSharedCommitCorrespondences(groups)` in
+  `src/app/shared-commit-context.ts` — one correspondence per SHA;
+  conditions: `source_for` group with ≥1 deployment member, same-
+  context `code_mapped_to` group with ≥1 release member, exact
+  canonical SHA equality, same `sourceResourceId`; collapse via
+  lexicographically smallest relationship id; deterministic sort by
+  commitSha; no input mutation
+- CLI: SHARED COMMIT CONTEXT gains a "Same-commit correspondence"
+  subsection when a correspondence exists — ROADMAP wording naming the
+  SHA and both proven relationship ids; per-kind groups unchanged
+- MCP: additive `sharedCommitCorrespondences` sibling of
+  `sharedCommitContext` on `investigate_resource`; exactly four tools;
+  read-only DB regression
+- Missing Context: `shared_commit_correspondence_missing` kind (sort
+  category 5, between `code_mapped_to_without_shared_commit` and
+  `code_mapping_unmatched_repository` / `no_known_relationships`),
+  emitted when one edge's shared-commit group exists for SHA S and the
+  other does not; in-scope UNKNOWN wording for hub subjects, out-of-
+  one-hop-scope wording for Vercel/Sentry subjects (never "connect a
+  provider")
+- Known Facts: **no new fact kind** (see Deviations); the 046
+  `shared_commit_relationship` fact and its budget rule unchanged
+- Tests: 21 new across 5 suites (correspondence composer incl.
+  collapse/determinism/no-mutation, CLI investigation, missing
+  context, facts budget honesty, MCP protocol); 842 pass / 0 fail
+
+## Deviations
+
+- **The correspondence Known Fact is structurally unreachable — removed
+  by design.** A correspondence requires a workflow run, a Vercel
+  deployment, and a Sentry release in scope, so every correspondence
+  context always yields exactly six fact candidates
+  (`provider_activity_summary`, `provider_activity_scope`,
+  `newest_provider_activity`, `code_mapping_relationship`,
+  `shared_commit_relationship`, `shared_commit_correspondence`)
+  against `MAX_INVESTIGATION_FACTS = 5`. Verified empirically on the
+  hub fixture: the pipeline consistently returns exactly five kinds and
+  the correspondence candidate is deterministically cut last. Sprint
+  047 allowed the fact "only if it fits `MAX_INVESTIGATION_FACTS`
+  without displacing authority facts" — it can never fit, so the honest
+  implementation of the same rule is to not emit it. The Sprint 047
+  surface is carried by CLI SHARED COMMIT CONTEXT and the MCP
+  `sharedCommitCorrespondences` field.
+- Live dogfood: this org still has **0** `code_mapped_to` edges and no
+  Vercel connection in the dogfood state, so no populated
+  correspondence was assertable live. Validated the truthful
+  known-empty path: 0 correspondences, 0 groups, no correspondence
+  section, no out-of-scope missing item (no group exists to pair),
+  `no_known_relationships` only, MCP `sharedCommitCorrespondences: []`.
+  Populated correspondence is fixture-first, as the Sprint record
+  stated; nothing was created to force an edge.
+
+## Validation
+
+```text
+bun test:          842 pass across 74 files (was 821 / 74)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources (unchanged)
+live GitHub+Sentry (known-empty): investigate on repo
+                   github:repository:1331212396 and project
+                   sentry:project:4511917355565056 — no SHARED COMMIT
+                   CONTEXT, no correspondence, MISSING CONTEXT =
+                   no_known_relationships only, facts unchanged;
+                   MCP parity: sharedCommitCorrespondences: [] and
+                   sharedCommitContext: [] (additive key present),
+                   missingContext/facts match CLI, DB SHA-256
+                   unchanged after tool calls
+```
+
+## Learnings
+
+- Check the fact-budget arithmetic before adding a Known Fact kind:
+  three activity records (run + deployment + release) already earn
+  summary + scope + newest + `code_mapping_relationship` +
+  `shared_commit_relationship` — five slots. Any further candidate is
+  structurally cut, so presentation must live outside the facts
+  pipeline (CLI note + MCP field).
+- Hub-only geometry holds in practice: only a GitHub-repository
+  subject can host a correspondence; Vercel/Sentry subjects must be
+  told the other family is out of one-hop scope, never prompted.
+- An additive MCP array is the right parity surface: known-empty
+  `[]` is truthful, matches CLI absence, and the DB-digest regression
+  still passes.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL are unchanged. AGENTS.md
+operational baseline becomes Sprints 001–047 complete: a same-SHA
+Vercel deployment ↔ Sentry release correspondence is surfaced through
+the two proven edges when both shared-commit groups exist in one
+context. Sprint 048 is not started.
