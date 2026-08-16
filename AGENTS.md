@@ -8,7 +8,8 @@ evidence (including Sentry releases, release commit identities, and Sentry
 issue aggregates), offline investigation, read-only MCP, release distribution,
 guided agent setup, and a concluded GitHub-first closed beta. Sprint 047 shipped
 same-SHA release↔deployment correspondence (two proven edges; no new
-Relationship); Sprint 048 is not started.
+Relationship). Sprint 048 is the active durable Investigation snapshot
+slice (smallest ROADMAP v0.6 object; not the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -30,7 +31,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–047 complete (048 is not started)
+## Current baseline: Sprints 001–047 complete (048 is active)
 
 Multi-provider connection loop:
 
@@ -80,9 +81,15 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   one-sided groups. No Vercel↔Sentry Relationship, multi-hop
   traversal, Sentry deploy N+1, version-string joins, release↔issue
   joins, new MCP tools, a generic Event or Correlation abstraction,
-  Class D events, a durable Investigation object, additional providers,
-  model reasoning, background sync, webhooks, telemetry ingestion,
-  operational learning, policy, or execution.
+  Class D events, additional providers, model reasoning, background
+  sync, webhooks, telemetry ingestion, operational learning, policy, or
+  execution.
+- **Sprint 048 scope:** persist a local, explicit, read-only snapshot of
+  an already-composed `investigate` result (list + reopen). Do not add
+  an Investigation Engine, hypotheses, confidence, ContextPack,
+  fact-budget redesign, Sentry deploy N+1, new MCP tools, graph
+  mutation, multi-hop, generic Event/Correlation abstractions, or
+  execution.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.
