@@ -249,6 +249,56 @@ export class SentryClient {
     return all;
   }
 
+  /**
+   * List organization code mappings filtered to one exact project id via
+   * GET /organizations/{organization_slug}/code-mappings/?project={project_id}.
+   *
+   * Sentry marks this GET private in its publish status; it is the production
+   * UI/Terraform read path and the only project-scoped deterministic join.
+   * Bound: at most `maxPages` Link pages of `per_page` (default 1×100).
+   */
+  async listOrganizationCodeMappings(
+    organizationSlug: string,
+    projectId: string,
+    options?: { perPage?: number; maxPages?: number },
+  ): Promise<unknown[]> {
+    const perPage = options?.perPage ?? 100;
+    const maxPages = options?.maxPages ?? 1;
+    const context = `List Sentry code mappings for organization ${organizationSlug} project ${projectId}`;
+    const initialPath =
+      `/organizations/${encodeURIComponent(organizationSlug)}/code-mappings/` +
+      `?project=${encodeURIComponent(projectId)}&per_page=${perPage}`;
+
+    const all: unknown[] = [];
+    let pathOrUrl = initialPath;
+
+    for (let page = 0; page < maxPages; page++) {
+      const { body, headers } = await this.getJsonWithMeta<unknown>(
+        pathOrUrl,
+        context,
+      );
+
+      if (!Array.isArray(body)) {
+        throw new SentryApiError({
+          message: `${context}: expected a JSON array response.`,
+          status: 200,
+          endpoint: this.endpointLabel(pathOrUrl),
+        });
+      }
+
+      all.push(...body);
+      const nextUrl = parseSentryNextLink(
+        headers.get("Link") ?? headers.get("link"),
+      );
+      if (!nextUrl || body.length === 0) {
+        break;
+      }
+      pathOrUrl = nextUrl;
+    }
+
+    return all;
+  }
+
   private async paginateList<T>(
     initialPath: string,
     context: string,

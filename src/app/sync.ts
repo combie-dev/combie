@@ -14,15 +14,21 @@ import {
   isGitHubVercelSourceFor,
 } from "./infer-github-vercel.ts";
 import {
+  inferGitHubSentryRelationships,
+  isGitHubSentryCodeMappedTo,
+} from "./infer-github-sentry.ts";
+import {
   hasAuthoritativeDomainEvidence,
   inferVercelCloudflareRelationships,
   isVercelCloudflareUsesDomainIn,
 } from "./infer-vercel-cloudflare.ts";
 import { syncGitHubWorkflowRuns } from "./github-workflow-runs.ts";
 import { syncNeonOperations } from "./neon-operations.ts";
+import { syncSentryCodeMappings } from "./sentry-code-mappings.ts";
 import { syncSentryIssues } from "./sentry-issues.ts";
 import { syncSentryReleases } from "./sentry-releases.ts";
 import { syncVercelDeployments } from "./vercel-deployments.ts";
+import { parseCodeMappingRefresh } from "../providers/sentry/code-mapping.ts";
 
 export interface SyncOptions {
   baseDir: string;
@@ -61,6 +67,7 @@ export interface SyncResult {
   totalResources: number;
   relationships?: RelationshipSyncSummary;
   domainRelationships?: RelationshipSyncSummary;
+  codeMappingRelationships?: RelationshipSyncSummary;
 }
 
 function countByKind(resources: Resource[]): Partial<Record<ResourceKind, number>> {
@@ -85,6 +92,9 @@ function preserveMissingMetadataKeysFor(
   }
   if (resource.kind !== "project") return undefined;
   if (resource.provider === "vercel") return ["domains"];
+  if (resource.provider === "sentry") {
+    return ["codeMappings", "codeMappingRefresh"];
+  }
   if (resource.provider === "neon") return ["branches", "databases", "endpoints"];
   return undefined;
 }
@@ -229,6 +239,13 @@ async function syncOne(
       observedAt: now,
     });
     evidenceLines.push(...issueSync.lines);
+    const mappingSync = await syncSentryCodeMappings({
+      store,
+      token,
+      projects: discovered.resources,
+      observedAt: now,
+    });
+    evidenceLines.push(...mappingSync.lines);
   }
 
   store.setLastSync(providerId, now);
@@ -343,8 +360,16 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
       store,
       results,
     );
+    const codeMappingRelationships = refreshGitHubSentryRelationships(
+      store,
+      results,
+    );
 
-    const relationshipLines = [relationships, domainRelationships]
+    const relationshipLines = [
+      relationships,
+      domainRelationships,
+      codeMappingRelationships,
+    ]
       .filter((s) => s.message.length > 0)
       .flatMap((s) => s.message.split("\n"));
     if (relationshipLines.length > 0) {
@@ -366,6 +391,7 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
       totalResources,
       relationships,
       domainRelationships,
+      codeMappingRelationships,
       message: parts.join("\n\n") + summary,
     };
   } finally {
@@ -492,6 +518,92 @@ function refreshVercelCloudflareRelationships(
     n === 0
       ? ["0 Vercel → Cloudflare uses_domain_in (no deterministic matches)"]
       : [`${n} Vercel → Cloudflare uses_domain_in`];
+  if (removed > 0) {
+    lines.push(
+      `${removed} stale relationship${removed === 1 ? "" : "s"} removed`,
+    );
+  }
+
+  return {
+    refreshed: true,
+    inferred: n,
+    removed,
+    message: lines.join("\n"),
+  };
+}
+
+function hasSuccessfulMappingRefresh(resource: Resource): boolean {
+  const refresh = parseCodeMappingRefresh(resource.metadata.codeMappingRefresh);
+  return (
+    refresh?.status === "success" && Array.isArray(resource.metadata.codeMappings)
+  );
+}
+
+/**
+ * Refresh GitHub↔Sentry code_mapped_to Relationships only when both
+ * providers succeeded in this sync run. Stale cleanup is scoped to this
+ * resolver's edges and only proceeds for projects with a successful mapping
+ * refresh (`codeMappings` present, including `[]`). Projects whose mapping
+ * enrichment is unknown keep prior edges. Never touches `source_for` or
+ * `uses_domain_in`.
+ */
+function refreshGitHubSentryRelationships(
+  store: Store,
+  results: SyncProviderResult[],
+): RelationshipSyncSummary {
+  const githubResult = results.find((r) => r.providerId === "github");
+  const sentryResult = results.find((r) => r.providerId === "sentry");
+
+  if (!githubResult?.ok || !sentryResult?.ok) {
+    return {
+      refreshed: false,
+      inferred: 0,
+      removed: 0,
+      message: "",
+    };
+  }
+
+  const resources = store.listResources();
+  const liveRepoIds = new Set(githubResult.discoveredResourceIds);
+  const authoritativeProjectIds = new Set(
+    resources
+      .filter(
+        (r) =>
+          r.provider === "sentry" &&
+          r.kind === "project" &&
+          sentryResult.discoveredResourceIds.includes(r.id) &&
+          hasSuccessfulMappingRefresh(r),
+      )
+      .map((r) => r.id),
+  );
+
+  const inferred = inferGitHubSentryRelationships(resources).filter(
+    (r) =>
+      liveRepoIds.has(r.sourceResourceId) &&
+      authoritativeProjectIds.has(r.targetResourceId),
+  );
+  const inferredIds = new Set(inferred.map((r) => r.id));
+
+  for (const rel of inferred) {
+    store.upsertRelationship(rel);
+  }
+
+  const existing = store.listRelationships().filter(isGitHubSentryCodeMappedTo);
+  const staleIds = existing
+    .filter((r) => !inferredIds.has(r.id))
+    .filter(
+      (r) =>
+        !liveRepoIds.has(r.sourceResourceId) ||
+        authoritativeProjectIds.has(r.targetResourceId),
+    )
+    .map((r) => r.id);
+  const removed = store.deleteRelationshipsByIds(staleIds);
+
+  const n = inferred.length;
+  const lines =
+    n === 0
+      ? ["0 GitHub → Sentry code_mapped_to (no deterministic matches)"]
+      : [`${n} GitHub → Sentry code_mapped_to`];
   if (removed > 0) {
     lines.push(
       `${removed} stale relationship${removed === 1 ? "" : "s"} removed`,

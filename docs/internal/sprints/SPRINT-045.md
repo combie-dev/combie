@@ -1,6 +1,6 @@
 # SPRINT-045 — GitHub ↔ Sentry Code-Mapping Relationship
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-044 (complete)
 > **Authorized by:** Sprint 044 v0.5 sequence + ROADMAP v0.2 exact
 > identity matching + ROADMAP v0.5 exact cross-provider shared evidence +
@@ -1017,21 +1017,21 @@ Confirm exactly four MCP tools remain registered.
 
 # Definition of Done
 
-- [ ] Sprint 045 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: compact Sentry code-mapping persistence + authority
-- [ ] if earned: `code_mapped_to` resolver + scoped stale cleanup
-- [ ] if earned: CLI `relationships` / `related` / `investigate` surfaces
-- [ ] if earned: Known Facts / Missing Context stay inside claim classes
-- [ ] if earned: MCP parity through the existing four tools
-- [ ] if not earned: rejection documented; no invented join
-- [ ] existing `source_for` and `uses_domain_in` behavior unchanged
-- [ ] no Change pollution; no secrets in output, errors, or fixtures
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged unless material semantics require an update
+- [x] Sprint 045 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: compact Sentry code-mapping persistence + authority
+- [x] if earned: `code_mapped_to` resolver + scoped stale cleanup
+- [x] if earned: CLI `relationships` / `related` / `investigate` surfaces
+- [x] if earned: Known Facts / Missing Context stay inside claim classes
+- [x] if earned: MCP parity through the existing four tools
+- [x] if not earned: rejection documented; no invented join
+- [x] existing `source_for` and `uses_domain_in` behavior unchanged
+- [x] no Change pollution; no secrets in output, errors, or fixtures
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged unless material semantics require an update
 
 ---
 
@@ -1059,3 +1059,152 @@ shape of the first two, not replace them.
 > **Sprint 045 may prove that Sentry configured a GitHub repository as
 > source-context for a project. It must not pretend to know what that
 > mapping caused.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-15)
+
+```text
+HEAD:          d7ab0b0737710c0f2fcf030bcf20588910e975d0
+               docs(sprints): activate 045 GitHub↔Sentry code-mapping
+worktree:      clean
+tests:         758 pass across 69 files
+typecheck:     clean
+MCP:           exactly four read-only tools
+Sprint 044:    Complete
+Sprint 045:    Active (authoring commit only)
+```
+
+## Repository Understanding
+
+1. **Existing resolvers.** `infer-github-vercel.ts` and
+   `infer-vercel-cloudflare.ts` are application-layer, read stored
+   Resources only, and refresh from `sync.ts` only when both providers
+   succeed. Stale cleanup is resolver-scoped (`isGitHubVercelSourceFor` /
+   `isVercelCloudflareUsesDomainIn`). `related`, investigate RELATED
+   CONTEXT, and MCP `get_related_context` are kind-agnostic.
+2. **Sentry metadata today.** `normalizeProject` stores slug,
+   organization_slug/id, platform, status, dateCreated. No repository or
+   mapping facts.
+3. **Where mapping facts belong.** Vercel domains live on Resource
+   metadata but are attached during discover, so later diffs can emit
+   Changes. Mapping refresh after first 045 sync would therefore pollute
+   the Change timeline if written through `applyResource`. Compact facts
+   stay on the Sentry project Resource (`codeMappings` +
+   `codeMappingRefresh`) and are written with
+   `Store.replaceResourceMetadata` (no Change). Not a second mappings
+   table.
+4. **Surfaces.** No new CLI section or MCP fields. The new kind flows
+   through existing `relationships` / `related` / investigate / MCP.
+5. **Facts budget.** `code_mapping_relationship` is appended after
+   existing candidates so it fills remaining `MAX_INVESTIGATION_FACTS`
+   slots and does not displace release/issue facts.
+6. **Generic correlation.** Not earned. One concrete resolver.
+
+## Architecture Pressure
+
+Official Sentry source (not public OpenAPI):
+`OrganizationCodeMappingsEndpoint` at
+`GET /api/0/organizations/{organization_id_or_slug}/code-mappings/`.
+GET publish status is PRIVATE; this is the production UI/Terraform read
+path identified in Sprint 007. Serializer
+`RepositoryProjectPathConfigSerializer` returns:
+
+```text
+id, projectId, projectSlug, repoId, repoName,
+integrationId, provider.{key,slug,name,…},
+stackRoot, sourceRoot, defaultBranch, automaticallyGenerated
+```
+
+1. **Endpoint.** `GET /organizations/{slug}/code-mappings/?project={id}`.
+   Filter is the official `project` query used by `get_projects`.
+2. **Org repos.** Not required. `repoName` and `provider.key` are on the
+   mapping payload. Org `repos/` is not a project join key.
+3. **Scopes.** `OrganizationIntegrationsLoosePermission`. 403 is unknown,
+   not empty. Existing tokens may lack `org:read` / `org:integrations`.
+4. **Identity.** Mapping `id` (optional display), Sentry-internal
+   `repoId`, canonical `repoName` (`owner/repo`).
+5. **Project binding.** `projectId` must equal
+   `Resource.providerResourceId`. No slug matching.
+6. **GitHub numeric id.** Not in the official payload. Join key is exact
+   `repoName` === GitHub `metadata.fullName`. `githubRepoId` is accepted
+   only if a payload later supplies it.
+7. **Non-GitHub SCM.** `provider.key` !== `github` is dropped
+   (GitLab/Bitbucket/unknown).
+8. **Never persist.** stackRoot, sourceRoot, defaultBranch,
+   automaticallyGenerated, projectSlug, integration OAuth, DSN, tokens,
+   raw payloads.
+9. **Pagination / bounds.** Offset paginator + Link header.
+   `CODE_MAPPINGS_PER_PAGE=100`, `CODE_MAPPINGS_MAX_PAGES=1`.
+10. **Lifecycle.** Same mapping id/repo upserts; `[]` is known-empty;
+    disappearance under a successful refresh is stale-cleanup authority
+    for this resolver only.
+11. **Failure.** Project discovery, releases, and issues survive mapping
+    refresh failure. Unknown ≠ empty. Prior mappings and edges retained.
+12. **Verdict: implement.** `code_mapped_to` matches the evidence.
+    Deterministic project-scoped join exists. Do not invent a name match.
+13. **Canon.** VISION / ARCHITECTURE / ROADMAP / SKILL unchanged.
+    AGENTS.md operational baseline lists the third proven edge after
+    implementation.
+
+## Implemented
+
+- `src/providers/sentry/code-mapping.ts` — normalize, authority,
+  GitHub-only allowlist
+- `SentryClient.listOrganizationCodeMappings`
+- `src/app/sentry-code-mappings.ts` — isolated sync hook after issues
+- `src/app/infer-github-sentry.ts` — `code_mapped_to` resolver
+- `Store.replaceResourceMetadata` — metadata write without Changes
+- `sync.ts` refresh gate: both GitHub and Sentry must succeed; scoped
+  stale cleanup; unknown mapping refresh keeps prior edges
+- Known Facts: `code_mapping_relationship` (budget-fill only)
+- Missing Context: `code_mapping_refresh_unknown`,
+  `code_mapping_unmatched_repository`;
+  `no_deterministic_release_issue_linkage` unchanged
+- MCP: existing four tools; kind flows through `get_related_context` and
+  `investigate_resource`
+
+## Deviations
+
+- Live GitHub+Sentry dogfood was not run: no authorized
+  `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` in this session; `~/.combie` has
+  no connected providers. Fixture/E2E coverage in
+  `tests/app/github-sentry-relationships-sync.test.ts`.
+- Mapping GET is Sentry-private (not public OpenAPI). Implementation
+  follows the production endpoint + serializer Sprint 007 already ranked
+  Class B, not an invented join.
+
+## Validation
+
+```text
+bun test:          794 pass across 74 files (was 758 / 69)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources
+live GitHub+Sentry: skipped (no authorized Sentry token)
+```
+
+## Learnings
+
+- Code-mapping list items already carry `projectId`, `repoName`, and
+  `provider.key`. Org repos lookup is unnecessary for the join.
+- Writing mapping facts through `applyResource` would create Resource
+  Changes on the first 045 sync of existing Sentry projects. A metadata
+  replace that skips `diffResource` is the smallest way to keep the
+  Sprint 008 metadata shape without violating the no-Change rule.
+- A proven `code_mapped_to` edge does not close
+  `no_deterministic_release_issue_linkage`. That remains a later earned
+  join, and it still requires identifiers this Sprint does not persist.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL are unchanged. No new Resource
+kinds, MCP tools, Event primitive, or earned-join surface.
+
+AGENTS.md operational baseline becomes Sprints 001–045 complete: proven
+graph now includes `code_mapped_to` (GitHub repository → Sentry project)
+from project-scoped Sentry code-mapping evidence only. Earned joins
+remain later. Sprint 046 is not started.

@@ -769,6 +769,54 @@ describe("composeMissingContext", () => {
       "No deterministic evidence currently proves a Sentry release caused a Sentry issue",
     );
     expect(formatMissingContextItem(linkage!)).not.toContain("likely caused");
+    expect(items.some((item) => item.kind === "code_mapping_refresh_unknown")).toBe(
+      true,
+    );
+  });
+
+  test("code mapping unknown and unmatched stay non-causal", () => {
+    const project = resource("sentry", "project", "450");
+    project.metadata.codeMappings = [
+      {
+        mappingId: "11",
+        sentryRepoId: "3",
+        repository: "acme/missing",
+        scmProvider: "github",
+      },
+    ];
+    project.metadata.codeMappingRefresh = {
+      status: "success",
+      observedAt: OBSERVED_AT,
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: OBSERVED_AT,
+    };
+    const unmatched = composeMissingContext(context({ subject: project }));
+    const item = unmatched.find(
+      (entry) => entry.kind === "code_mapping_unmatched_repository",
+    );
+    expect(item).toBeDefined();
+    expect(formatMissingContextItem(item!)).toContain(
+      "Sentry reports a code mapping, but Combie has no matching GitHub repository Resource",
+    );
+    expect(formatMissingContextItem(item!)).not.toContain("caused");
+
+    const failed = resource("sentry", "project", "450");
+    failed.metadata.codeMappingRefresh = {
+      status: "failure",
+      observedAt: OBSERVED_AT,
+      message: "Forbidden",
+      resultCount: null,
+      lastSuccessfulObservedAt: null,
+    };
+    const unknown = composeMissingContext(context({ subject: failed }));
+    const unknownItem = unknown.find(
+      (entry) => entry.kind === "code_mapping_refresh_unknown",
+    );
+    expect(unknownItem).toBeDefined();
+    expect(formatMissingContextItem(unknownItem!)).toContain(
+      "Sentry code-mapping evidence has not been successfully refreshed",
+    );
   });
 
   test("does not mutate the input context", () => {

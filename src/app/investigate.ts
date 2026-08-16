@@ -1303,6 +1303,14 @@ function formatInvestigationFact(fact: InvestigationFact): string {
     );
   }
 
+  if (fact.kind === "code_mapping_relationship") {
+    return (
+      `Sentry code-mapping evidence deterministically connects ` +
+      `GitHub repository ${fact.sourceResourceId} ` +
+      `to Sentry project ${fact.targetResourceId}.`
+    );
+  }
+
   const subjectChanges = fact.changes.filter(
     (change) => change.scope.role === "subject",
   ).length;

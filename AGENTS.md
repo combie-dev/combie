@@ -1,12 +1,12 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–044 implement the
+Combie is the open engineering context layer. Sprints 001–045 implement the
 local multi-provider context foundation through **Cloudflare**, **GitHub**,
 **Vercel**, **Sentry**, **Neon**, and **PlanetScale**, including deterministic
-Relationships, retained provider evidence (including Sentry releases and
-Sentry issue aggregates), offline investigation, read-only MCP, release
-distribution, guided agent setup, and a concluded GitHub-first closed beta.
-Sprint 045 is the active GitHub↔Sentry code-mapping Relationship slice.
+Relationships (including GitHub↔Sentry `code_mapped_to`), retained provider
+evidence (including Sentry releases and Sentry issue aggregates), offline
+investigation, read-only MCP, release distribution, guided agent setup, and a
+concluded GitHub-first closed beta. No next sprint is Active.
 
 ## Mandatory reading order before any substantive change
 
@@ -28,7 +28,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–044 complete (045 is active)
+## Current baseline: Sprints 001–045 complete
 
 Multi-provider connection loop:
 
@@ -46,26 +46,26 @@ Supported resource kinds: `worker`, `database` (Cloudflare D1 / PlanetScale), `k
 Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
 
 - Current proven graph scope: `source_for` (GitHub repository → Vercel
-  project) and `uses_domain_in` (Vercel project → Cloudflare zone), derived
-  only from exact provider evidence. Sprint 045 may add `code_mapped_to`
-  (GitHub repository → Sentry project) only from project-scoped Sentry
-  code-mapping evidence; that edge is not shipped until 045 is implemented.
+  project), `uses_domain_in` (Vercel project → Cloudflare zone), and
+  `code_mapped_to` (GitHub repository → Sentry project), derived only from
+  exact provider evidence. `code_mapped_to` means Sentry configured the
+  repository as source-context for the project; it does not prove
+  error-reporting completeness or release/issue causality.
 - Current agent scope: exactly four local, offline, read-only MCP tools:
   `list_resources`, `list_providers`, `get_related_context`, and
   `investigate_resource`.
 - **Shipped Sentry evidence:** compact release history and compact issue
   aggregates on `sentry:project:<id>`, offline `RELEASES` and `ISSUES`,
-  and `sentry_release` / `sentry_issue` provider activity. Issue rows are
-  current-state snapshots (`firstSeen` / `lastSeen` / `count`), not an
-  occurrence log.
-- **Sprint 045 scope:** acquire compact Sentry code-mapping evidence and
-  infer one `code_mapped_to` Relationship. Do not expand MCP tools or
-  schemas, add write paths, reuse `source_for` for Sentry, add earned
-  joins (release commits, shared-commit, release↔issue/deploy), a generic
-  Event or Correlation abstraction, Sentry occurrence-level error events
-  (Class D), additional providers, broader ontology/identity, model
-  reasoning, background sync, webhooks, telemetry ingestion, operational
-  learning, policy, or execution.
+  `sentry_release` / `sentry_issue` provider activity, and compact
+  project-scoped GitHub code-mapping facts used only for `code_mapped_to`.
+  Issue rows are current-state snapshots (`firstSeen` / `lastSeen` /
+  `count`), not an occurrence log. Do not expand MCP tools or schemas, add
+  write paths, reuse `source_for` for Sentry, add earned joins (release
+  commits, shared-commit, release↔issue/deploy), a generic Event or
+  Correlation abstraction, Sentry occurrence-level error events (Class D),
+  additional providers, broader ontology/identity, model reasoning,
+  background sync, webhooks, telemetry ingestion, operational learning,
+  policy, or execution until a later sprint authorizes it.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.

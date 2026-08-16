@@ -186,6 +186,14 @@ export type InvestigationFact =
       subjectResourceId: string;
       totalCount: number;
       changes: InvestigationFactChangeRef[];
+    }
+  | {
+      kind: "code_mapping_relationship";
+      subjectResourceId: string;
+      relationshipId: string;
+      sourceResourceId: string;
+      targetResourceId: string;
+      repository: string | null;
     };
 
 interface MutableAuthoritySource {
@@ -976,6 +984,27 @@ export function composeInvestigationFacts(
         observedAt: entry.change.observedAt,
         timeAuthority: "combie_observation",
       })),
+    });
+  }
+
+  const mappingEdges = context.related
+    .filter((neighbor) => neighbor.relationship.kind === "code_mapped_to")
+    .map((neighbor) => neighbor.relationship)
+    .sort((left, right) => compareAscending(left.id, right.id));
+  const seenMappingEdges = new Set<string>();
+  for (const edge of mappingEdges) {
+    if (seenMappingEdges.has(edge.id)) continue;
+    seenMappingEdges.add(edge.id);
+    candidates.push({
+      kind: "code_mapping_relationship",
+      subjectResourceId,
+      relationshipId: edge.id,
+      sourceResourceId: edge.sourceResourceId,
+      targetResourceId: edge.targetResourceId,
+      repository:
+        typeof edge.evidence.repository === "string"
+          ? edge.evidence.repository
+          : null,
     });
   }
 

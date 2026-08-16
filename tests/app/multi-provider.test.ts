@@ -172,6 +172,9 @@ function mockMultiProviderFetch(options?: {
       if (url.includes("/releases")) {
         return Response.json([]);
       }
+      if (url.includes("/code-mappings")) {
+        return Response.json([]);
+      }
       if (url.includes("/organizations/") && url.includes("/projects")) {
         if (options?.sentryFail) {
           return Response.json(

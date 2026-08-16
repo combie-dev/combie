@@ -1,0 +1,44 @@
+[
+  {
+    "id": "11",
+    "projectId": "450",
+    "projectSlug": "combie",
+    "repoId": "3",
+    "repoName": "acme/combie",
+    "integrationId": "99",
+    "provider": {
+      "key": "github",
+      "slug": "github",
+      "name": "GitHub",
+      "canAdd": true,
+      "canDisable": false,
+      "features": [],
+      "aspects": {}
+    },
+    "stackRoot": "/",
+    "sourceRoot": "src/",
+    "defaultBranch": "main",
+    "automaticallyGenerated": false
+  },
+  {
+    "id": "12",
+    "projectId": "450",
+    "projectSlug": "combie",
+    "repoId": "8",
+    "repoName": "acme/other",
+    "integrationId": "99",
+    "provider": {
+      "key": "gitlab",
+      "slug": "gitlab",
+      "name": "GitLab",
+      "canAdd": true,
+      "canDisable": false,
+      "features": [],
+      "aspects": {}
+    },
+    "stackRoot": "/",
+    "sourceRoot": "/",
+    "defaultBranch": "main",
+    "automaticallyGenerated": false
+  }
+]

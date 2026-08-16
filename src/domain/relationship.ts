@@ -8,8 +8,13 @@
  * Kind `uses_domain_in` means the source Vercel project has a custom domain
  * whose normalized apex equals the target Cloudflare zone name. It does not
  * claim hosting, deployment, or current DNS routing semantics.
+ *
+ * Kind `code_mapped_to` means Sentry reports a project-scoped code mapping
+ * that configures the source GitHub repository as source-context for the
+ * target Sentry project. It does not claim that the repository reports every
+ * error to the project, reuse `source_for`, or prove release/issue causality.
  */
-export type RelationshipKind = "source_for" | "uses_domain_in";
+export type RelationshipKind = "source_for" | "uses_domain_in" | "code_mapped_to";
 
 /** Compact provenance explaining why the Relationship exists. */
 export interface RelationshipEvidence {
@@ -27,6 +32,8 @@ export interface RelationshipEvidence {
   apexName?: string;
   /** Custom hostnames supporting the apex match (uses_domain_in). */
   hostnames?: string[];
+  /** Sentry-internal repository id when available (code_mapped_to). */
+  sentryRepoId?: string;
 }
 
 export interface Relationship {

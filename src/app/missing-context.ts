@@ -4,6 +4,10 @@ import type { WorkflowRunEvidenceAuthority } from "../providers/github/workflow-
 import type { NeonOperationEvidenceAuthority } from "../providers/neon/operation.ts";
 import type { IssueEvidenceAuthority } from "../providers/sentry/issue.ts";
 import type { ReleaseEvidenceAuthority } from "../providers/sentry/release.ts";
+import {
+  composeCodeMappingAuthority,
+  parseCodeMappings,
+} from "../providers/sentry/code-mapping.ts";
 import type { InvestigationContext } from "./investigate.ts";
 import type { ProviderActivityFamily } from "./provider-activity.ts";
 import type { RelatedDirection } from "./related.ts";
@@ -76,6 +80,27 @@ export type MissingContextItem =
       };
       releaseCount: number;
       issueCount: number;
+    }
+  | {
+      kind: "code_mapping_refresh_unknown";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [];
+      };
+      retainedCount: number;
+      latestAttemptObservedAt: string | null;
+      lastSuccessfulObservedAt: string | null;
+      message: string | null;
+    }
+  | {
+      kind: "code_mapping_unmatched_repository";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [];
+      };
+      repositories: string[];
     };
 
 interface MutableRelatedSource {
@@ -142,8 +167,10 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
   const category = (item: MissingContextItem): number => {
     if (item.kind === "never_successfully_refreshed") return 0;
     if (item.kind === "unknown_current_authority") return 1;
-    if (item.kind === "no_deterministic_release_issue_linkage") return 2;
-    return 3; // no_known_relationships last among implemented categories
+    if (item.kind === "code_mapping_refresh_unknown") return 2;
+    if (item.kind === "no_deterministic_release_issue_linkage") return 3;
+    if (item.kind === "code_mapping_unmatched_repository") return 4;
+    return 5; // no_known_relationships last among implemented categories
   };
   const byCategory = category(left) - category(right);
   if (byCategory !== 0) return byCategory;
@@ -152,7 +179,11 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
     left.kind === "no_known_relationships" ||
     right.kind === "no_known_relationships" ||
     left.kind === "no_deterministic_release_issue_linkage" ||
-    right.kind === "no_deterministic_release_issue_linkage"
+    right.kind === "no_deterministic_release_issue_linkage" ||
+    left.kind === "code_mapping_refresh_unknown" ||
+    right.kind === "code_mapping_refresh_unknown" ||
+    left.kind === "code_mapping_unmatched_repository" ||
+    right.kind === "code_mapping_unmatched_repository"
   ) {
     return compareAscending(left.scope.resourceId, right.scope.resourceId);
   }
@@ -167,6 +198,8 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           MissingContextItem,
           | { kind: "no_known_relationships" }
           | { kind: "no_deterministic_release_issue_linkage" }
+          | { kind: "code_mapping_refresh_unknown" }
+          | { kind: "code_mapping_unmatched_repository" }
         >
       ).family,
     ) -
@@ -176,6 +209,8 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           MissingContextItem,
           | { kind: "no_known_relationships" }
           | { kind: "no_deterministic_release_issue_linkage" }
+          | { kind: "code_mapping_refresh_unknown" }
+          | { kind: "code_mapping_unmatched_repository" }
         >
       ).family,
     );
@@ -515,6 +550,42 @@ export function composeMissingContext(
     });
   }
 
+  const mappingAuthority = composeCodeMappingAuthority(context.subject);
+  if (mappingAuthority.kind === "unknown") {
+    items.push({
+      kind: "code_mapping_refresh_unknown",
+      scope: {
+        resourceId: context.subject.id,
+        role: "subject",
+        relationships: [],
+      },
+      retainedCount: mappingAuthority.mappings.length,
+      latestAttemptObservedAt: mappingAuthority.latestAttemptObservedAt,
+      lastSuccessfulObservedAt: mappingAuthority.lastSuccessAt,
+      message: mappingAuthority.message,
+    });
+  } else if (mappingAuthority.kind === "populated") {
+    const hasCodeMappedEdge = context.related.some(
+      (neighbor) => neighbor.relationship.kind === "code_mapped_to",
+    );
+    if (!hasCodeMappedEdge) {
+      const mappings =
+        parseCodeMappings(context.subject.metadata.codeMappings) ?? [];
+      const repositories = [
+        ...new Set(mappings.map((m) => m.repository)),
+      ].sort();
+      items.push({
+        kind: "code_mapping_unmatched_repository",
+        scope: {
+          resourceId: context.subject.id,
+          role: "subject",
+          relationships: [],
+        },
+        repositories,
+      });
+    }
+  }
+
   // Combie graph knowledge only — does not claim external systems have no edges.
   if (context.related.length === 0) {
     items.push({
@@ -557,6 +628,31 @@ export function formatMissingContextItem(item: MissingContextItem): string {
       `Sentry issue for ${item.scope.resourceId} ` +
       `(${item.releaseCount} release${item.releaseCount === 1 ? "" : "s"}, ` +
       `${item.issueCount} issue${item.issueCount === 1 ? "" : "s"} retained).`
+    );
+  }
+
+  if (item.kind === "code_mapping_refresh_unknown") {
+    const retained =
+      item.retainedCount > 0
+        ? `; ${item.retainedCount} previously recorded ` +
+          `code mapping${item.retainedCount === 1 ? "" : "s"} ` +
+          `${item.retainedCount === 1 ? "is" : "are"} retained locally ` +
+          `and must not be treated as a successful current refresh`
+        : "";
+    return (
+      `Sentry code-mapping evidence has not been successfully refreshed ` +
+      `for ${item.scope.resourceId}${retained}.`
+    );
+  }
+
+  if (item.kind === "code_mapping_unmatched_repository") {
+    const listed =
+      item.repositories.length > 0
+        ? ` (${item.repositories.join(", ")})`
+        : "";
+    return (
+      `Sentry reports a code mapping, but Combie has no matching ` +
+      `GitHub repository Resource for ${item.scope.resourceId}${listed}.`
     );
   }
 

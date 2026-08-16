@@ -109,6 +109,28 @@ describe("createRelationship", () => {
     expect(rel.evidence.hostnames).toEqual(["app.example.com"]);
   });
 
+  test("code_mapped_to is a valid kind with mapping evidence", () => {
+    const rel = createRelationship({
+      sourceResourceId: "github:repository:1001",
+      targetResourceId: "sentry:project:450",
+      kind: "code_mapped_to",
+      evidence: {
+        source: "sentry",
+        mechanism: "code_mapping",
+        repository: "acme/combie",
+        sentryRepoId: "3",
+      },
+    });
+
+    expect(rel.kind).toBe("code_mapped_to");
+    expect(rel.id).toBe(
+      "rel:github:repository:1001:code_mapped_to:sentry:project:450",
+    );
+    expect(rel.evidence.source).toBe("sentry");
+    expect(rel.evidence.mechanism).toBe("code_mapping");
+    expect(rel.evidence.sentryRepoId).toBe("3");
+  });
+
   test("identity differs from source_for for same endpoints", () => {
     const a = relationshipId(
       "vercel:project:prj_abc",

@@ -605,6 +605,25 @@ export class Store {
     return apply();
   }
 
+  /**
+   * Replace Resource metadata without emitting a Change.
+   * Used for control-plane enrichment (code mappings) that must not pollute
+   * the Change timeline.
+   */
+  replaceResourceMetadata(
+    resourceId: string,
+    metadata: Record<string, unknown>,
+  ): void {
+    const current = this.getResource(resourceId);
+    if (!current) return;
+    const now = new Date().toISOString();
+    this.getWritableDb()
+      .query(
+        `UPDATE resources SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(JSON.stringify(metadata), now, resourceId);
+  }
+
   private insertChange(change: Change): void {
     this.getDb()
       .query(
