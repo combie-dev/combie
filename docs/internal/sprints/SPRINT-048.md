@@ -1,6 +1,6 @@
 # SPRINT-048 — Durable Investigation Snapshot
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-047 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.6 Investigation object
 > (smallest deterministic version); Sprint 047 leftover after an
@@ -433,17 +433,17 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 048 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: Investigation snapshot persist + list + reopen
-- [ ] if earned: snapshot vs live authority is explicit
-- [ ] if earned: no graph mutation; MCP still four tools
-- [ ] if not earned: rejection documented; do not invent an Engine
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged unless material semantics require an update
+- [x] Sprint 048 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: Investigation snapshot persist + list + reopen
+- [x] if earned: snapshot vs live authority is explicit
+- [x] if earned: no graph mutation; MCP still four tools
+- [x] if not earned: rejection documented; do not invent an Engine
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged unless material semantics require an update
 
 ---
 
@@ -452,3 +452,84 @@ git diff --check
 > **`docs/internal/ROADMAP.md` v0.6 begins with an Investigation
 > object, not an Investigation Engine. Sprint 048 may remember what
 > Combie assembled. It must not decide what happened.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-16)
+
+```text
+HEAD:          7789cc4549fc12f2e605ea4f0c28221537806e58
+tests:         842 pass across 74 files
+typecheck:     clean
+worktree:      clean
+MCP:           exactly four read-only tools
+Sprint 047:    Complete
+Sprint 048:    Active
+```
+
+## Repository Understanding
+
+1. **Snapshot shape.** `InvestigationContext` is a plain JSON-serializable
+   object (Resources, Relationships, evidence authorities, no Maps/Dates).
+   `JSON.stringify` / `JSON.parse` plus a subject-object check is enough.
+   No ContextPack type.
+2. **Id.** `inv:` + UUID. Not a Resource id.
+3. **CLI.** Existing `--save` boolean flag parsing; two read commands
+   `investigations` and `investigation <id>` match other list/show pairs.
+4. **Reopen vs live.** Banner states retained composition at `composedAt`.
+   Show uses `formatInvestigationContext` on the deserialized snapshot.
+5. **InvestigationEngine.** Not earned.
+
+## Architecture Pressure
+
+1. Persistence is required for the durable-object claim; re-compose is
+   live investigate, not an Investigation object.
+2. Snapshot is labeled retained composition, never current graph authority.
+3. No trigger, hypotheses, recommendation, or status fields.
+4. No MCP tool. `investigate_resource` remains live compose.
+5. Auto-save not implemented.
+6. Canon: AGENTS.md operational baseline only.
+
+## Implemented
+
+- `src/domain/investigation.ts` — `InvestigationRecord`, `inv:` id
+- `src/app/investigations.ts` — save / list / get / format
+- `Store`: `investigations` table (`CREATE TABLE IF NOT EXISTS`),
+  insert / list / get; pre-048 DBs upgrade on `init()`; missing table
+  lists as empty
+- CLI: `investigate --save`, `investigations`, `investigation <id>`
+- Banner: composedAt + “not current provider truth”
+
+## Deviations
+
+- Live dogfood used the isolated `/tmp/combie-045-dogfood` state from
+  prior Sentry/GitHub connects (no new token requested). Snapshot save,
+  list, reopen, and freeze-after-rename verified there. Populated
+  shared-commit snapshot remains fixture-optional.
+
+## Validation
+
+```text
+bun test:          849 pass across 75 files (was 842 / 74)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources
+live:              investigate --save / list / reopen on
+                   sentry:project:4511917355565056; live body matches
+                   save-time compose; reopen unchanged after rename
+```
+
+## Learnings
+
+- The existing `InvestigationContext` is already the snapshot document.
+  Persisting it is smaller than introducing a second schema.
+- Read-only open of a pre-048 DB has no `investigations` table until
+  the next write `init()`; list must treat a missing table as empty.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL unchanged. AGENTS.md baseline
+becomes Sprints 001–048 complete. Sprint 049 is not started.

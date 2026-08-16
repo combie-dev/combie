@@ -29,6 +29,14 @@ import {
   getInvestigationContext,
   formatInvestigationContext,
 } from "../app/investigate.ts";
+import {
+  formatInvestigationList,
+  formatSaveConfirmation,
+  formatSavedInvestigation,
+  getSavedInvestigation,
+  listInvestigations,
+  saveInvestigation,
+} from "../app/investigations.ts";
 import { serveMcp } from "../mcp/server.ts";
 import { BINARY_NAME, VERSION } from "./constants.ts";
 
@@ -49,6 +57,8 @@ Commands:
   related <resource-id>        Show one-hop related context for a resource
   context <resource-id>        Compose current, related, and Change context
   investigate <resource-id>    Compose one-hop investigation context around a resource
+  investigations               List saved investigation snapshots
+  investigation <id>           Reopen a saved investigation snapshot
   mcp                          Start read-only MCP server over stdio
   agent status                 Show MCP integration status for claude, codex, cursor
   agent setup [agent...]       Configure MCP access for agents (default: all supported)
@@ -72,6 +82,9 @@ Connect options:
 Resources options:
   --provider <id>              Filter by provider
   --kind <kind>                Filter by kind (worker, database, kv_namespace, zone, repository, project)
+
+Investigate options:
+  --save                       Persist a retained investigation snapshot
 
 Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId
@@ -101,6 +114,9 @@ Examples:
   ${BINARY_NAME} related github:repository:1001
   ${BINARY_NAME} context github:repository:1001
   ${BINARY_NAME} investigate vercel:project:prj_abc
+  ${BINARY_NAME} investigate vercel:project:prj_abc --save
+  ${BINARY_NAME} investigations
+  ${BINARY_NAME} investigation inv:…
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
   ${BINARY_NAME} agent setup
@@ -299,15 +315,39 @@ async function main(argv: string[]): Promise<number> {
         const resourceRef = positionals[0];
         if (!resourceRef) {
           console.error(
-            `Usage: ${BINARY_NAME} investigate <resource-id>\nExample: ${BINARY_NAME} investigate vercel:project:prj_abc\nList ids: ${BINARY_NAME} resources`,
+            `Usage: ${BINARY_NAME} investigate <resource-id> [--save]\nExample: ${BINARY_NAME} investigate vercel:project:prj_abc\nList ids: ${BINARY_NAME} resources`,
           );
           return 1;
+        }
+        if (flags.save === true) {
+          const saved = saveInvestigation({ baseDir, resourceRef });
+          console.log(saved.liveOutput);
+          console.log("");
+          console.log(formatSaveConfirmation(saved.record));
+          return 0;
         }
         const investigation = getInvestigationContext({
           baseDir,
           resourceRef,
         });
         console.log(formatInvestigationContext(investigation));
+        return 0;
+      }
+      case "investigations": {
+        const records = listInvestigations(baseDir);
+        console.log(formatInvestigationList(records));
+        return 0;
+      }
+      case "investigation": {
+        const investigationId = positionals[0];
+        if (!investigationId) {
+          console.error(
+            `Usage: ${BINARY_NAME} investigation <investigation-id>\nList ids: ${BINARY_NAME} investigations`,
+          );
+          return 1;
+        }
+        const saved = getSavedInvestigation(baseDir, investigationId);
+        console.log(formatSavedInvestigation(saved));
         return 0;
       }
       case "mcp": {

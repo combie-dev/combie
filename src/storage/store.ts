@@ -240,6 +240,16 @@ CREATE TABLE IF NOT EXISTS sentry_issue_refresh (
   result_count INTEGER,
   last_success_observed_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS investigations (
+  id TEXT PRIMARY KEY,
+  subject_resource_id TEXT NOT NULL,
+  composed_at TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS investigations_composed_at_id_idx
+  ON investigations(composed_at DESC, id DESC);
 `;
 
 export interface ApplyResourceObservation extends ChangeObservation {
@@ -1402,6 +1412,80 @@ export class Store {
       message: row.message,
       resultCount: row.result_count,
       lastSuccessfulObservedAt: row.last_success_observed_at,
+    };
+  }
+
+  insertInvestigation(row: {
+    id: string;
+    subjectResourceId: string;
+    composedAt: string;
+    snapshotJson: string;
+  }): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO investigations (
+           id, subject_resource_id, composed_at, snapshot_json
+         ) VALUES (?, ?, ?, ?)`,
+      )
+      .run(row.id, row.subjectResourceId, row.composedAt, row.snapshotJson);
+  }
+
+  listInvestigationSummaries(): Array<{
+    id: string;
+    subjectResourceId: string;
+    composedAt: string;
+  }> {
+    const db = this.getDb();
+    const table = db
+      .query(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'investigations'`,
+      )
+      .get() as { name: string } | null;
+    if (!table) return [];
+    const rows = db
+      .query(
+        `SELECT id, subject_resource_id, composed_at
+         FROM investigations
+         ORDER BY composed_at DESC, id DESC`,
+      )
+      .all() as Array<{
+      id: string;
+      subject_resource_id: string;
+      composed_at: string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      subjectResourceId: row.subject_resource_id,
+      composedAt: row.composed_at,
+    }));
+  }
+
+  getInvestigationRow(id: string): {
+    id: string;
+    subjectResourceId: string;
+    composedAt: string;
+    snapshotJson: string;
+  } | null {
+    const row = this.getDb()
+      .query(
+        `SELECT id, subject_resource_id, composed_at, snapshot_json
+         FROM investigations
+         WHERE id = ?`,
+      )
+      .get(id) as
+      | {
+          id: string;
+          subject_resource_id: string;
+          composed_at: string;
+          snapshot_json: string;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      id: row.id,
+      subjectResourceId: row.subject_resource_id,
+      composedAt: row.composed_at,
+      snapshotJson: row.snapshot_json,
     };
   }
 

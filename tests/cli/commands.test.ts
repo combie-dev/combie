@@ -447,7 +447,7 @@ describe("CLI commands", () => {
     );
     expect(missingArgument.code).not.toBe(0);
     expect(missingArgument.stderr).toContain(
-      "Usage: bun run combie investigate <resource-id>",
+      "Usage: bun run combie investigate <resource-id> [--save]",
     );
 
     const unknown = await capture(() =>
@@ -531,6 +531,50 @@ describe("CLI commands", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test("investigate --save lists and reopens a retained snapshot", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "cli450",
+      kind: "project",
+      name: "cli-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-cli",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(saved.code).toBe(0);
+    expect(saved.stdout).toContain("SUBJECT");
+    expect(saved.stdout).toContain("Saved investigation snapshot inv:");
+    expect(saved.stdout).toContain("from local store state");
+    const idMatch = saved.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(idMatch).not.toBeNull();
+    const id = idMatch![1]!;
+
+    const listed = await capture(() =>
+      main(["investigations", "--dir", dir]),
+    );
+    expect(listed.code).toBe(0);
+    expect(listed.stdout).toContain(id);
+    expect(listed.stdout).toContain(project.id);
+
+    const reopened = await capture(() =>
+      main(["investigation", id, "--dir", dir]),
+    );
+    expect(reopened.code).toBe(0);
+    expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
+    expect(reopened.stdout).toContain("not current provider truth");
+    expect(reopened.stdout).toContain("cli-sentry");
   });
 
   test("context renders empty, related-only, and history-only states", async () => {
