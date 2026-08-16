@@ -580,3 +580,65 @@ KNOWN-EMPTY MAPPINGS.** This org still has no Sentry GitHub code mapping,
 so a populated `code_mapped_to` edge remains untested live. That is
 inventory-empty, not a product defect. Do not create a mapping to force
 an edge.
+
+## Sprint 046 release commit SHA + shared-commit live run — 2026-08-15
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-08-15 |
+| Sprint 046 commit | baseline `75be393`; final HEAD `4494569` (821 pass / 74 files) |
+| Machine / OS | macOS (darwin, arm64) |
+| Bun | 1.3.5 |
+| Isolated state | `/tmp/combie-045-dogfood` (pre-046 DB — Sprint 045 state, GitHub + Sentry already connected) |
+| GitHub | connected (stored credential, `sgr0691`); sync 312 repositories |
+| Sentry | connected (stored user credential, `sgr0691@gmail.com`); sync 1 project |
+| Relationships | 0 (`code_mapped_to` not inferred — org has no code mappings) |
+| Security | no token in this record, no token in any output; credentials file `0600`; DB SHA-256 unchanged after MCP calls |
+
+### Live DB upgrade and sync
+
+- [x] Sync against the **pre-046** Sprint 045 database ran without a
+      migration error: `sentry_releases` gained nullable
+      `git_commit_sha` in place; the 3 existing release rows kept all
+      values and `git_commit_sha` = NULL (verified via sqlite3).
+- [x] Repeated sync idempotent: still `3 releases recorded`, no
+      duplicates, no Change rows.
+
+### Release SHA extraction (known-empty live)
+
+- [x] The 3 `combie-dogfood@1.x` test releases carry no associated
+      commit (`lastCommit.id` / `ref` absent) — every stored
+      `git_commit_sha` is NULL and no `git commit:` line appears in
+      RELEASES. Known-empty identifier is the accepted Sprint 046
+      dogfood outcome; nothing was created or rewritten to force a SHA.
+
+### Investigation (CLI, offline replay)
+
+- [x] `investigate sentry:project:4511917355565056`: RELEASES unchanged
+      from Sprint 043/045 shape (no `git commit:` line, truthful);
+      no SHARED COMMIT CONTEXT (0 groups — no `code_mapped_to` edge);
+      MISSING CONTEXT = `no_known_relationships` only (no false
+      `code_mapped_to_without_shared_commit` item when no edge exists);
+      KNOWN FACTS unchanged (no `shared_commit_relationship` fact);
+      no causality vocabulary anywhere.
+- [x] Offline replay with `SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN`/
+      `GITHUB_TOKEN`/`GH_TOKEN` unset: byte-identical investigation
+      output, no network, no credential dependency.
+
+### MCP parity
+
+- [x] stdio MCP server exposes exactly 4 tools (`list_resources`,
+      `list_providers`, `get_related_context`, `investigate_resource`).
+- [x] `investigate_resource` returns `sharedCommitContext: []`
+      (truthful — no edge), `subjectReleases` populated with 3 releases
+      and `gitCommitSha: null` for each, no shared-commit fact,
+      `missingContext: ["no_known_relationships"]` — full CLI/MCP parity.
+- [x] Read-only regression: DB SHA-256 unchanged after the tool calls.
+
+Decision from this run: **SPRINT 046 VALIDATED LIVE ON KNOWN-EMPTY
+IDENTIFIERS.** Pre-046 live DB upgraded in place; release SHA stays
+null when the provider supplies none; no edge → no group, no fact, no
+scare item. A populated SHA + populated mapping path is covered by the
+hermetic suite (normalization allowlist, composer, CLI, facts, missing
+context, MCP protocol) and remains untested live only because this org
+has no code mappings — inventory-empty, not a product defect.
