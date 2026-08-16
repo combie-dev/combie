@@ -642,3 +642,50 @@ scare item. A populated SHA + populated mapping path is covered by the
 hermetic suite (normalization allowlist, composer, CLI, facts, missing
 context, MCP protocol) and remains untested live only because this org
 has no code mappings — inventory-empty, not a product defect.
+
+## Sprint 047 same-SHA correspondence live run — 2026-08-16
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-08-16 |
+| Sprint 047 commit | (current HEAD; 842 pass / 74 files) |
+| Machine / OS | macOS (darwin, arm64) |
+| Bun | 1.3.5 |
+| Isolated state | `/tmp/combie-045-dogfood` (Sprint 046 state; GitHub + Sentry connected, no Vercel in this state) |
+| GitHub | connected (`sgr0691`); 312 repositories |
+| Sentry | connected (`sgr0691@gmail.com`); 1 project, 3 releases |
+| Relationships | 0 (`code_mapped_to` not inferred — org has no code mappings) |
+| Correspondences | 0 (known-empty; 0 groups on both subjects) |
+| Security | no token in this record or any output; credentials file `0600`; DB SHA-256 unchanged after MCP calls |
+
+### CLI investigation (known-empty, offline-capable)
+
+- [x] `investigate sentry:project:4511917355565056`: RELEASES/ISSUES
+      unchanged from Sprint 046; no SHARED COMMIT CONTEXT; MISSING
+      CONTEXT = `no_known_relationships` only (no
+      `shared_commit_correspondence_missing` item — no group exists to
+      pair); KNOWN FACTS unchanged (no correspondence fact, by design
+      — see SPRINT-047 Deviations).
+- [x] `investigate github:repository:1331212396` (combie-dev/combie):
+      WORKFLOW RUNS unchanged; no SHARED COMMIT CONTEXT; MISSING
+      CONTEXT = `no_known_relationships` only; no causality wording.
+
+### MCP parity
+
+- [x] stdio MCP server exposes exactly 4 tools (`list_resources`,
+      `list_providers`, `get_related_context`, `investigate_resource`).
+- [x] `investigate_resource` on both subjects returns the additive
+      `sharedCommitCorrespondences: []` key (truthful known-empty),
+      `sharedCommitContext: []`, `missingContext` and `knownFacts`
+      matching the CLI — full CLI/MCP parity.
+- [x] Read-only regression: DB SHA-256 unchanged after the tool calls.
+
+Decision from this run: **SPRINT 047 VALIDATED LIVE ON KNOWN-EMPTY
+CORRESPONDENCES.** No edge → no group → no correspondence, on both the
+Sentry subject and the GitHub hub; the additive MCP field is present
+and truthful; the correspondence fact is absent by design. A populated
+correspondence (hub with both edges + matching SHAs) is covered by the
+hermetic suite (composer, CLI, missing context, MCP protocol) and
+remains untested live only because this org has no code mappings and
+no Vercel connection in the dogfood state — inventory-empty, not a
+product defect.
