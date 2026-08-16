@@ -727,6 +727,7 @@ describe("composeMissingContext", () => {
               dateCreated: "2026-08-15T14:31:00.000Z",
               dateReleased: null,
               observedAt: OBSERVED_AT,
+              gitCommitSha: null,
             } satisfies SentryReleaseEvidence,
           ],
         } satisfies ReleaseEvidenceAuthority,
@@ -977,5 +978,141 @@ describe("missing context CLI formatting", () => {
     const output = formatInvestigationContext(ctx);
     expect(output).toContain("KNOWN FACTS");
     expect(output).toContain("MISSING CONTEXT");
+  });
+});
+
+describe("code_mapped_to_without_shared_commit (Sprint 046)", () => {
+  const REPO_ID = "github:repository:101";
+  const SENTRY_ID = "sentry:project:450";
+  const SHA = "abc123def4567890abc123def4567890abc123de";
+
+  function codeMappedToRel() {
+    return createRelationship({
+      sourceResourceId: REPO_ID,
+      targetResourceId: SENTRY_ID,
+      kind: "code_mapped_to",
+      evidence: {
+        source: "sentry",
+        mechanism: "code_mapping",
+        repository: "acme/demo",
+      },
+    });
+  }
+
+  function githubRepo() {
+    return createResource({
+      provider: "github",
+      providerResourceId: "101",
+      kind: "repository",
+      name: "demo",
+      metadata: { fullName: "acme/demo" },
+    });
+  }
+
+  function sentryProject() {
+    return createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { organizationSlug: "acme" },
+    });
+  }
+
+  function sentryRelease(
+    overrides: Partial<SentryReleaseEvidence> = {},
+  ): SentryReleaseEvidence {
+    return {
+      provider: "sentry",
+      version: "frontend@1.2.0",
+      resourceId: SENTRY_ID,
+      projectId: "450",
+      shortVersion: "1.2.0",
+      status: "open",
+      dateCreated: OBSERVED_AT,
+      dateReleased: null,
+      observedAt: OBSERVED_AT,
+      gitCommitSha: SHA,
+      ...overrides,
+    };
+  }
+
+  function sentrySubjectContext(options: {
+    runs: GitHubWorkflowRunEvidence[];
+    releases: SentryReleaseEvidence[];
+  }): InvestigationContext {
+    return context({
+      subject: sentryProject(),
+      subjectReleases: {
+        kind: "populated",
+        observedAt: OBSERVED_AT,
+        resultCount: options.releases.length,
+        releases: options.releases,
+      },
+      related: [
+        {
+          relationship: codeMappedToRel(),
+          direction: "inbound",
+          resource: githubRepo(),
+          changes: [],
+          deployments: NA_DEPLOYMENTS,
+          workflowRuns: {
+            kind: "populated",
+            observedAt: OBSERVED_AT,
+            resultCount: options.runs.length,
+            runs: options.runs,
+          },
+          operations: NA_OPERATIONS,
+          releases: { kind: "not_applicable" as const },
+          issues: { kind: "not_applicable" as const },
+        },
+      ],
+    });
+  }
+
+  test("code_mapped_to edge without a two-sided SHA yields the item", () => {
+    const items = composeMissingContext(
+      sentrySubjectContext({
+        runs: [workflowRun({ headSha: SHA })],
+        releases: [sentryRelease({ gitCommitSha: null })],
+      }),
+    );
+    expect(items).toContainEqual({
+      kind: "code_mapped_to_without_shared_commit",
+      scope: { resourceId: SENTRY_ID, role: "subject", relationships: [] },
+      relationshipId: `rel:${REPO_ID}:code_mapped_to:${SENTRY_ID}`,
+      sourceResourceId: REPO_ID,
+      targetResourceId: SENTRY_ID,
+    });
+  });
+
+  test("code_mapped_to edge with a two-sided SHA closes the item", () => {
+    const items = composeMissingContext(
+      sentrySubjectContext({
+        runs: [workflowRun({ headSha: SHA })],
+        releases: [sentryRelease()],
+      }),
+    );
+    expect(
+      items.some((item) => item.kind === "code_mapped_to_without_shared_commit"),
+    ).toBe(false);
+  });
+
+  test("formatMissingContextItem renders the safe wording", () => {
+    const item: MissingContextItem = {
+      kind: "code_mapped_to_without_shared_commit",
+      scope: { resourceId: SENTRY_ID, role: "subject", relationships: [] },
+      relationshipId: `rel:${REPO_ID}:code_mapped_to:${SENTRY_ID}`,
+      sourceResourceId: REPO_ID,
+      targetResourceId: SENTRY_ID,
+    };
+    const text = formatMissingContextItem(item);
+    expect(text).toContain(`A code_mapped_to relationship exists (`);
+    expect(text).toContain(`rel:${REPO_ID}:code_mapped_to:${SENTRY_ID}`);
+    expect(text).toContain(
+      "but no full Git commit SHA is currently held on both a GitHub workflow run and a Sentry release",
+    );
+    expect(text).not.toContain("caused");
+    expect(text).not.toContain("triggered");
   });
 });

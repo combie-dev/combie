@@ -5,6 +5,7 @@ import type { NeonOperationEvidenceAuthority } from "../providers/neon/operation
 import type { IssueEvidenceAuthority } from "../providers/sentry/issue.ts";
 import type { ReleaseEvidenceAuthority } from "../providers/sentry/release.ts";
 import type { InvestigationContext } from "./investigate.ts";
+import { composeSharedCommitContext } from "./shared-commit-context.ts";
 import {
   composeProviderActivityChronology,
   nativeEvidenceId,
@@ -194,6 +195,14 @@ export type InvestigationFact =
       sourceResourceId: string;
       targetResourceId: string;
       repository: string | null;
+    }
+  | {
+      kind: "shared_commit_relationship";
+      subjectResourceId: string;
+      commitSha: string;
+      relationshipId: string;
+      sourceResourceId: string;
+      targetResourceId: string;
     };
 
 interface MutableAuthoritySource {
@@ -1005,6 +1014,31 @@ export function composeInvestigationFacts(
         typeof edge.evidence.repository === "string"
           ? edge.evidence.repository
           : null,
+    });
+  }
+
+  // Sprint 046: ephemeral code_mapped_to shared-commit groups earn a Known
+  // Fact only when they fit the budget without displacing higher-priority
+  // authority/release/issue facts above. source_for groups (Sprint 035)
+  // never emit a fact.
+  const sharedCommitGroups = composeSharedCommitContext(context)
+    .filter((group) => group.relationshipKind === "code_mapped_to")
+    .sort((left, right) => {
+      const byRelationship = compareAscending(
+        left.relationshipId,
+        right.relationshipId,
+      );
+      if (byRelationship !== 0) return byRelationship;
+      return compareAscending(left.commitSha, right.commitSha);
+    });
+  for (const group of sharedCommitGroups) {
+    candidates.push({
+      kind: "shared_commit_relationship",
+      subjectResourceId,
+      commitSha: group.commitSha,
+      relationshipId: group.relationshipId,
+      sourceResourceId: group.sourceResourceId,
+      targetResourceId: group.targetResourceId,
     });
   }
 

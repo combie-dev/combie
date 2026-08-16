@@ -553,6 +553,7 @@ function formatRelease(release: SentryReleaseEvidence): string {
   if (release.dateReleased) {
     lines.push(`released at: ${release.dateReleased}`);
   }
+  if (release.gitCommitSha) lines.push(`git commit: ${release.gitCommitSha}`);
   lines.push(`observed by Combie at: ${release.observedAt}`);
   return lines.join("\n");
 }
@@ -1311,6 +1312,14 @@ function formatInvestigationFact(fact: InvestigationFact): string {
     );
   }
 
+  if (fact.kind === "shared_commit_relationship") {
+    return (
+      `GitHub workflow-run and Sentry release evidence reference the same ` +
+      `exact Git commit ${fact.commitSha} within an already-proven ` +
+      `code_mapped_to relationship.`
+    );
+  }
+
   const subjectChanges = fact.changes.filter(
     (change) => change.scope.role === "subject",
   ).length;
@@ -1384,20 +1393,40 @@ export function formatSharedCommitContext(
     }
 
     lines.push("");
-    lines.push("Vercel deployments");
-    for (const member of group.deployments) {
-      const d = member.evidence;
-      const parts = [`• ${d.uid}`];
-      if (d.readyState) parts.push(`readyState=${d.readyState}`);
-      lines.push(parts.join(" · "));
-    }
+    if (group.relationshipKind === "code_mapped_to") {
+      lines.push("Sentry releases");
+      for (const member of group.releases) {
+        const release = member.evidence;
+        const parts = [`• ${release.version}`];
+        if (release.status) parts.push(`status=${release.status}`);
+        lines.push(parts.join(" · "));
+      }
 
-    lines.push("");
-    lines.push("Basis");
-    lines.push("• exact Git commit SHA");
-    lines.push(
-      `• ${group.sourceResourceId} source_for ${group.targetResourceId}`,
-    );
+      lines.push("");
+      lines.push("Basis");
+      lines.push("• exact Git commit SHA");
+      lines.push(
+        "• GitHub workflow-run and Sentry release evidence reference the same exact Git commit within an already-proven code_mapped_to resource relationship",
+      );
+      lines.push(
+        `• ${group.sourceResourceId} code_mapped_to ${group.targetResourceId}`,
+      );
+    } else {
+      lines.push("Vercel deployments");
+      for (const member of group.deployments) {
+        const d = member.evidence;
+        const parts = [`• ${d.uid}`];
+        if (d.readyState) parts.push(`readyState=${d.readyState}`);
+        lines.push(parts.join(" · "));
+      }
+
+      lines.push("");
+      lines.push("Basis");
+      lines.push("• exact Git commit SHA");
+      lines.push(
+        `• ${group.sourceResourceId} source_for ${group.targetResourceId}`,
+      );
+    }
     return lines.join("\n");
   });
 

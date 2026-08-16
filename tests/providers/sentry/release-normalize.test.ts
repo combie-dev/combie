@@ -69,6 +69,7 @@ describe("normalizeSentryRelease", () => {
       [
         "dateCreated",
         "dateReleased",
+        "gitCommitSha",
         "observedAt",
         "projectId",
         "provider",
@@ -84,6 +85,100 @@ describe("normalizeSentryRelease", () => {
     const evidence = normalizeSentryRelease(releasesFixture[1]!, PROJECT_ID, OBSERVED)!;
     expect(evidence.dateReleased).toBeNull();
     expect(evidence.shortVersion).toBeNull();
+  });
+});
+
+describe("normalizeSentryRelease gitCommitSha (Sprint 046)", () => {
+  const SHA = "abc123def4567890abc123def4567890abc123de";
+
+  function rawWith(
+    overrides: { lastCommit?: unknown; ref?: unknown } & Record<string, unknown>,
+  ) {
+    return {
+      version: "frontend@2.0.0",
+      dateCreated: "2026-08-10T12:00:00Z",
+      projects: [{ id: 450 }],
+      ...overrides,
+    };
+  }
+
+  test("full SHA in lastCommit.id persists", () => {
+    const evidence = normalizeSentryRelease(
+      rawWith({ lastCommit: { id: SHA, message: "ship it" } }),
+      PROJECT_ID,
+      OBSERVED,
+    )!;
+    expect(evidence.gitCommitSha).toBe(SHA);
+  });
+
+  test("ref fallback applies when lastCommit.id is absent or not a full SHA", () => {
+    const absent = normalizeSentryRelease(
+      rawWith({ lastCommit: { id: "abc123" }, ref: SHA }),
+      PROJECT_ID,
+      OBSERVED,
+    )!;
+    expect(absent.gitCommitSha).toBe(SHA);
+
+    const missing = normalizeSentryRelease(
+      rawWith({ ref: SHA }),
+      PROJECT_ID,
+      OBSERVED,
+    )!;
+    expect(missing.gitCommitSha).toBe(SHA);
+  });
+
+  test("ref branch/tag never persists", () => {
+    const evidence = normalizeSentryRelease(
+      rawWith({ lastCommit: null, ref: "main" }),
+      PROJECT_ID,
+      OBSERVED,
+    )!;
+    expect(evidence.gitCommitSha).toBeNull();
+  });
+
+  test("fixture row 0 abbreviated lastCommit.id is null, never a SHA", () => {
+    const evidence = normalizeSentryRelease(releasesFixture[0]!, PROJECT_ID, OBSERVED)!;
+    expect(evidence.gitCommitSha).toBeNull();
+  });
+
+  test("version and shortVersion never become a SHA", () => {
+    const evidence = normalizeSentryRelease(releasesFixture[1]!, PROJECT_ID, OBSERVED)!;
+    expect(evidence.version).toBe("frontend@1.1.0");
+    expect(evidence.gitCommitSha).toBeNull();
+  });
+
+  test("lastCommit message, author, and email never persist alongside a full SHA", () => {
+    const evidence = normalizeSentryRelease(
+      rawWith({
+        lastCommit: {
+          id: SHA,
+          message: "ship it",
+          author: { name: "Ada", email: "ada@example.com" },
+          releases: ["r1"],
+        },
+      }),
+      PROJECT_ID,
+      OBSERVED,
+    )!;
+    expect(evidence.gitCommitSha).toBe(SHA);
+    const json = JSON.stringify(evidence);
+    expect(json).not.toContain("ship it");
+    expect(json).not.toContain("Ada");
+    expect(json).not.toContain("ada@example.com");
+    expect(Object.keys(evidence).sort()).toEqual(
+      [
+        "dateCreated",
+        "dateReleased",
+        "gitCommitSha",
+        "observedAt",
+        "projectId",
+        "provider",
+        "resourceId",
+        "shortVersion",
+        "status",
+        "version",
+      ].sort(),
+    );
   });
 });
 

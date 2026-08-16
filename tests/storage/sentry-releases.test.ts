@@ -30,6 +30,7 @@ function release(
     dateCreated: "2026-08-09T10:00:00.000Z",
     dateReleased: null,
     observedAt: "2026-08-09T12:00:00.000Z",
+    gitCommitSha: null,
     ...overrides,
   };
 }
@@ -85,6 +86,71 @@ describe("Store sentry release persistence", () => {
     expect(store.listSentryReleasesForResource("sentry:project:451")).toHaveLength(1);
     expect(store.countSentryReleases()).toBe(2);
     store.close();
+  });
+
+  test("Sprint 046: git_commit_sha persists and updates to null on later upsert", () => {
+    const sha = "abc123def4567890abc123def4567890abc123de";
+    const store = new Store(dir);
+    store.init();
+    store.upsertSentryRelease(release({ gitCommitSha: sha }));
+    let list = store.listSentryReleasesForResource("sentry:project:450");
+    expect(list[0]!.gitCommitSha).toBe(sha);
+    expect(list[0]!.version).toBe("frontend@1.0.0");
+    // Later successful normalize without valid SHA updates to null.
+    store.upsertSentryRelease(release({ gitCommitSha: null }));
+    list = store.listSentryReleasesForResource("sentry:project:450");
+    expect(list[0]!.gitCommitSha).toBeNull();
+    store.close();
+  });
+
+  test("Sprint 046: pre-046 sentry_releases upgrades with nullable git_commit_sha", () => {
+    const sha = "abc123def4567890abc123def4567890abc123de";
+    const path = dbPath(dir);
+    const raw = new Database(path);
+    raw.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL,
+        last_sync_at TEXT, config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE resources (
+        id TEXT PRIMARY KEY, provider TEXT NOT NULL,
+        provider_resource_id TEXT NOT NULL, kind TEXT NOT NULL,
+        name TEXT NOT NULL, metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(provider, kind, provider_resource_id)
+      );
+      CREATE TABLE sentry_releases (
+        version TEXT NOT NULL, resource_id TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'sentry', project_id TEXT NOT NULL,
+        short_version TEXT, status TEXT, date_created TEXT NOT NULL,
+        date_released TEXT, observed_at TEXT NOT NULL,
+        PRIMARY KEY (version, resource_id)
+      );
+      INSERT INTO sentry_releases (
+        version, resource_id, project_id, short_version, status,
+        date_created, date_released, observed_at
+      ) VALUES (
+        'frontend@1.0.0', 'sentry:project:450', '450', '1.0.0', 'open',
+        '2026-08-09T10:00:00.000Z', NULL, '2026-08-09T12:00:00.000Z'
+      );
+    `);
+    raw.close();
+
+    const upgraded = new Store(dir);
+    expect(upgraded.isInitialized()).toBe(true);
+    upgraded.init();
+    const old = upgraded.listSentryReleasesForResource("sentry:project:450");
+    expect(old).toHaveLength(1);
+    expect(old[0]!.gitCommitSha).toBeNull();
+    expect(old[0]!.version).toBe("frontend@1.0.0");
+    upgraded.upsertSentryRelease(release({ gitCommitSha: sha }));
+    expect(
+      upgraded.listSentryReleasesForResource("sentry:project:450")[0]!
+        .gitCommitSha,
+    ).toBe(sha);
+    upgraded.close();
   });
 
   test("pre-043 DB upgrade and refresh failure retains rows", () => {

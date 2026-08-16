@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS sentry_releases (
   status TEXT,
   date_created TEXT NOT NULL,
   date_released TEXT,
+  git_commit_sha TEXT,
   observed_at TEXT NOT NULL,
   PRIMARY KEY (version, resource_id)
 );
@@ -284,6 +285,8 @@ export class Store {
     this.ensureRefreshLastSuccessObservedAtColumns(db);
     // Sprint 035: pre-035 vercel_deployments lack git_commit_sha (nullable).
     this.ensureNullableTextColumn(db, "vercel_deployments", "git_commit_sha");
+    // Sprint 046: pre-046 sentry_releases lack git_commit_sha (nullable).
+    this.ensureNullableTextColumn(db, "sentry_releases", "git_commit_sha");
   }
 
   /**
@@ -1177,8 +1180,9 @@ export class Store {
       .query(
         `INSERT INTO sentry_releases (
            version, resource_id, provider, project_id,
-           short_version, status, date_created, date_released, observed_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           short_version, status, date_created, date_released,
+           git_commit_sha, observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(version, resource_id) DO UPDATE SET
            provider = excluded.provider,
            project_id = excluded.project_id,
@@ -1186,6 +1190,7 @@ export class Store {
            status = excluded.status,
            date_created = excluded.date_created,
            date_released = excluded.date_released,
+           git_commit_sha = excluded.git_commit_sha,
            observed_at = excluded.observed_at`,
       )
       .run(
@@ -1197,6 +1202,7 @@ export class Store {
         release.status,
         release.dateCreated,
         release.dateReleased,
+        release.gitCommitSha,
         release.observedAt,
       );
   }
@@ -1209,7 +1215,8 @@ export class Store {
     const rows = this.getDb()
       .query(
         `SELECT version, resource_id, provider, project_id,
-                short_version, status, date_created, date_released, observed_at
+                short_version, status, date_created, date_released,
+                git_commit_sha, observed_at
          FROM sentry_releases
          WHERE resource_id = ?
          ORDER BY date_created DESC, version DESC`,
@@ -1671,6 +1678,7 @@ interface SentryReleaseRow {
   status: string | null;
   date_created: string;
   date_released: string | null;
+  git_commit_sha: string | null;
   observed_at: string;
 }
 
@@ -1685,6 +1693,7 @@ function mapSentryRelease(row: SentryReleaseRow): SentryReleaseEvidence {
     dateCreated: row.date_created,
     dateReleased: row.date_released,
     observedAt: row.observed_at,
+    gitCommitSha: row.git_commit_sha,
   };
 }
 

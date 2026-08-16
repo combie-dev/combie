@@ -1,6 +1,6 @@
 # SPRINT-046 — Sentry Release Commit Identity + Shared-Commit inside `code_mapped_to`
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-045 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.5 exact cross-provider
 > shared evidence + Safe Semantic Boundary; Sprint 045 leftover earned-join
@@ -654,21 +654,21 @@ Confirm exactly four MCP tools remain registered.
 
 # Definition of Done
 
-- [ ] Sprint 046 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: compact release `gitCommitSha` persist + allowlist
-- [ ] if earned: shared-commit composer supports `code_mapped_to`
-- [ ] if earned: CLI SHARED COMMIT CONTEXT + RELEASES SHA display
-- [ ] if earned: Known Facts / Missing Context stay inside claim classes
-- [ ] if earned: MCP parity through the existing four tools
-- [ ] if not earned: rejection documented; no version-string join
-- [ ] existing `source_for` shared-commit behavior unchanged
-- [ ] no Change pollution; no secrets in output, errors, or fixtures
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged unless material semantics require an update
+- [x] Sprint 046 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: compact release `gitCommitSha` persist + allowlist
+- [x] if earned: shared-commit composer supports `code_mapped_to`
+- [x] if earned: CLI SHARED COMMIT CONTEXT + RELEASES SHA display
+- [x] if earned: Known Facts / Missing Context stay inside claim classes
+- [x] if earned: MCP parity through the existing four tools
+- [x] if not earned: rejection documented; no version-string join
+- [x] existing `source_for` shared-commit behavior unchanged
+- [x] no Change pollution; no secrets in output, errors, or fixtures
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged unless material semantics require an update
 
 ---
 
@@ -694,3 +694,133 @@ One composer, two relationship kinds, exact SHA, already-proven edges.
 > share an exact Git commit inside a proven relationship. Sprint 046
 > may say that for `code_mapped_to`. It must not say what that commit
 > caused.**
+
+---
+
+# Completion Notes (Sprint 046)
+
+## Phase 1 — Repository Understanding Report
+
+1. **Current release persist shape.** `sentry_releases` table
+   (`store.ts`), PK `(version, resource_id)`, columns provider, project
+   id, short version, status, created/released/observed times.
+   `SentryReleaseEvidence` carried no commit identity; Vercel evidence
+   already had `gitCommitSha?` via `canonicalizeFullGitCommitSha`.
+2. **Vercel `gitCommitSha` precedent (Sprint 034/035).** Nullable
+   `git_commit_sha` column added through `ensureNullableTextColumn` in
+   `applySchema`; upsert updates it; absent/invalid stores null; no
+   Resource Changes from backfill. Same pattern reused for Sentry.
+3. **Widening `GitCommitEvidenceGroup`.** The group already carries
+   `relationshipKind`; widening the union to `"source_for" |
+   "code_mapped_to"` plus an optional `releases` member array is a
+   plain type extension of one composer — no generic engine needed.
+4. **One-sided SHA in Missing Context.** A `code_mapped_to` edge with no
+   two-sided full SHA should produce a truthful UNKNOWN item;
+   `no_known_relationships` must stay the only item when no edge exists.
+5. **Generic Correlation primitive.** Not earned. One composer, two
+   relationship kinds, exact SHA, proven edges (Anti-Overengineering
+   rules).
+
+## Phase 2 — Architecture Pressure Report
+
+1. **Which list field is a full Git commit SHA?** `lastCommit.id` is
+   the raw commit key and is a full SHA in production whenever a commit
+   is associated with the release.
+2. **Is `lastCommit.id` ever abbreviated?** It can be (Sprint 043
+   fixture uses `"abc123"`). The allowlist canonicalizer drops anything
+   that is not 40/64 lowercase hex.
+3. **Is `ref` a SHA, branch, tag, or mixed?** Mixed — `ref` may be a
+   branch or tag. Persist only when it canonicalizes as a full SHA
+   (fallback when `lastCommit.id` is absent or invalid).
+4. **N+1?** No. The release list payload supplies the identity; no
+   commit/release-details endpoint is fetched. Missing/invalid SHA is a
+   null, never a failed refresh.
+5. **Never persist.** `lastCommit` message/author/email, `commits[]`
+   blobs, `version` / `shortVersion` (never parsed as SHA), DSN, env,
+   issue release references, temporal proximity, slug/display-name
+   matching.
+6. **Live `combie-dogfood` releases.** Created via API without commits:
+   no extractable SHA. Known-empty identifier is the accepted dogfood
+   outcome and was validated live (null persisted, no `git commit`
+   line, no group).
+7. **Canon change?** None required. AGENTS.md updates after
+   implementation as planned.
+
+**Verdict: EARNED — implement.** `lastCommit.id` primary, `ref` fallback,
+both behind `canonicalizeFullGitCommitSha` (shared helper already used
+by the composer, per Sprint's "or an equivalent shared helper").
+
+## Implemented
+
+- `SentryReleaseEvidence.gitCommitSha` + `extractReleaseGitCommitSha`
+  (`lastCommit.id` → `ref` fallback, allowlist-only) in
+  `src/providers/sentry/release.ts`
+- `sentry_releases.git_commit_sha` nullable column via
+  `ensureNullableTextColumn` (pre-046 DBs upgrade in place); upsert
+  stores/updates/nulls it; no Resource Changes from SHA backfill
+- `composeSharedCommitContext` widened: `relationshipKind` union +
+  `releases` members; `code_mapped_to` branch groups workflow-run
+  `headSha` + release `gitCommitSha`; two kinds never merge; `source_for`
+  branch byte-identical
+- CLI: `RELEASES` shows `git commit:` only when present; SHARED COMMIT
+  CONTEXT renders `code_mapped_to` groups with the ROADMAP wording
+- Known Facts: `shared_commit_relationship` (code_mapped_to groups
+  only), pushed last within `MAX_INVESTIGATION_FACTS` — never displaces
+  authority/release/issue facts
+- Missing Context: `code_mapped_to_without_shared_commit` (sort
+  category 4), emitted per un-grouped proven edge, safe UNKNOWN wording
+- MCP: unchanged — exactly four tools; `sharedCommitContext` carries
+  the second kind through the existing payload
+- Tests: 27 new (normalization allowlist, storage/upgrade, composer
+  regression + new kind, CLI investigation, facts budget, missing
+  context, MCP protocol); 821 pass / 0 fail
+
+## Deviations
+
+- Live org still has **zero** Sentry code mappings, so no populated
+  `code_mapped_to` edge exists and no live shared-commit group was
+  assertable. Validated the truthful known-empty path live instead:
+  0 groups, 0 shared-commit facts, release `gitCommitSha` null, no
+  `git commit:` line, missing context = `no_known_relationships` only.
+  This is inventory-empty, not a defect; no mapping was created to
+  force an edge (dogfood rules).
+- `canonicalizeFullGitCommitSha` imported from
+  `src/providers/vercel/deployment.ts` (shared helper already used by
+  `shared-commit-context.ts`), rather than a new copy.
+
+## Validation
+
+```text
+bun test:          821 pass across 74 files (was 794 / 74)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources (unchanged)
+live GitHub+Sentry: sync ok (312 repos, 1 project, 3 releases,
+                   no duplicates); pre-046 DB upgraded in place;
+                   investigate offline replay identical; MCP parity
+                   with DB SHA-256 unchanged; no `git commit:` line
+                   (releases carry no commit — truthful)
+```
+
+## Learnings
+
+- `lastCommit.id` is the only reliable list-level commit identity;
+  `ref` is too mixed to trust beyond the allowlist fallback.
+- The live pre-046 DB (Sprint 045 state) upgraded in place with zero
+  data loss and no Change rows — the migration path is validated on
+  real data, not just fixtures.
+- Null/one-sided SHA stays release metadata: no group, no fact, and no
+  Missing Context item when no edge exists — all three surfaces stayed
+  truthful on the live known-empty org.
+- Pushing `shared_commit_relationship` last in the facts pipeline
+  preserves higher-priority authority facts under a full budget; a
+  dedicated test asserts no displacement.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL are unchanged. AGENTS.md
+operational baseline becomes Sprints 001–046 complete: Sentry releases
+carry a compact optional full Git commit SHA, and ephemeral
+shared-commit grouping now also covers `code_mapped_to` under the
+ROADMAP v0.5 Safe Semantic Boundary. Sprint 047 is not started.

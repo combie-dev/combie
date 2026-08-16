@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
 import { Store } from "../../src/storage/store.ts";
@@ -84,6 +85,116 @@ describe("MCP stdio contract", () => {
       ]) {
         expect(result.structuredContent).toHaveProperty(key);
       }
+    } finally {
+      await client.close();
+    }
+
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("investigate_resource returns code_mapped_to shared commit context without mutating state", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-046-"));
+    dirs.push(dir);
+    const sha = "abc123def4567890abc123def4567890abc123de";
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "456",
+      kind: "repository",
+      name: "example/demo",
+      metadata: { fullName: "example/demo" },
+    });
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "demo",
+      metadata: { organizationSlug: "example" },
+    });
+    store.applyResource(repository, {
+      id: "b1",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.applyResource(project, {
+      id: "b2",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "code_mapped_to",
+        evidence: {
+          source: "sentry",
+          mechanism: "code_mapping",
+          repository: "example/demo",
+        },
+      }),
+    );
+    store.upsertGitHubWorkflowRun({
+      provider: "github",
+      runId: 9001,
+      resourceId: repository.id,
+      repositoryId: "456",
+      workflowId: 1,
+      name: "CI",
+      runNumber: 12,
+      runAttempt: 1,
+      event: "push",
+      status: "completed",
+      conclusion: "failure",
+      headBranch: "main",
+      headSha: sha,
+      createdAt: "2026-08-09T10:00:00.000Z",
+      runStartedAt: null,
+      updatedAt: null,
+      observedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.upsertSentryRelease({
+      provider: "sentry",
+      version: "frontend@1.2.0",
+      resourceId: project.id,
+      projectId: "450",
+      shortVersion: "1.2.0",
+      status: "open",
+      dateCreated: "2026-08-09T12:00:00.000Z",
+      dateReleased: null,
+      observedAt: "2026-08-09T12:00:00.000Z",
+      gitCommitSha: sha,
+    });
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-046", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: project.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const groups = (result.structuredContent as {
+        sharedCommitContext?: Array<Record<string, unknown>>;
+      })?.sharedCommitContext;
+      expect(groups).toBeDefined();
+      expect(groups).toHaveLength(1);
+      expect(groups![0]).toMatchObject({
+        relationshipKind: "code_mapped_to",
+        commitSha: sha,
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+      });
     } finally {
       await client.close();
     }

@@ -12,6 +12,7 @@ import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import type { GitHubWorkflowRunEvidence } from "../../src/providers/github/workflow-run.ts";
 import type { VercelDeploymentEvidence } from "../../src/providers/vercel/deployment.ts";
+import type { SentryReleaseEvidence } from "../../src/providers/sentry/release.ts";
 import { dbPath } from "../../src/storage/paths.ts";
 import { Store } from "../../src/storage/store.ts";
 
@@ -126,7 +127,167 @@ function dep(
   };
 }
 
-describe("investigate shared commit context (Sprint 035)", () => {
+function seedRepoAndSentryProject(store: Store) {
+  const repository = createResource({
+    provider: "github",
+    providerResourceId: "915052094",
+    kind: "repository",
+    name: "demo",
+    metadata: { fullName: "acme/demo", owner: "acme" },
+  });
+  const sentryProject = createResource({
+    provider: "sentry",
+    providerResourceId: "450",
+    kind: "project",
+    name: "combie",
+    metadata: { organizationSlug: "acme" },
+  });
+  store.applyResource(repository, {
+    id: "repo-baseline",
+    observedAt: "2026-08-09T08:00:00.000Z",
+  });
+  store.applyResource(sentryProject, {
+    id: "sentry-baseline",
+    observedAt: "2026-08-09T08:00:00.000Z",
+  });
+  store.upsertRelationship(
+    createRelationship({
+      sourceResourceId: repository.id,
+      targetResourceId: sentryProject.id,
+      kind: "code_mapped_to",
+      evidence: {
+        source: "sentry",
+        mechanism: "code_mapping",
+        repository: "acme/demo",
+      },
+    }),
+  );
+  return { repository, sentryProject };
+}
+
+function sentryRelease(
+  overrides: Partial<SentryReleaseEvidence> = {},
+): SentryReleaseEvidence {
+  return {
+    provider: "sentry",
+    version: "frontend@1.2.0",
+    resourceId: "sentry:project:450",
+    projectId: "450",
+    shortVersion: "1.2.0",
+    status: "open",
+    dateCreated: "2026-08-09T12:00:00.000Z",
+    dateReleased: null,
+    observedAt: "2026-08-09T12:00:00.000Z",
+    gitCommitSha: SHA,
+    ...overrides,
+  };
+}
+
+describe("investigate shared commit context (Sprint 046)", () => {
+  test("CLI shows code_mapped_to SHARED COMMIT CONTEXT and release git commit", () => {
+    const store = openStore();
+    const { repository, sentryProject } = seedRepoAndSentryProject(store);
+    store.upsertGitHubWorkflowRun(run());
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: repository.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.upsertSentryRelease(sentryRelease());
+    store.setSentryReleaseRefresh({
+      resourceId: sentryProject.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.close();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("network must not be used during investigate");
+    }) as unknown as typeof fetch;
+
+    try {
+      const fromProject = getInvestigationContext({
+        baseDir: dir,
+        resourceRef: sentryProject.id,
+      });
+      const outProject = formatInvestigationContext(fromProject);
+      expect(outProject).toContain("SHARED COMMIT CONTEXT");
+      expect(outProject).toContain(`Commit ${SHA}`);
+      expect(outProject).toContain("Sentry releases");
+      expect(outProject).toContain("frontend@1.2.0");
+      expect(outProject).toContain("status=open");
+      expect(outProject).toContain("9001");
+      expect(outProject).toContain("git commit: " + SHA);
+      expect(outProject).toContain(
+        "GitHub workflow-run and Sentry release evidence reference the same exact Git commit within an already-proven code_mapped_to resource relationship",
+      );
+      expect(outProject).toContain(
+        `${repository.id} code_mapped_to ${sentryProject.id}`,
+      );
+      expect(outProject).not.toContain("triggered");
+      expect(outProject).not.toContain("caused by");
+      expect(outProject).not.toContain("deployed by");
+      expect(outProject).not.toContain("same incident");
+      expect(outProject).toContain("MISSING CONTEXT");
+      expect(outProject).not.toContain(
+        "no full Git commit SHA is currently held on both a GitHub workflow run and a Sentry release",
+      );
+
+      const fromRepo = getInvestigationContext({
+        baseDir: dir,
+        resourceRef: repository.id,
+      });
+      const outRepo = formatInvestigationContext(fromRepo);
+      expect(outRepo).toContain("SHARED COMMIT CONTEXT");
+      expect(outRepo).toContain(`Commit ${SHA}`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("one-sided SHA under code_mapped_to → no group, MISSING CONTEXT item", () => {
+    const store = openStore();
+    const { repository, sentryProject } = seedRepoAndSentryProject(store);
+    store.upsertGitHubWorkflowRun(run());
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: repository.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.upsertSentryRelease(sentryRelease({ gitCommitSha: null }));
+    store.setSentryReleaseRefresh({
+      resourceId: sentryProject.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 1,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.close();
+
+    const out = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: sentryProject.id }),
+    );
+    expect(out).not.toContain("SHARED COMMIT CONTEXT");
+    expect(out).toContain("MISSING CONTEXT");
+    expect(out).toContain(
+      "A code_mapped_to relationship exists (" +
+        `rel:${repository.id}:code_mapped_to:${sentryProject.id}), ` +
+        "but no full Git commit SHA is currently held on both a GitHub workflow run and a Sentry release.",
+    );
+  });
+});
+  describe("investigate shared commit context (Sprint 035)", () => {
   test("CLI shows SHARED COMMIT CONTEXT for matching evidence under source_for", () => {
     const store = openStore();
     const { repository, project } = seedRepoAndProject(store);

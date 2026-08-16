@@ -7,6 +7,11 @@ import type {
   GitHubWorkflowRunEvidence,
   WorkflowRunEvidenceAuthority,
 } from "../providers/github/workflow-run.ts";
+import {
+  type ReleaseEvidenceAuthority,
+  type SentryReleaseEvidence,
+} from "../providers/sentry/release.ts";
+import { isGitHubSentryCodeMappedTo } from "./infer-github-sentry.ts";
 import { isGitHubVercelSourceFor } from "./infer-github-vercel.ts";
 import type { InvestigationContext } from "./investigate.ts";
 
@@ -27,24 +32,32 @@ export interface SharedCommitDeploymentMember {
   role: SharedCommitMemberRole;
 }
 
+export interface SharedCommitReleaseMember {
+  evidence: SentryReleaseEvidence;
+  authorityKind: SharedCommitMemberAuthority;
+  role: SharedCommitMemberRole;
+}
+
 /**
  * Ephemeral group of provider evidence that reference the same exact Git
- * commit within one proven source_for Relationship.
+ * commit within one proven source_for or code_mapped_to Relationship.
  *
  * Not lineage. Not causality. Not a durable association.
  */
 export interface GitCommitEvidenceGroup {
   /** Canonical full Git commit SHA (40 or 64 lowercase hex). */
   commitSha: string;
-  /** Canonical source_for Relationship id. */
+  /** Canonical Relationship id. */
   relationshipId: string;
-  relationshipKind: "source_for";
+  relationshipKind: "source_for" | "code_mapped_to";
   /** GitHub repository Resource id (source endpoint). */
   sourceResourceId: string;
-  /** Vercel project Resource id (target endpoint). */
+  /** Vercel project or Sentry project Resource id (target endpoint). */
   targetResourceId: string;
   workflowRuns: SharedCommitWorkflowMember[];
   deployments: SharedCommitDeploymentMember[];
+  /** Sentry release members (code_mapped_to groups only; empty for source_for). */
+  releases: SharedCommitReleaseMember[];
   /**
    * True when any member was drawn from unknown-authority retained evidence.
    * Groups operate over held evidence and do not prove latest-response membership.
@@ -57,21 +70,23 @@ interface ResourceEvidenceBundle {
   role: SharedCommitMemberRole;
   workflowRuns: SharedCommitWorkflowMember[];
   deployments: SharedCommitDeploymentMember[];
+  releases: SharedCommitReleaseMember[];
 }
 
 /**
  * Pure, deterministic, offline projection of shared Git commit identity across
- * GitHub workflow-run evidence and Vercel deployment evidence already present
- * on an InvestigationContext.
+ * provider evidence already present on an InvestigationContext.
  *
  * Match predicate (all required):
- * 1. source_for Relationship (GitHub repository → Vercel project)
+ * 1. a proven source_for (GitHub repository → Vercel project) or
+ *    code_mapped_to (GitHub repository → Sentry project) Relationship
  * 2. workflow run bound to that repository Resource
- * 3. deployment bound to that Vercel project Resource
+ * 3. deployment / release evidence bound to that target Resource
  * 4. exact equality of canonical full commit SHAs
  *
  * Global SHA matching is forbidden. Pairwise edges are not emitted —
  * many-to-many evidence collapses to one group per (relationship, commitSha).
+ * The two relationship kinds never merge into one group.
  */
 export function composeSharedCommitContext(
   context: InvestigationContext,
@@ -85,36 +100,73 @@ export function composeSharedCommitContext(
 
   for (const neighbor of context.related) {
     const rel = neighbor.relationship;
-    if (!isGitHubVercelSourceFor(rel)) continue;
 
-    const source = byResourceId.get(rel.sourceResourceId);
-    const target = byResourceId.get(rel.targetResourceId);
-    if (!source || !target) continue;
+    if (isGitHubVercelSourceFor(rel)) {
+      const source = byResourceId.get(rel.sourceResourceId);
+      const target = byResourceId.get(rel.targetResourceId);
+      if (!source || !target) continue;
 
-    const runsBySha = indexWorkflowRunsBySha(source.workflowRuns);
-    const deploysBySha = indexDeploymentsBySha(target.deployments);
+      const runsBySha = indexWorkflowRunsBySha(source.workflowRuns);
+      const deploysBySha = indexDeploymentsBySha(target.deployments);
 
-    const shas = [...runsBySha.keys()]
-      .filter((sha) => deploysBySha.has(sha))
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      const shas = [...runsBySha.keys()]
+        .filter((sha) => deploysBySha.has(sha))
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
-    for (const commitSha of shas) {
-      const workflowRuns = runsBySha.get(commitSha)!;
-      const deployments = deploysBySha.get(commitSha)!;
-      if (workflowRuns.length === 0 || deployments.length === 0) continue;
+      for (const commitSha of shas) {
+        const workflowRuns = runsBySha.get(commitSha)!;
+        const deployments = deploysBySha.get(commitSha)!;
+        if (workflowRuns.length === 0 || deployments.length === 0) continue;
 
-      groups.push({
-        commitSha,
-        relationshipId: rel.id,
-        relationshipKind: "source_for",
-        sourceResourceId: rel.sourceResourceId,
-        targetResourceId: rel.targetResourceId,
-        workflowRuns,
-        deployments,
-        includesUnknownAuthority:
-          workflowRuns.some((m) => m.authorityKind === "unknown") ||
-          deployments.some((m) => m.authorityKind === "unknown"),
-      });
+        groups.push({
+          commitSha,
+          relationshipId: rel.id,
+          relationshipKind: "source_for",
+          sourceResourceId: rel.sourceResourceId,
+          targetResourceId: rel.targetResourceId,
+          workflowRuns,
+          deployments,
+          releases: [],
+          includesUnknownAuthority:
+            workflowRuns.some((m) => m.authorityKind === "unknown") ||
+            deployments.some((m) => m.authorityKind === "unknown"),
+        });
+      }
+      continue;
+    }
+
+    if (isGitHubSentryCodeMappedTo(rel)) {
+      const source = byResourceId.get(rel.sourceResourceId);
+      const target = byResourceId.get(rel.targetResourceId);
+      if (!source || !target) continue;
+
+      const runsBySha = indexWorkflowRunsBySha(source.workflowRuns);
+      const releasesBySha = indexReleasesBySha(target.releases);
+
+      const shas = [...runsBySha.keys()]
+        .filter((sha) => releasesBySha.has(sha))
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+      for (const commitSha of shas) {
+        const workflowRuns = runsBySha.get(commitSha)!;
+        const releases = releasesBySha.get(commitSha)!;
+        if (workflowRuns.length === 0 || releases.length === 0) continue;
+
+        groups.push({
+          commitSha,
+          relationshipId: rel.id,
+          relationshipKind: "code_mapped_to",
+          sourceResourceId: rel.sourceResourceId,
+          targetResourceId: rel.targetResourceId,
+          workflowRuns,
+          deployments: [],
+          releases,
+          includesUnknownAuthority:
+            workflowRuns.some((m) => m.authorityKind === "unknown") ||
+            releases.some((m) => m.authorityKind === "unknown"),
+        });
+      }
+      continue;
     }
   }
 
@@ -151,6 +203,7 @@ function collectResourceBundles(
         context.subjectDeployments,
         "subject",
       ),
+      releases: membersFromReleaseAuthority(context.subjectReleases, "subject"),
     },
   ];
 
@@ -167,6 +220,7 @@ function collectResourceBundles(
         neighbor.deployments,
         "related",
       ),
+      releases: membersFromReleaseAuthority(neighbor.releases, "related"),
     });
   }
 
@@ -199,6 +253,19 @@ function membersFromDeploymentAuthority(
   }));
 }
 
+function membersFromReleaseAuthority(
+  authority: ReleaseEvidenceAuthority,
+  role: SharedCommitMemberRole,
+): SharedCommitReleaseMember[] {
+  if (authority.kind === "not_applicable") return [];
+  const kind = authority.kind;
+  return authority.releases.map((evidence) => ({
+    evidence,
+    authorityKind: kind,
+    role,
+  }));
+}
+
 function indexWorkflowRunsBySha(
   members: SharedCommitWorkflowMember[],
 ): Map<string, SharedCommitWorkflowMember[]> {
@@ -217,6 +284,21 @@ function indexDeploymentsBySha(
   members: SharedCommitDeploymentMember[],
 ): Map<string, SharedCommitDeploymentMember[]> {
   const map = new Map<string, SharedCommitDeploymentMember[]>();
+  for (const member of members) {
+    // Prefer already-canonical stored value; re-validate for composition safety.
+    const sha = canonicalizeFullGitCommitSha(member.evidence.gitCommitSha);
+    if (!sha) continue;
+    const list = map.get(sha);
+    if (list) list.push(member);
+    else map.set(sha, [member]);
+  }
+  return map;
+}
+
+function indexReleasesBySha(
+  members: SharedCommitReleaseMember[],
+): Map<string, SharedCommitReleaseMember[]> {
+  const map = new Map<string, SharedCommitReleaseMember[]>();
   for (const member of members) {
     // Prefer already-canonical stored value; re-validate for composition safety.
     const sha = canonicalizeFullGitCommitSha(member.evidence.gitCommitSha);

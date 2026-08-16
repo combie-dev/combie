@@ -23,6 +23,10 @@ import type {
   SentryIssueEvidence,
 } from "../../src/providers/sentry/issue.ts";
 import type {
+  ReleaseEvidenceAuthority,
+  SentryReleaseEvidence,
+} from "../../src/providers/sentry/release.ts";
+import type {
   DeploymentEvidenceAuthority,
   VercelDeploymentEvidence,
 } from "../../src/providers/vercel/deployment.ts";
@@ -1347,5 +1351,141 @@ describe("known facts formatting", () => {
     ]) {
       expect(knownFacts).not.toContain(unsafe);
     }
+  });
+});
+
+describe("shared_commit_relationship facts (Sprint 046)", () => {
+  const SHA = "abc123def4567890abc123def4567890abc123de";
+  const REPO_ID = "github:repository:101";
+  const SENTRY_ID = "sentry:project:450";
+
+  function codeMappedTo(repository: Resource, project: Resource) {
+    return createRelationship({
+      sourceResourceId: repository.id,
+      targetResourceId: project.id,
+      kind: "code_mapped_to",
+      evidence: {
+        source: "sentry",
+        mechanism: "code_mapping",
+        repository: "acme/app",
+      },
+      createdAt: OBSERVED_AT,
+      updatedAt: OBSERVED_AT,
+    });
+  }
+
+  function sentryRelease(
+    overrides: Partial<SentryReleaseEvidence> = {},
+  ): SentryReleaseEvidence {
+    return {
+      provider: "sentry",
+      version: "frontend@1.2.0",
+      resourceId: SENTRY_ID,
+      projectId: "450",
+      shortVersion: "1.2.0",
+      status: "open",
+      dateCreated: OBSERVED_AT,
+      dateReleased: null,
+      observedAt: OBSERVED_AT,
+      gitCommitSha: SHA,
+      ...overrides,
+    };
+  }
+
+  function unknownReleases(
+    items: SentryReleaseEvidence[],
+  ): ReleaseEvidenceAuthority {
+    return {
+      kind: "unknown",
+      releases: items,
+      latestAttemptObservedAt: null,
+      lastSuccessAt: null,
+      resultCount: null,
+      message: null,
+    };
+  }
+
+  function groupedContext() {
+    const repository = resource("github", "repository", "101");
+    const project = resource("sentry", "project", "450");
+    return context({
+      subject: repository,
+      subjectWorkflowRuns: {
+        kind: "populated",
+        observedAt: OBSERVED_AT,
+        resultCount: 1,
+        runs: [workflowRun({ headSha: SHA })],
+      },
+      related: [
+        {
+          relationship: codeMappedTo(repository, project),
+          direction: "outbound",
+          resource: project,
+          changes: [],
+          deployments: NA_DEPLOYMENTS,
+          workflowRuns: NA_RUNS,
+          operations: NA_OPERATIONS,
+          releases: {
+            kind: "populated",
+            observedAt: OBSERVED_AT,
+            resultCount: 1,
+            releases: [sentryRelease()],
+          },
+          issues: { kind: "not_applicable" as const },
+        },
+      ],
+    });
+  }
+
+  test("code_mapped_to shared commit earns a fact when the budget allows", () => {
+    const ctx = groupedContext();
+    const facts = composeInvestigationFacts(ctx);
+    expect(facts.length).toBeLessThanOrEqual(MAX_INVESTIGATION_FACTS);
+    const fact = facts.find((f) => f.kind === "shared_commit_relationship");
+    expect(fact).toBeDefined();
+    expect(fact).toMatchObject({
+      kind: "shared_commit_relationship",
+      subjectResourceId: REPO_ID,
+      commitSha: SHA,
+      relationshipId: `rel:${REPO_ID}:code_mapped_to:${SENTRY_ID}`,
+      sourceResourceId: REPO_ID,
+      targetResourceId: SENTRY_ID,
+    });
+    expect(
+      facts.filter((f) => f.kind === "shared_commit_relationship"),
+    ).toHaveLength(1);
+  });
+
+  test("never displaces higher-priority authority facts when the budget is full", () => {
+    const repository = resource("github", "repository", "101");
+    const project = resource("sentry", "project", "450");
+    const facts = composeInvestigationFacts(
+      context({
+        subject: repository,
+        subjectWorkflowRuns: unknownRuns([
+          workflowRun({ runId: 9002, conclusion: "failure", headSha: SHA }),
+        ]),
+        related: [
+          {
+            relationship: codeMappedTo(repository, project),
+            direction: "outbound",
+            resource: project,
+            changes: [],
+            deployments: NA_DEPLOYMENTS,
+            workflowRuns: NA_RUNS,
+            operations: NA_OPERATIONS,
+            releases: unknownReleases([sentryRelease()]),
+            issues: { kind: "not_applicable" as const },
+          },
+        ],
+      }),
+    );
+    expect(facts.length).toBe(MAX_INVESTIGATION_FACTS);
+    expect(
+      facts.some((f) => f.kind === "provider_evidence_authority"),
+    ).toBe(true);
+    expect(
+      facts.some((f) => f.kind === "shared_commit_relationship"),
+    ).toBe(false);
   });
 });

@@ -67,6 +67,7 @@ function release(
     dateCreated: "2026-08-09T12:00:00.000Z",
     dateReleased: "2026-08-09T12:05:00.000Z",
     observedAt: "2026-08-09T14:00:00.000Z",
+    gitCommitSha: null,
     ...overrides,
   };
 }

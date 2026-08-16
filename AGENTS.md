@@ -1,13 +1,12 @@
 # AGENTS.md — Combie
 
-Combie is the open engineering context layer. Sprints 001–045 implement the
+Combie is the open engineering context layer. Sprints 001–046 implement the
 local multi-provider context foundation through **Cloudflare**, **GitHub**,
 **Vercel**, **Sentry**, **Neon**, and **PlanetScale**, including deterministic
 Relationships (including GitHub↔Sentry `code_mapped_to`), retained provider
-evidence (including Sentry releases and Sentry issue aggregates), offline
-investigation, read-only MCP, release distribution, guided agent setup, and a
-concluded GitHub-first closed beta. Sprint 046 is the active Sentry release
-commit-identity + shared-commit-inside-`code_mapped_to` slice.
+evidence (including Sentry releases, release commit identities, and Sentry
+issue aggregates), offline investigation, read-only MCP, release distribution,
+guided agent setup, and a concluded GitHub-first closed beta.
 
 ## Mandatory reading order before any substantive change
 
@@ -29,7 +28,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–045 complete (046 is active)
+## Current baseline: Sprints 001–046 complete
 
 Multi-provider connection loop:
 
@@ -60,17 +59,20 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `sentry_release` / `sentry_issue` provider activity, and compact
   project-scoped GitHub code-mapping facts used only for `code_mapped_to`.
   Issue rows are current-state snapshots (`firstSeen` / `lastSeen` /
-  `count`), not an occurrence log.
-- **Sprint 046 scope:** persist a compact Sentry release Git commit SHA
-  when the provider supplies a full SHA, and extend existing ephemeral
-  shared-commit grouping to `code_mapped_to` only (ROADMAP v0.5 Safe
-  Semantic Boundary). Do not expand MCP tools or schemas, add write paths,
-  invent `code_mapped_to`, join on version strings, add release↔deploy or
-  release↔issue joins, a generic Event or Correlation abstraction, Sentry
-  occurrence-level error events (Class D), a durable Investigation object,
-  additional providers, broader ontology/identity, model reasoning,
-  background sync, webhooks, telemetry ingestion, operational learning,
-  policy, or execution.
+  `count`), not an occurrence log. Sentry releases carry an optional
+  compact full Git commit SHA (`lastCommit.id` / `ref` allowlist) shown
+  as `git commit` in RELEASES and used only for shared-commit grouping
+  inside `code_mapped_to`.
+- **Sprint 046 shipped:** persist a compact Sentry release Git commit
+  SHA when the provider supplies a full SHA, and extend existing
+  ephemeral shared-commit grouping to `code_mapped_to` only (ROADMAP
+  v0.5 Safe Semantic Boundary). Do not expand MCP tools or schemas, add
+  write paths, invent `code_mapped_to`, join on version strings, add
+  release↔deploy or release↔issue joins, a generic Event or Correlation
+  abstraction, Sentry occurrence-level error events (Class D), a durable
+  Investigation object, additional providers, broader ontology/identity,
+  model reasoning, background sync, webhooks, telemetry ingestion,
+  operational learning, policy, or execution.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.

@@ -189,4 +189,49 @@ describe("syncSentryReleases", () => {
     expect(store.listChanges()).toHaveLength(0);
     store.close();
   });
+
+  test("Sprint 046: full SHA in lastCommit.id persists without Changes or refresh failure", async () => {
+    const sha = "abc123def4567890abc123def4567890abc123de";
+    const store = new Store(dir);
+    store.init();
+    const project = projectResource();
+    store.applyResource(project, {
+      id: "b1",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+
+    const payload = [
+      {
+        id: 20,
+        version: "frontend@2.0.0",
+        shortVersion: "2.0.0",
+        status: "open",
+        dateCreated: "2026-08-10T12:00:00Z",
+        dateReleased: null,
+        lastCommit: {
+          id: sha,
+          message: "ship it",
+          author: { email: "ada@example.com" },
+        },
+        projects: [{ id: 450, slug: "combie", name: "combie" }],
+      },
+    ];
+    const result = await syncSentryReleases({
+      store,
+      token: "token",
+      projects: [project],
+      observedAt: "2026-08-09T12:00:00.000Z",
+      fetch: (async () => Response.json(payload)) as unknown as typeof fetch,
+    });
+
+    expect(result.refreshed).toBe(1);
+    expect(result.failed).toBe(0);
+    const list = store.listSentryReleasesForResource(project.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.gitCommitSha).toBe(sha);
+    expect(store.getSentryReleaseRefresh(project.id)?.status).toBe("success");
+    expect(store.getSentryReleaseRefresh(project.id)?.resultCount).toBe(1);
+    expect(store.listChanges()).toHaveLength(0);
+    store.close();
+  });
 });

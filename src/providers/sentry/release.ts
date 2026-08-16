@@ -1,4 +1,5 @@
 import { resourceId } from "../../domain/resource.ts";
+import { canonicalizeFullGitCommitSha } from "../vercel/deployment.ts";
 import { SENTRY_PROVIDER } from "./normalize.ts";
 
 /**
@@ -25,6 +26,12 @@ export interface SentryReleaseEvidence {
   dateReleased: string | null;
   /** When Combie last observed/upserted this evidence (ISO). */
   observedAt: string;
+  /**
+   * Exact full Git commit SHA when the provider supplies one in the release
+   * list payload (lastCommit.id or ref). Canonicalized; short/malformed values
+   * are null. Evidence metadata only — never the lastCommit blob.
+   */
+  gitCommitSha: string | null;
 }
 
 /** Per-project release refresh authority (not deletion authority). */
@@ -131,6 +138,32 @@ function projectIdsFromRelease(raw: {
 }
 
 /**
+ * Extract allowlisted commit identity from a Sentry release list item.
+ *
+ * Primary: lastCommit.id (raw commit key; full SHA in practice when commits
+ * are associated, null when none). Secondary: ref — only when it
+ * canonicalizes as a full SHA (ref may be a branch or tag). Only the id
+ * string is read from lastCommit; message/author/email never persist.
+ * Version / shortVersion / versionInfo.buildHash never establish identity.
+ */
+export function extractReleaseGitCommitSha(raw: {
+  lastCommit?: unknown;
+  ref?: unknown;
+}): string | null {
+  if (
+    raw.lastCommit != null &&
+    typeof raw.lastCommit === "object" &&
+    !Array.isArray(raw.lastCommit)
+  ) {
+    const id = canonicalizeFullGitCommitSha(
+      (raw.lastCommit as { id?: unknown }).id,
+    );
+    if (id) return id;
+  }
+  return canonicalizeFullGitCommitSha(raw.ref);
+}
+
+/**
  * Normalize one organization-release list item into compact evidence.
  * Requires exact projects[].id match to expectedProjectId.
  * Excludes authors, commits, deploys, URLs, owner, data, and issue fields.
@@ -182,6 +215,7 @@ export function normalizeSentryRelease(
     dateCreated,
     dateReleased: asIsoTimestamp(raw.dateReleased),
     observedAt,
+    gitCommitSha: extractReleaseGitCommitSha(raw),
   };
 }
 

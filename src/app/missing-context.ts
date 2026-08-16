@@ -9,6 +9,7 @@ import {
   parseCodeMappings,
 } from "../providers/sentry/code-mapping.ts";
 import type { InvestigationContext } from "./investigate.ts";
+import { composeSharedCommitContext } from "./shared-commit-context.ts";
 import type { ProviderActivityFamily } from "./provider-activity.ts";
 import type { RelatedDirection } from "./related.ts";
 
@@ -101,6 +102,17 @@ export type MissingContextItem =
         relationships: [];
       };
       repositories: string[];
+    }
+  | {
+      kind: "code_mapped_to_without_shared_commit";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [];
+      };
+      relationshipId: string;
+      sourceResourceId: string;
+      targetResourceId: string;
     };
 
 interface MutableRelatedSource {
@@ -169,8 +181,9 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
     if (item.kind === "unknown_current_authority") return 1;
     if (item.kind === "code_mapping_refresh_unknown") return 2;
     if (item.kind === "no_deterministic_release_issue_linkage") return 3;
-    if (item.kind === "code_mapping_unmatched_repository") return 4;
-    return 5; // no_known_relationships last among implemented categories
+    if (item.kind === "code_mapped_to_without_shared_commit") return 4;
+    if (item.kind === "code_mapping_unmatched_repository") return 5;
+    return 6; // no_known_relationships last among implemented categories
   };
   const byCategory = category(left) - category(right);
   if (byCategory !== 0) return byCategory;
@@ -183,7 +196,9 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
     left.kind === "code_mapping_refresh_unknown" ||
     right.kind === "code_mapping_refresh_unknown" ||
     left.kind === "code_mapping_unmatched_repository" ||
-    right.kind === "code_mapping_unmatched_repository"
+    right.kind === "code_mapping_unmatched_repository" ||
+    left.kind === "code_mapped_to_without_shared_commit" ||
+    right.kind === "code_mapped_to_without_shared_commit"
   ) {
     return compareAscending(left.scope.resourceId, right.scope.resourceId);
   }
@@ -200,6 +215,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "no_deterministic_release_issue_linkage" }
           | { kind: "code_mapping_refresh_unknown" }
           | { kind: "code_mapping_unmatched_repository" }
+          | { kind: "code_mapped_to_without_shared_commit" }
         >
       ).family,
     ) -
@@ -211,6 +227,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "no_deterministic_release_issue_linkage" }
           | { kind: "code_mapping_refresh_unknown" }
           | { kind: "code_mapping_unmatched_repository" }
+          | { kind: "code_mapped_to_without_shared_commit" }
         >
       ).family,
     );
@@ -586,6 +603,41 @@ export function composeMissingContext(
     }
   }
 
+  // Sprint 046: a proven code_mapped_to edge without a two-sided full commit
+  // SHA is truthful Missing Context. One item per distinct edge; a shared
+  // group for that edge closes it.
+  const mappingEdges = context.related
+    .filter((neighbor) => neighbor.relationship.kind === "code_mapped_to")
+    .map((neighbor) => neighbor.relationship)
+    .sort((left, right) => compareAscending(left.id, right.id));
+  const seenEdges = new Set<string>();
+  const edgesWithoutGroup = [];
+  for (const edge of mappingEdges) {
+    if (seenEdges.has(edge.id)) continue;
+    seenEdges.add(edge.id);
+    edgesWithoutGroup.push(edge);
+  }
+  const sharedGroups = composeSharedCommitContext(context).filter(
+    (group) => group.relationshipKind === "code_mapped_to",
+  );
+  const groupedRelationshipIds = new Set(
+    sharedGroups.map((group) => group.relationshipId),
+  );
+  for (const edge of edgesWithoutGroup) {
+    if (groupedRelationshipIds.has(edge.id)) continue;
+    items.push({
+      kind: "code_mapped_to_without_shared_commit",
+      scope: {
+        resourceId: context.subject.id,
+        role: "subject",
+        relationships: [],
+      },
+      relationshipId: edge.id,
+      sourceResourceId: edge.sourceResourceId,
+      targetResourceId: edge.targetResourceId,
+    });
+  }
+
   // Combie graph knowledge only — does not claim external systems have no edges.
   if (context.related.length === 0) {
     items.push({
@@ -653,6 +705,14 @@ export function formatMissingContextItem(item: MissingContextItem): string {
     return (
       `Sentry reports a code mapping, but Combie has no matching ` +
       `GitHub repository Resource for ${item.scope.resourceId}${listed}.`
+    );
+  }
+
+  if (item.kind === "code_mapped_to_without_shared_commit") {
+    return (
+      `A code_mapped_to relationship exists (${item.relationshipId}), ` +
+      `but no full Git commit SHA is currently held on both a GitHub ` +
+      `workflow run and a Sentry release.`
     );
   }
 
