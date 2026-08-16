@@ -504,3 +504,49 @@ empty authority classes, offline investigation, and MCP parity all confirmed
 on the Sprint-043 build. No defects. The missing-context observations come
 from one small test org with no cross-provider edges; they are not sufficient
 to rank the next sprint direction.
+
+## Sprint 045 GitHub↔Sentry code-mapping live run — 2026-08-15
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-08-15 |
+| Sprint 045 commit | `87e372afb87582f367d22dc7e67a7b6a246bda3c` |
+| Machine / OS | macOS (darwin, arm64) |
+| Bun | 1.3.5 |
+| Isolated state | `/tmp/combie-045-dogfood` (not the repo `.combie`) |
+| GitHub | connected via `--use-gh`; sync stored 312 repositories |
+| Sentry CLI connect | **failed** — org auth token returns HTTP 400 on `GET /auth/` (empty body) and 403 on `/users/me/`, `/organizations/`, and `/organizations/{org}/projects/` |
+| Sentry live API probe | same authorized token, redacted; org-scoped `repos` and `code-mappings` return **200 `[]`**; org-scoped `releases` still return the 3 Sprint 043 test releases |
+| Relationships | 0 (`code_mapped_to` not inferred — no project-scoped mapping rows, and Sentry was not connectable through Combie) |
+| Security | token never committed or written into the repo; credentials file mode `0600`; no token in this record |
+
+### What the live probe proved
+
+- [x] GitHub `--use-gh` connect + sync works independently (312 repositories).
+- [x] Official `GET /organizations/{org}/code-mappings/` is reachable with this
+      org token and returns a truthful known-empty page (`[]`).
+- [x] Official `GET /organizations/{org}/repos/` is also known-empty (`[]`).
+      There is no Sentry-side GitHub repository identity to join.
+- [x] No display-name fallback was used. Empty mappings stay empty.
+- [ ] `combie connect sentry --use-env` with this org token — blocked by
+      Combie's identity check (`GET /auth/`) and by missing project-list
+      permission. Not a Sprint 045 resolver defect.
+- [ ] End-to-end `sync` → `relationships` / `investigate` / MCP on a live
+      `code_mapped_to` edge — not exercised. This org has no code mappings.
+
+### Missing-context classification (observed only)
+
+| Gap | Evidence had | Evidence lacked | Family |
+| --- | --- | --- | --- |
+| Combie Sentry connection | authorized org token | `/auth/` + project-list scopes | auth/scope (pre-045) |
+| GitHub ↔ Sentry edge | GitHub inventory; empty Sentry mapping list | any project-scoped GitHub mapping | C (known-empty mappings) |
+
+Known-empty mappings on this test org are a successful 045 dogfood outcome,
+not a reason to invent a join.
+
+Decision from this run: **SPRINT 045 MAPPING API VALIDATED LIVE;
+COMBIE CONNECT NOT VALIDATED WITH THIS TOKEN.** Re-run the full CLI/MCP
+path with a Sentry token that can pass `GET /auth/` and list projects
+(the Sprint 043 personal-token shape, or an org token with `org:read` /
+`project:read`). Do not rotate product behavior to accommodate this
+token's missing identity/project scopes.

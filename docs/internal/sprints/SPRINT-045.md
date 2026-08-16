@@ -1168,9 +1168,11 @@ stackRoot, sourceRoot, defaultBranch, automaticallyGenerated
 
 ## Deviations
 
-- Live GitHub+Sentry dogfood was not run: no authorized
-  `SENTRY_AUTH_TOKEN` / `SENTRY_TOKEN` in this session; `~/.combie` has
-  no connected providers. Fixture/E2E coverage in
+- Full CLI `connect sentry --use-env` dogfood was blocked by the
+  authorized org token: `GET /auth/` returns HTTP 400, and project-list
+  endpoints return 403. A redacted live probe of the same token reached
+  `GET /organizations/{org}/code-mappings/` and `.../repos/` as known-empty
+  `[]`. See `docs/internal/beta/DOGFOOD.md`. Fixture/E2E coverage remains
   `tests/app/github-sentry-relationships-sync.test.ts`.
 - Mapping GET is Sentry-private (not public OpenAPI). Implementation
   follows the production endpoint + serializer Sprint 007 already ranked
@@ -1184,7 +1186,9 @@ bun run typecheck: clean
 git diff --check:  clean
 MCP tools:         get_related_context, investigate_resource,
                    list_providers, list_resources
-live GitHub+Sentry: skipped (no authorized Sentry token)
+live GitHub+Sentry: GitHub `--use-gh` sync ok (312 repos);
+                   Sentry connect blocked (org token: /auth/ 400,
+                   project list 403); code-mappings API 200 []
 ```
 
 ## Learnings
