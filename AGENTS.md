@@ -6,7 +6,9 @@ local multi-provider context foundation through **Cloudflare**, **GitHub**,
 Relationships (including GitHub↔Sentry `code_mapped_to`), retained provider
 evidence (including Sentry releases, release commit identities, and Sentry
 issue aggregates), offline investigation, read-only MCP, release distribution,
-guided agent setup, and a concluded GitHub-first closed beta.
+guided agent setup, and a concluded GitHub-first closed beta. Sprint 047 is the active same-SHA
+release↔deployment correspondence slice (two proven edges; no new
+Relationship).
 
 ## Mandatory reading order before any substantive change
 
@@ -28,7 +30,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–046 complete
+## Current baseline: Sprints 001–046 complete (047 is active)
 
 Multi-provider connection loop:
 
@@ -66,13 +68,17 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
 - **Sprint 046 shipped:** persist a compact Sentry release Git commit
   SHA when the provider supplies a full SHA, and extend existing
   ephemeral shared-commit grouping to `code_mapped_to` only (ROADMAP
-  v0.5 Safe Semantic Boundary). Do not expand MCP tools or schemas, add
-  write paths, invent `code_mapped_to`, join on version strings, add
-  release↔deploy or release↔issue joins, a generic Event or Correlation
-  abstraction, Sentry occurrence-level error events (Class D), a durable
-  Investigation object, additional providers, broader ontology/identity,
-  model reasoning, background sync, webhooks, telemetry ingestion,
-  operational learning, policy, or execution.
+  v0.5 Safe Semantic Boundary).
+- **Sprint 047 scope:** when one investigation already holds both a
+  `source_for` and a `code_mapped_to` shared-commit group for the same
+  exact SHA, surface that Vercel deployment and Sentry release records
+  reference that commit through those two proven edges. Do not add a
+  Vercel↔Sentry Relationship, multi-hop traversal, Sentry deploy N+1,
+  version-string joins, release↔issue joins, new MCP tools, a generic
+  Event or Correlation abstraction, Class D events, a durable
+  Investigation object, additional providers, model reasoning,
+  background sync, webhooks, telemetry ingestion, operational learning,
+  policy, or execution.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.
