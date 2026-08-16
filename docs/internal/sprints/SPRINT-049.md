@@ -1,6 +1,6 @@
 # SPRINT-049 — Compare Saved Investigation to Current
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-048 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.6 Investigation
 > (smallest leftover after the Investigation object); Sprint 048 leftover
