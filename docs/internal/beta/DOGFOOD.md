@@ -550,3 +550,33 @@ path with a Sentry token that can pass `GET /auth/` and list projects
 (the Sprint 043 personal-token shape, or an org token with `org:read` /
 `project:read`). Do not rotate product behavior to accommodate this
 token's missing identity/project scopes.
+
+### Retry with a user token — 2026-08-15 / 2026-08-16
+
+| Field | Value |
+| --- | --- |
+| Isolated state | `/tmp/combie-045-dogfood` (same dir; GitHub already connected) |
+| Sentry connect | `connect sentry --use-env` succeeded (`sgr0691@gmail.com`) |
+| Sync | GitHub + Sentry both ok |
+| Sentry resources | 1 project `sentry:project:4511917355565056` (`combie-dogfood`) |
+| Release / issue | 3 releases recorded; issue refresh known-empty |
+| Code mappings | 1 project refreshed; `codeMappings: []`; authority **empty**; resultCount 0 |
+| Relationships | `0 GitHub → Sentry code_mapped_to (no deterministic matches)` |
+| Changes | 0 |
+| Security | user token never committed; credentials file `0600`; no token in this record |
+
+- [x] `connect sentry --use-env` + `providers` show Sentry Connected; no token in output.
+- [x] `sync` refreshes releases, issues, and code mappings independently.
+- [x] Known-empty mappings do **not** invent a `code_mapped_to` edge.
+- [x] `related` on the Sentry project and on a GitHub repository: no one-hop neighbors.
+- [x] `investigate` shows RELATED CONTEXT empty, MISSING CONTEXT
+      `no_known_relationships` only (does not scare on known-empty mappings),
+      no `caused` / `CORRELATED` wording, existing RELEASES/ISSUES unchanged.
+- [x] MCP: exactly four tools; `get_related_context` relatedLen 0;
+      `investigate_resource` facts/missing match CLI; DB SHA-256 unchanged.
+
+Decision from this retry: **SPRINT 045 CLI+MCP VALIDATED LIVE ON
+KNOWN-EMPTY MAPPINGS.** This org still has no Sentry GitHub code mapping,
+so a populated `code_mapped_to` edge remains untested live. That is
+inventory-empty, not a product defect. Do not create a mapping to force
+an edge.
