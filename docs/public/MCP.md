@@ -62,7 +62,7 @@ The manual instructions below remain available as a fallback.
 | `list_resources` | optional `provider`, `kind` | Resource identities and stable IDs |
 | `list_providers` | none | provider status and persisted account identity |
 | `get_related_context` | exact `resourceId` | one-hop edges, direction, neighbors, evidence |
-| `investigate_resource` | exact `resourceId` | subject, changes, native evidence, related context, known facts, missing context, provider activity, timeline, and exact shared-commit groups |
+| `investigate_resource` | exact `resourceId` | subject, changes, native evidence, related context, known facts, missing context, provider activity, timeline, exact shared-commit groups, and retained resolution memory for that exact subject (organizational response, not current provider truth, not a recommendation; omitted when none) |
 
 There are no MCP tools for `init`, `connect`, `sync`, credential access,
 provider calls, deploys, restarts, rollbacks, or any other write.

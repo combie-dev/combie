@@ -1,6 +1,6 @@
 # SPRINT-055 — Retrieve Resolutions by Exact Evidence Id
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-054 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.7 Operational Memory
 > (what evidence supported that decision — retrieve half after 054
@@ -632,20 +632,20 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 055 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: `resolutions --evidence <id>` lists retained rows
+- [x] Sprint 055 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: `resolutions --evidence <id>` lists retained rows
       whose stored evidence ids include that exact string; known-empty
       when none; survives subject deletion and evidence aging out of
       compose; not inferred; not substring
-- [ ] if earned: no MCP change; compare unchanged; no inferred Action;
+- [x] if earned: no MCP change; compare unchanged; no inferred Action;
       no Incident; no recommendation copy; no Evidence table
-- [ ] if not earned: rejection documented; do not infer from activity
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline
+- [x] if not earned: rejection documented; do not infer from activity
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline
 
 ---
 
