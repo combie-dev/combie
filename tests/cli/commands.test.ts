@@ -1157,6 +1157,337 @@ describe("CLI commands", () => {
     );
   });
 
+  test("resolutions --evidence lists only rows that attached that exact id", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_evlist",
+      kind: "project",
+      name: "ev-list",
+      metadata: { accountId: "team_1" },
+    });
+    store.applyResource(project, {
+      id: "obs-ev-list",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.upsertVercelDeployment({
+      provider: "vercel",
+      uid: "dpl_abc",
+      resourceId: project.id,
+      projectId: "prj_evlist",
+      readyState: "READY",
+      state: "READY",
+      target: "production",
+      createdAtMs: 1723201000000,
+      buildingAtMs: 1723201005000,
+      readyAtMs: 1723201300000,
+      observedAt: "2026-08-16T12:00:00.000Z",
+      source: "git",
+      gitCommitSha: null,
+    });
+    store.upsertVercelDeployment({
+      provider: "vercel",
+      uid: "dpl_xyz",
+      resourceId: project.id,
+      projectId: "prj_evlist",
+      readyState: "READY",
+      state: "READY",
+      target: "production",
+      createdAtMs: 1723202000000,
+      buildingAtMs: 1723202005000,
+      readyAtMs: 1723202300000,
+      observedAt: "2026-08-16T13:00:00.000Z",
+      source: "git",
+      gitCommitSha: null,
+    });
+    store.close();
+
+    const savedA = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(savedA.code).toBe(0);
+    const invAMatch = savedA.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(invAMatch).not.toBeNull();
+    const invA = invAMatch![1]!;
+
+    const savedB = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(savedB.code).toBe(0);
+    const invBMatch = savedB.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(invBMatch).not.toBeNull();
+    const invB = invBMatch![1]!;
+
+    const recordedA = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invA,
+        "--decision",
+        "Rollback 1.4.2",
+        "--evidence",
+        "dpl_abc",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(recordedA.code).toBe(0);
+    const resAMatch = recordedA.stdout.match(/Recorded resolution (res:\S+)/);
+    expect(resAMatch).not.toBeNull();
+    const resA = resAMatch![1]!;
+
+    const recordedB = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invB,
+        "--decision",
+        "Wait instead",
+        "--evidence",
+        "dpl_xyz",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(recordedB.code).toBe(0);
+    const resBMatch = recordedB.stdout.match(/Recorded resolution (res:\S+)/);
+    expect(resBMatch).not.toBeNull();
+    const resB = resBMatch![1]!;
+
+    const listed = await capture(() =>
+      main(["resolutions", "--evidence", "dpl_abc", "--dir", dir]),
+    );
+    expect(listed.code).toBe(0);
+    expect(listed.stdout).toContain(resA);
+    expect(listed.stdout).not.toContain(resB);
+    expect(listed.stdout).not.toContain("EVIDENCE");
+    expect(listed.stdout).not.toContain("dpl_abc");
+  });
+
+  test("resolutions --evidence with zero matches exits 0 with evidence-empty copy", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() =>
+      main(["resolutions", "--evidence", "dpl_nope", "--dir", dir]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(
+      "No resolutions recorded for evidence dpl_nope.",
+    );
+    expect(result.stdout).not.toContain("No resolutions recorded yet.");
+    expect(result.stdout).not.toContain("EVIDENCE_ID_NOT_FOUND");
+  });
+
+  test("resolutions --evidence requires a value", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const bare = await capture(() =>
+      main(["resolutions", "--evidence", "--dir", dir]),
+    );
+    expect(bare.code).toBe(1);
+    expect(bare.stderr).toContain("--evidence requires an evidence id");
+
+    const blank = await capture(() =>
+      main(["resolutions", "--evidence", "", "--dir", dir]),
+    );
+    expect(blank.code).toBe(1);
+    expect(blank.stderr).toContain("--evidence requires an evidence id");
+  });
+
+  test("resolutions --evidence is one exact id on the list", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const repeated = await capture(() =>
+      main([
+        "resolutions",
+        "--evidence",
+        "dpl_abc",
+        "--evidence",
+        "dpl_xyz",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(repeated.code).toBe(1);
+    expect(repeated.stderr).toContain("takes one exact id");
+    expect(repeated.stdout).not.toContain("No resolutions recorded");
+  });
+
+  test("resolutions --evidence ANDs with --investigation", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_evand",
+      kind: "project",
+      name: "ev-and",
+      metadata: { accountId: "team_1" },
+    });
+    store.applyResource(project, {
+      id: "obs-ev-and",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.upsertVercelDeployment({
+      provider: "vercel",
+      uid: "dpl_abc",
+      resourceId: project.id,
+      projectId: "prj_evand",
+      readyState: "READY",
+      state: "READY",
+      target: "production",
+      createdAtMs: 1723201000000,
+      buildingAtMs: 1723201005000,
+      readyAtMs: 1723201300000,
+      observedAt: "2026-08-16T12:00:00.000Z",
+      source: "git",
+      gitCommitSha: null,
+    });
+    store.close();
+
+    const savedA = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const invAMatch = savedA.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(invAMatch).not.toBeNull();
+    const invA = invAMatch![1]!;
+
+    const savedB = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const invBMatch = savedB.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(invBMatch).not.toBeNull();
+    const invB = invBMatch![1]!;
+
+    const recordedA = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invA,
+        "--decision",
+        "Rollback",
+        "--evidence",
+        "dpl_abc",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resAMatch = recordedA.stdout.match(/Recorded resolution (res:\S+)/);
+    expect(resAMatch).not.toBeNull();
+    const resA = resAMatch![1]!;
+
+    const recordedB = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invB,
+        "--decision",
+        "Wait",
+        "--evidence",
+        "dpl_abc",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resBMatch = recordedB.stdout.match(/Recorded resolution (res:\S+)/);
+    expect(resBMatch).not.toBeNull();
+    const resB = resBMatch![1]!;
+
+    const intersection = await capture(() =>
+      main([
+        "resolutions",
+        "--investigation",
+        invB,
+        "--evidence",
+        "dpl_abc",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(intersection.code).toBe(0);
+    expect(intersection.stdout).toContain(resB);
+    expect(intersection.stdout).not.toContain(resA);
+  });
+
+  test("resolutions --evidence survives subject Resource deletion", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_evdel",
+      kind: "project",
+      name: "ev-del",
+      metadata: { accountId: "team_1" },
+    });
+    store.applyResource(project, {
+      id: "obs-ev-del",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.upsertVercelDeployment({
+      provider: "vercel",
+      uid: "dpl_abc",
+      resourceId: project.id,
+      projectId: "prj_evdel",
+      readyState: "READY",
+      state: "READY",
+      target: "production",
+      createdAtMs: 1723201000000,
+      buildingAtMs: 1723201005000,
+      readyAtMs: 1723201300000,
+      observedAt: "2026-08-16T12:00:00.000Z",
+      source: "git",
+      gitCommitSha: null,
+    });
+    store.close();
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const invMatch = saved.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(invMatch).not.toBeNull();
+    const invId = invMatch![1]!;
+
+    const recorded = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invId,
+        "--decision",
+        "Rollback",
+        "--evidence",
+        "dpl_abc",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resMatch = recorded.stdout.match(/Recorded resolution (res:\S+)/);
+    expect(resMatch).not.toBeNull();
+    const resId = resMatch![1]!;
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${project.id}'`);
+    db.close();
+
+    const listed = await capture(() =>
+      main(["resolutions", "--evidence", "dpl_abc", "--dir", dir]),
+    );
+    expect(listed.code).toBe(0);
+    expect(listed.stdout).toContain(resId);
+    expect(listed.stdout).not.toContain("Resource not found");
+  });
+
+  test("help lists the resolutions --evidence list line and example", async () => {
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain(
+      `With "resolutions": list retained resolutions that attached that exact local id (membership only; one exact id)`,
+    );
+    expect(help.stdout).toContain("resolutions --evidence dpl_abc");
+    expect(help.stdout).toContain(
+      "Attach an exact local evidence id (optional, repeatable; never inferred)",
+    );
+  });
+
   test("investigate and investigation reopen show exact-id resolution memory", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const store = new Store(dir);

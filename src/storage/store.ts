@@ -1556,6 +1556,7 @@ export class Store {
   listResolutionSummaries(filter?: {
     investigationId?: string;
     subjectResourceId?: string;
+    evidenceId?: string;
   }): ResolutionRow[] {
     const db = this.getDb();
     const table = db
@@ -1587,7 +1588,13 @@ export class Store {
          ORDER BY recorded_at DESC, id DESC`,
       )
       .all(...params) as ResolutionSqlRow[];
-    return rows.map((row) => mapResolutionRow(row, evidence !== ""));
+    let mapped = rows.map((row) => mapResolutionRow(row, evidence !== ""));
+    if (filter?.evidenceId !== undefined) {
+      mapped = mapped.filter((row) =>
+        row.evidenceIds?.includes(filter.evidenceId!),
+      );
+    }
+    return mapped;
   }
 
   getResolutionRow(id: string): ResolutionRow | null {

@@ -24,6 +24,7 @@ export interface RecordResolutionOptions {
 export interface ListResolutionsOptions {
   investigationId?: string;
   subjectResourceId?: string;
+  evidenceId?: string;
 }
 
 function trimField(value: string | undefined): string | undefined {
@@ -152,13 +153,17 @@ export function listResolutions(
     if (!store.isInitialized()) throw notInitialized();
     return store.listResolutionSummaries(
       options?.investigationId !== undefined ||
-        options?.subjectResourceId !== undefined
+        options?.subjectResourceId !== undefined ||
+        options?.evidenceId !== undefined
         ? {
             ...(options.investigationId !== undefined
               ? { investigationId: options.investigationId }
               : {}),
             ...(options.subjectResourceId !== undefined
               ? { subjectResourceId: options.subjectResourceId }
+              : {}),
+            ...(options.evidenceId !== undefined
+              ? { evidenceId: options.evidenceId }
               : {}),
           }
         : undefined,
@@ -197,6 +202,12 @@ export function formatResolutionList(
   filter?: ListResolutionsOptions,
 ): string {
   if (records.length === 0) {
+    if (filter?.evidenceId !== undefined) {
+      return (
+        `No resolutions recorded for evidence ${filter.evidenceId}.\n` +
+        `This is known-empty for that exact local evidence id — no retained resolution attached it.`
+      );
+    }
     if (filter?.investigationId !== undefined) {
       return (
         `No resolutions recorded for investigation ${filter.investigationId}.\n` +

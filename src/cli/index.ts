@@ -109,6 +109,7 @@ Investigate options:
   --action <text>              Explicit action (what you actually did)
   --outcome <text>             Explicit outcome (what happened afterward)
   --evidence <id>              Attach an exact local evidence id (optional, repeatable; never inferred)
+                               With "resolutions": list retained resolutions that attached that exact local id (membership only; one exact id)
 
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
@@ -149,6 +150,7 @@ Examples:
   ${BINARY_NAME} resolution --investigation inv:… --decision "Rollback" --action "Reverted deploy" --outcome "Errors dropped"
   ${BINARY_NAME} resolutions --investigation inv:…
   ${BINARY_NAME} resolutions --resource github:repository:1001
+  ${BINARY_NAME} resolutions --evidence dpl_abc
   ${BINARY_NAME} resolution res:…
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
@@ -519,7 +521,7 @@ async function main(argv: string[]): Promise<number> {
           optionalFlagId(flags.investigation);
         if (investigation === "missing") {
           console.error(
-            `--investigation requires an investigation id.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>]`,
+            `--investigation requires an investigation id.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>] [--evidence <evidence-id>]`,
           );
           return 1;
         }
@@ -527,18 +529,34 @@ async function main(argv: string[]): Promise<number> {
           typeof flags.resource === "string" ? flags.resource.trim() : undefined;
         if (flags.resource !== undefined && !resource) {
           console.error(
-            `--resource requires a resource id.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>]`,
+            `--resource requires a resource id.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>] [--evidence <evidence-id>]`,
+          );
+          return 1;
+        }
+        const evidence =
+          typeof flags.evidence === "string" ? flags.evidence.trim() : undefined;
+        if (flags.evidence !== undefined && !evidence) {
+          console.error(
+            `--evidence requires an evidence id.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>] [--evidence <evidence-id>]`,
+          );
+          return 1;
+        }
+        if ((repeated.evidence ?? []).length > 0) {
+          console.error(
+            `--evidence takes one exact id on the resolutions list.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>] [--evidence <evidence-id>]`,
           );
           return 1;
         }
         const records = listResolutions(baseDir, {
           ...(investigation ? { investigationId: investigation } : {}),
           ...(resource !== undefined ? { subjectResourceId: resource } : {}),
+          ...(evidence !== undefined ? { evidenceId: evidence } : {}),
         });
         console.log(
           formatResolutionList(records, {
             ...(investigation ? { investigationId: investigation } : {}),
             ...(resource !== undefined ? { subjectResourceId: resource } : {}),
+            ...(evidence !== undefined ? { evidenceId: evidence } : {}),
           }),
         );
         return 0;

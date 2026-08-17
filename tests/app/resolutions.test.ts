@@ -936,3 +936,337 @@ describe("explicit evidence references (Sprint 054)", () => {
     expect(section).toContain("Rollback 1.4.2");
   });
 });
+
+describe("exact evidence id retrieval (Sprint 055)", () => {
+  test("lists only rows whose stored evidence ids include that exact id", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc", "dpl_xyz"]);
+    const invA = saveSnapshot(subject.id, "2026-08-16T10:00:00.000Z");
+    const invB = saveSnapshot(subject.id, "2026-08-16T11:00:00.000Z");
+    const resA = recordResolution({
+      baseDir: dir,
+      investigationId: invA.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+      recordedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const resB = recordResolution({
+      baseDir: dir,
+      investigationId: invB.record.id,
+      decision: "Wait",
+      evidenceIds: ["dpl_xyz"],
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+
+    expect(
+      listResolutions(dir, { evidenceId: "dpl_abc" }).map((r) => r.id),
+    ).toEqual([resA.id]);
+    expect(
+      listResolutions(dir, { evidenceId: "dpl_xyz" }).map((r) => r.id),
+    ).toEqual([resB.id]);
+  });
+
+  test("substring or prefix does not match", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+    expect(listResolutions(dir, { evidenceId: "dpl_ab" })).toEqual([]);
+    expect(listResolutions(dir, { evidenceId: "dpl" })).toEqual([]);
+    expect(listResolutions(dir, { evidenceId: "abc" })).toEqual([]);
+    expect(listResolutions(dir, { evidenceId: "dpl_abc " })).toEqual([]);
+  });
+
+  test("duplicate ids on the record still match once", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc", "dpl_abc"],
+    });
+    expect(recorded.evidenceIds).toEqual(["dpl_abc"]);
+    expect(
+      listResolutions(dir, { evidenceId: "dpl_abc" }).map((r) => r.id),
+    ).toEqual([recorded.id]);
+  });
+
+  test("zero matches is known-empty for that evidence id with distinct copy", () => {
+    seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot("vercel:project:prj_demo");
+    recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+
+    const records = listResolutions(dir, { evidenceId: "dpl_nope" });
+    expect(records).toEqual([]);
+    const empty = formatResolutionList(records, { evidenceId: "dpl_nope" });
+    expect(empty).toContain("No resolutions recorded for evidence dpl_nope.");
+    expect(empty).not.toContain("No resolutions recorded yet.");
+    const investigationEmpty = formatResolutionList([], {
+      investigationId: "inv:x",
+    });
+    const subjectEmpty = formatResolutionList([], {
+      subjectResourceId: "sentry:project:450",
+    });
+    expect(empty).not.toBe(investigationEmpty);
+    expect(empty).not.toBe(subjectEmpty);
+  });
+
+  test("AND with investigation returns the intersection", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const invA = saveSnapshot(subject.id, "2026-08-16T10:00:00.000Z");
+    const invB = saveSnapshot(subject.id, "2026-08-16T11:00:00.000Z");
+    const resA = recordResolution({
+      baseDir: dir,
+      investigationId: invA.record.id,
+      decision: "A",
+      evidenceIds: ["dpl_abc"],
+      recordedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const resB = recordResolution({
+      baseDir: dir,
+      investigationId: invB.record.id,
+      decision: "B",
+      evidenceIds: ["dpl_abc"],
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    expect(
+      listResolutions(dir, {
+        investigationId: invB.record.id,
+        evidenceId: "dpl_abc",
+      }).map((r) => r.id),
+    ).toEqual([resB.id]);
+    expect(
+      listResolutions(dir, {
+        investigationId: invA.record.id,
+        evidenceId: "dpl_abc",
+      }).map((r) => r.id),
+    ).toEqual([resA.id]);
+  });
+
+  test("AND with subject returns the intersection", () => {
+    const subjectA = seedVercelSubject("prj_a");
+    const subjectB = seedVercelSubject("prj_b");
+    const store = new Store(dir);
+    store.init();
+    store.upsertVercelDeployment(
+      deployment("dpl_abc", "vercel:project:prj_a"),
+    );
+    store.upsertVercelDeployment(
+      deployment("dpl_xyz", "vercel:project:prj_b"),
+    );
+    store.close();
+    const invA = saveSnapshot(subjectA.id, "2026-08-16T10:00:00.000Z");
+    const invB = saveSnapshot(subjectB.id, "2026-08-16T11:00:00.000Z");
+    const resA = recordResolution({
+      baseDir: dir,
+      investigationId: invA.record.id,
+      decision: "A",
+      evidenceIds: ["dpl_abc"],
+      recordedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const resB = recordResolution({
+      baseDir: dir,
+      investigationId: invB.record.id,
+      decision: "B",
+      evidenceIds: ["dpl_xyz"],
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.query(`UPDATE resolutions SET evidence_ids = ? WHERE id = ?`).run(
+      JSON.stringify(["dpl_abc"]),
+      resB.id,
+    );
+    db.close();
+
+    expect(
+      listResolutions(dir, {
+        subjectResourceId: subjectA.id,
+        evidenceId: "dpl_abc",
+      }).map((r) => r.id),
+    ).toEqual([resA.id]);
+    expect(
+      listResolutions(dir, { evidenceId: "dpl_abc" }).map((r) => r.id).sort(),
+    ).toEqual([resA.id, resB.id].sort());
+  });
+
+  test("subject Resource deleted: matching rows still list", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
+    db.close();
+
+    const listed = listResolutions(dir, { evidenceId: "dpl_abc" });
+    expect(listed.map((r) => r.id)).toEqual([recorded.id]);
+  });
+
+  test("named id no longer in live compose still lists; never revalidates or EVIDENCE_ID_NOT_FOUND", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM vercel_deployments`);
+    db.close();
+
+    const listed = listResolutions(dir, { evidenceId: "dpl_abc" });
+    expect(listed.map((r) => r.id)).toEqual([recorded.id]);
+
+    const unknown = listResolutions(dir, { evidenceId: "dpl_zzz" });
+    expect(unknown).toEqual([]);
+    const empty = formatResolutionList(unknown, { evidenceId: "dpl_zzz" });
+    expect(empty).toContain("No resolutions recorded for evidence dpl_zzz.");
+    expect(empty).not.toContain("EVIDENCE_ID_NOT_FOUND");
+  });
+
+  test("pre-054 missing column: filter is empty-for-that-id, no crash, unfiltered lists rows", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`ALTER TABLE resolutions DROP COLUMN evidence_ids`);
+    db.close();
+
+    expect(listResolutions(dir, { evidenceId: "dpl_abc" })).toEqual([]);
+    expect(
+      listResolutions(dir).map((r) => r.id),
+    ).toEqual([recorded.id]);
+  });
+
+  test("corrupt stored JSON is not a match and never invents ids in the list", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      evidenceIds: ["dpl_abc"],
+    });
+    const db = new Database(dbPath(dir));
+    db.query(`UPDATE resolutions SET evidence_ids = ? WHERE id = ?`).run(
+      `{"not": "json"`,
+      recorded.id,
+    );
+    db.close();
+
+    expect(listResolutions(dir, { evidenceId: "dpl_abc" })).toEqual([]);
+    const list = formatResolutionList(listResolutions(dir));
+    expect(list).toContain(recorded.id);
+    expect(list).not.toContain("EVIDENCE");
+    expect(list).not.toContain("dpl_abc");
+  });
+
+  test("filtered list keeps 051 order: recordedAt DESC, id DESC", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const early = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "early",
+      evidenceIds: ["dpl_abc"],
+      recordedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const late = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "late",
+      evidenceIds: ["dpl_abc"],
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    const middle = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "middle",
+      evidenceIds: ["dpl_abc"],
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    expect(
+      listResolutions(dir, { evidenceId: "dpl_abc" }).map((r) => r.id),
+    ).toEqual([late.id, middle.id, early.id]);
+  });
+
+  test("snapshot JSON is unchanged when listing by evidence", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+    const store = new Store(dir);
+    store.init();
+    const before = store.getInvestigationRow(saved.record.id)!.snapshotJson;
+    store.close();
+
+    expect(listResolutions(dir, { evidenceId: "dpl_abc" })).toHaveLength(1);
+
+    const after = new Store(dir);
+    after.init();
+    expect(after.getInvestigationRow(saved.record.id)!.snapshotJson).toBe(
+      before,
+    );
+    after.close();
+  });
+
+  test("filtered list output omits evidence essays", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+    const list = formatResolutionList(
+      listResolutions(dir, { evidenceId: "dpl_abc" }),
+      { evidenceId: "dpl_abc" },
+    );
+    expect(list).toContain(recorded.id);
+    expect(list).not.toContain("EVIDENCE");
+    expect(list).not.toContain("dpl_abc");
+    expect(list).toContain("ID");
+    expect(list).toContain("INVESTIGATION");
+    expect(list).toContain("SUBJECT");
+    expect(list).toContain("RECORDED AT");
+  });
+});
