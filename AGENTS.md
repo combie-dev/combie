@@ -16,7 +16,11 @@ the same subject (SAME / SNAPSHOT ONLY / CURRENT ONLY / AUTHORITY CLOCK).
 Sprint 050 shipped subject-scoped Investigation history: `investigations
 --resource <resource-id>` lists retained snapshots for one exact subject id
 (ROADMAP v0.6 historical retrieval; not lifecycle, not Operational
-Memory, not the Investigation Engine).
+Memory, not the Investigation Engine). Sprint 051 is the active explicit
+Investigation resolution-memory slice (ROADMAP v0.7 Operational Memory
+smallest capture; founder override 2026-08-16; not Incident, not
+separate Decision / Action / Outcome models, not Recommendation, not
+the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -38,7 +42,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–050 complete
+## Current baseline: Sprints 001–050 complete; Sprint 051 Active
 
 Multi-provider connection loop:
 
@@ -142,11 +146,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   unfinished v0.6 work; persisted open/closed/completed lifecycle is
   not unfinished v0.6 work either. Operational Memory remains ROADMAP
   v0.7 and stays distinct: Investigation ≠ Incident ≠ Decision ≠
-  Action ≠ Outcome. Closing v0.6 authorizes no Sprint 051 and no v0.7
-  work. `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the
-  active learning mechanism for whether evidence justifies an optional
-  Investigation surface, additional evidence depth, agent historical
-  access, or progression toward v0.7 Operational Memory.
+  Action ≠ Outcome. Closing v0.6 did not by itself authorize Sprint 051.
+  On 2026-08-16 a founder override started Sprint 051 as the smallest
+  v0.7 slice: explicit Resolution capture on a saved Investigation
+  (decision / action / outcome as fields, exact-id retrieve, no inferred
+  Action, MCP frozen). It does not authorize Incident, Recommendation,
+  Learning, similarity, Investigation lifecycle, or MCP writes.
+  `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
+  ledger for capture-shape use after the slice ships.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.
