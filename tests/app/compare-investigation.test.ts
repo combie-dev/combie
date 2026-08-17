@@ -532,6 +532,55 @@ describe("snapshot-to-current compare", () => {
     expect(withResolution).not.toContain("RESOLUTION");
   });
 
+  test("compare ignores resolution evidence references", () => {
+    const subjectResourceId = seedSentryProject();
+    const store = new Store(dir);
+    store.init();
+    store.upsertSentryRelease({
+      provider: "sentry",
+      version: "frontend@1.2.0",
+      resourceId: subjectResourceId,
+      projectId: "450",
+      shortVersion: "1.2.0",
+      status: "open",
+      dateCreated: "2026-08-16T10:00:00.000Z",
+      dateReleased: null,
+      observedAt: "2026-08-16T12:00:00.000Z",
+      gitCommitSha: null,
+    });
+    store.close();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subjectResourceId,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const withoutEvidence = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T13:00:00.000Z",
+      }),
+    );
+    recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      evidenceIds: ["frontend@1.2.0"],
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    const withEvidence = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T13:00:00.000Z",
+      }),
+    );
+    expect(withEvidence).toBe(withoutEvidence);
+    expect(withEvidence).not.toContain("frontend@1.2.0");
+    expect(withEvidence).not.toContain("EVIDENCE");
+    expect(withEvidence).not.toContain("RESOLUTION");
+  });
+
   test("missing ids and uninitialized state fail without inventing a compare", () => {
     expect(() =>
       compareInvestigationToCurrent({ baseDir: dir, investigationId: "" }),

@@ -258,7 +258,8 @@ CREATE TABLE IF NOT EXISTS resolutions (
   recorded_at TEXT NOT NULL,
   decision TEXT,
   action TEXT,
-  outcome TEXT
+  outcome TEXT,
+  evidence_ids TEXT
 );
 
 CREATE INDEX IF NOT EXISTS resolutions_recorded_at_id_idx
@@ -310,6 +311,8 @@ export class Store {
     this.ensureNullableTextColumn(db, "vercel_deployments", "git_commit_sha");
     // Sprint 046: pre-046 sentry_releases lack git_commit_sha (nullable).
     this.ensureNullableTextColumn(db, "sentry_releases", "git_commit_sha");
+    // Sprint 054: pre-054 resolutions lack evidence_ids (nullable JSON array).
+    this.ensureNullableTextColumn(db, "resolutions", "evidence_ids");
   }
 
   /**
@@ -1521,13 +1524,14 @@ export class Store {
     decision?: string;
     action?: string;
     outcome?: string;
+    evidenceIds?: string[];
   }): void {
     this.getWritableDb()
       .query(
         `INSERT INTO resolutions (
            id, investigation_id, subject_resource_id, recorded_at,
-           decision, action, outcome
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           decision, action, outcome, evidence_ids
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         row.id,
@@ -1537,7 +1541,16 @@ export class Store {
         row.decision ?? null,
         row.action ?? null,
         row.outcome ?? null,
+        row.evidenceIds ? JSON.stringify(row.evidenceIds) : null,
       );
+  }
+
+  /** Read-only probe: pre-054 DBs lack the additive evidence_ids column. */
+  private hasResolutionEvidenceColumn(db: Database): boolean {
+    const rows = db
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string }>;
+    return rows.some((row) => row.name === "evidence_ids");
   }
 
   listResolutionSummaries(filter?: {
@@ -1562,16 +1575,19 @@ export class Store {
       params.push(filter.subjectResourceId);
     }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const evidence = this.hasResolutionEvidenceColumn(db)
+      ? ", evidence_ids"
+      : "";
     const rows = db
       .query(
         `SELECT id, investigation_id, subject_resource_id, recorded_at,
-                decision, action, outcome
+                decision, action, outcome${evidence}
          FROM resolutions
          ${where}
          ORDER BY recorded_at DESC, id DESC`,
       )
       .all(...params) as ResolutionSqlRow[];
-    return rows.map(mapResolutionRow);
+    return rows.map((row) => mapResolutionRow(row, evidence !== ""));
   }
 
   getResolutionRow(id: string): ResolutionRow | null {
@@ -1582,16 +1598,19 @@ export class Store {
       )
       .get() as { name: string } | null;
     if (!table) return null;
+    const evidence = this.hasResolutionEvidenceColumn(db)
+      ? ", evidence_ids"
+      : "";
     const row = db
       .query(
         `SELECT id, investigation_id, subject_resource_id, recorded_at,
-                decision, action, outcome
+                decision, action, outcome${evidence}
          FROM resolutions
          WHERE id = ?`,
       )
       .get(id) as ResolutionSqlRow | null;
     if (!row) return null;
-    return mapResolutionRow(row);
+    return mapResolutionRow(row, evidence !== "");
   }
 
   close(): void {
@@ -1611,6 +1630,7 @@ type ResolutionSqlRow = {
   decision: string | null;
   action: string | null;
   outcome: string | null;
+  evidence_ids?: string | null;
 };
 
 type ResolutionRow = {
@@ -1621,9 +1641,36 @@ type ResolutionRow = {
   decision?: string;
   action?: string;
   outcome?: string;
+  evidenceIds?: string[];
 };
 
-function mapResolutionRow(row: ResolutionSqlRow): ResolutionRow {
+/**
+ * Stored evidence_ids is a JSON array of exact ids. Corrupt or non-array
+ * payloads are untrusted and omitted — never surfaced as invented evidence.
+ */
+function parseResolutionEvidence(raw: string | null | undefined): string[] | undefined {
+  if (raw == null) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((value) => typeof value === "string")
+    ) {
+      return parsed.length > 0 ? (parsed as string[]) : undefined;
+    }
+  } catch {
+    // Untrusted stored payload: skip without inventing ids.
+  }
+  return undefined;
+}
+
+function mapResolutionRow(
+  row: ResolutionSqlRow,
+  hasEvidenceColumn: boolean,
+): ResolutionRow {
+  const evidence = hasEvidenceColumn
+    ? parseResolutionEvidence(row.evidence_ids)
+    : undefined;
   return {
     id: row.id,
     investigationId: row.investigation_id,
@@ -1632,6 +1679,7 @@ function mapResolutionRow(row: ResolutionSqlRow): ResolutionRow {
     ...(row.decision ? { decision: row.decision } : {}),
     ...(row.action ? { action: row.action } : {}),
     ...(row.outcome ? { outcome: row.outcome } : {}),
+    ...(evidence ? { evidenceIds: evidence } : {}),
   };
 }
 

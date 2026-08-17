@@ -108,6 +108,7 @@ Investigate options:
   --decision <text>            Explicit decision (what you decided)
   --action <text>              Explicit action (what you actually did)
   --outcome <text>             Explicit outcome (what happened afterward)
+  --evidence <id>              Attach an exact local evidence id (optional, repeatable; never inferred)
 
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
@@ -160,10 +161,13 @@ interface ParsedArgs {
   command: string | null;
   positionals: string[];
   flags: Record<string, string | boolean>;
+  /** Values of flags repeated across argv, in first-seen order (last value also in `flags`). */
+  repeated: Record<string, string[]>;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
   const flags: Record<string, string | boolean> = {};
+  const repeated: Record<string, string[]> = {};
   const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -175,6 +179,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       const key = a.slice(2);
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("-")) {
+        if (typeof flags[key] === "string") {
+          (repeated[key] ??= []).push(flags[key] as string);
+        }
         flags[key] = next;
         i++;
       } else {
@@ -192,6 +199,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     command: positionals[0] ?? null,
     positionals: positionals.slice(1),
     flags,
+    repeated,
   };
 }
 
@@ -236,7 +244,7 @@ function optionalFlagText(
 }
 
 async function main(argv: string[]): Promise<number> {
-  const { command, positionals, flags } = parseArgs(argv);
+  const { command, positionals, flags, repeated } = parseArgs(argv);
 
   if (command === "version" || flags.version === true) {
     console.log(`combie ${VERSION}`);
@@ -442,7 +450,7 @@ async function main(argv: string[]): Promise<number> {
         const investigationFlag = optionalFlagId(flags.investigation);
         if (investigationFlag === "missing") {
           console.error(
-            `--investigation requires an investigation id.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+            `--investigation requires an investigation id.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
           );
           return 1;
         }
@@ -457,14 +465,24 @@ async function main(argv: string[]): Promise<number> {
                 ? "action"
                 : "outcome";
           console.error(
-            `--${flag} requires text.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+            `--${flag} requires text.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+          );
+          return 1;
+        }
+        const evidenceParts = [
+          ...(repeated.evidence ?? []),
+          ...(typeof flags.evidence === "string" ? [flags.evidence] : []),
+        ];
+        if (flags.evidence === true || evidenceParts.some((id) => id.trim().length === 0)) {
+          console.error(
+            `--evidence requires an evidence id.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
           );
           return 1;
         }
         if (investigationFlag) {
           if (positionals[0]) {
             console.error(
-              `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]\nShow: ${BINARY_NAME} resolution <resolution-id>`,
+              `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nShow: ${BINARY_NAME} resolution <resolution-id>`,
             );
             return 1;
           }
@@ -474,6 +492,7 @@ async function main(argv: string[]): Promise<number> {
             ...(decision ? { decision } : {}),
             ...(action ? { action } : {}),
             ...(outcome ? { outcome } : {}),
+            ...(evidenceParts.length > 0 ? { evidenceIds: evidenceParts } : {}),
           });
           console.log(formatRecordConfirmation(recorded));
           return 0;
@@ -481,13 +500,13 @@ async function main(argv: string[]): Promise<number> {
         const resolutionId = positionals[0];
         if (!resolutionId) {
           console.error(
-            `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]\nShow: ${BINARY_NAME} resolution <resolution-id>\nList ids: ${BINARY_NAME} resolutions`,
+            `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nShow: ${BINARY_NAME} resolution <resolution-id>\nList ids: ${BINARY_NAME} resolutions`,
           );
           return 1;
         }
-        if (decision || action || outcome) {
+        if (decision || action || outcome || evidenceParts.length > 0) {
           console.error(
-            `Recording a resolution requires --investigation.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+            `Recording a resolution requires --investigation.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
           );
           return 1;
         }

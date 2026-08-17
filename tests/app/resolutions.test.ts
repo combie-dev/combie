@@ -21,7 +21,12 @@ import {
   listResolutions,
   recordResolution,
 } from "../../src/app/resolutions.ts";
+import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
+import type { GitHubWorkflowRunEvidence } from "../../src/providers/github/workflow-run.ts";
+import type { SentryIssueEvidence } from "../../src/providers/sentry/issue.ts";
+import type { SentryReleaseEvidence } from "../../src/providers/sentry/release.ts";
+import type { VercelDeploymentEvidence } from "../../src/providers/vercel/deployment.ts";
 import { dbPath } from "../../src/storage/paths.ts";
 import { Store } from "../../src/storage/store.ts";
 
@@ -63,6 +68,95 @@ function saveSnapshot(
     resourceRef,
     composedAt,
   });
+}
+
+function seedVercelSubject(
+  providerResourceId = "prj_demo",
+): ReturnType<typeof createResource> {
+  const store = new Store(dir);
+  store.init();
+  const resource = createResource({
+    provider: "vercel",
+    providerResourceId,
+    kind: "project",
+    name: "demo",
+    metadata: { accountId: "team_1" },
+  });
+  store.applyResource(resource, {
+    id: `obs-ch-${providerResourceId}`,
+    observedAt: "2026-08-16T00:00:00.000Z",
+  });
+  store.close();
+  return resource;
+}
+
+function deployment(
+  uid: string,
+  resourceId = "vercel:project:prj_demo",
+): VercelDeploymentEvidence {
+  return {
+    provider: "vercel",
+    uid,
+    resourceId,
+    projectId: resourceId.split(":").at(-1)!,
+    readyState: "READY",
+    state: "READY",
+    target: "production",
+    createdAtMs: 1723201000000,
+    buildingAtMs: 1723201005000,
+    readyAtMs: 1723201300000,
+    observedAt: "2026-08-16T12:00:00.000Z",
+    source: "git",
+    gitCommitSha: null,
+  };
+}
+
+function seedVercelEvidence(uids: string[]): void {
+  const store = new Store(dir);
+  store.init();
+  for (const uid of uids) {
+    store.upsertVercelDeployment(deployment(uid));
+  }
+  store.close();
+}
+
+function release(
+  overrides: Partial<SentryReleaseEvidence> = {},
+): SentryReleaseEvidence {
+  return {
+    provider: "sentry",
+    version: "frontend@1.2.0",
+    resourceId: "sentry:project:450",
+    projectId: "450",
+    shortVersion: "1.2.0",
+    status: "open",
+    dateCreated: "2026-08-16T10:00:00.000Z",
+    dateReleased: null,
+    observedAt: "2026-08-16T12:00:00.000Z",
+    gitCommitSha: null,
+    ...overrides,
+  };
+}
+
+function issue(
+  overrides: Partial<SentryIssueEvidence> = {},
+): SentryIssueEvidence {
+  return {
+    provider: "sentry",
+    issueId: "5123",
+    resourceId: "sentry:project:450",
+    projectId: "450",
+    shortId: "ACME-123",
+    status: "unresolved",
+    level: "error",
+    count: 42,
+    userCount: 7,
+    issueCategory: "error",
+    firstSeen: "2026-08-16T09:00:00.000Z",
+    lastSeen: "2026-08-16T11:00:00.000Z",
+    observedAt: "2026-08-16T12:00:00.000Z",
+    ...overrides,
+  };
 }
 
 describe("investigation resolutions", () => {
@@ -499,5 +593,346 @@ describe("exact-id resolution recall", () => {
     expect(section).toContain("Recovered without intervention");
     expect(section).not.toContain("ACTION");
     expect(section).not.toContain("DECISION");
+  });
+});
+
+describe("explicit evidence references (Sprint 054)", () => {
+  test("record without evidence stays 051-identical: no EVIDENCE block anywhere", () => {
+    seedSubject();
+    const saved = saveSnapshot("sentry:project:450");
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      action: "Reverted deployment to 1.4.1",
+      outcome: "Errors dropped",
+    });
+    expect(recorded.evidenceIds).toBeUndefined();
+    expect(getResolution(dir, recorded.id).evidenceIds).toBeUndefined();
+    expect(formatResolution(getResolution(dir, recorded.id))).not.toContain(
+      "EVIDENCE",
+    );
+    const section = formatResolutionMemorySection(
+      listResolutions(dir, { investigationId: saved.record.id }),
+      "investigation",
+    );
+    expect(section).not.toContain("EVIDENCE");
+  });
+
+  test("record persists human-attached evidence ids and show + memory list them exactly", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc", "dpl_xyz"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      action: "Reverted deployment to 1.4.1",
+      evidenceIds: ["dpl_abc", "dpl_xyz"],
+    });
+    expect(recorded.evidenceIds).toEqual(["dpl_abc", "dpl_xyz"]);
+
+    const fetched = getResolution(dir, recorded.id);
+    expect(fetched.evidenceIds).toEqual(["dpl_abc", "dpl_xyz"]);
+    expect(fetched.decision).toBe("Rollback 1.4.2");
+    expect(fetched.action).toBe("Reverted deployment to 1.4.1");
+
+    const shown = formatResolution(fetched);
+    expect(shown.split("\n")).toContain("EVIDENCE");
+    expect(shown.split("\n")).toContain("dpl_abc");
+    expect(shown.split("\n")).toContain("dpl_xyz");
+    expect(shown).toContain("Rollback 1.4.2");
+
+    const section = formatResolutionMemorySection(
+      listResolutions(dir, { investigationId: saved.record.id }),
+      "investigation",
+    );
+    expect(section.split("\n")).toContain("EVIDENCE");
+    expect(section.split("\n")).toContain("dpl_abc");
+    expect(section.split("\n")).toContain("dpl_xyz");
+    expect(section).toContain("Rollback 1.4.2");
+    expect(section.split("\n")).not.toContain("RESOLUTION");
+  });
+
+  test("duplicate evidence ids collapse to unique first-seen order", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc", "dpl_xyz"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc", "dpl_xyz", "dpl_abc"],
+    });
+    expect(recorded.evidenceIds).toEqual(["dpl_abc", "dpl_xyz"]);
+    expect(getResolution(dir, recorded.id).evidenceIds).toEqual([
+      "dpl_abc",
+      "dpl_xyz",
+    ]);
+  });
+
+  test("one-hop neighbor evidence already displayed on investigate is attachable", () => {
+    const project = seedVercelSubject();
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    store.applyResource(repository, {
+      id: "obs-gh",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.upsertRelationship(
+      createRelationship({
+        kind: "source_for",
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/api",
+        },
+      }),
+    );
+    store.upsertGitHubWorkflowRun({
+      provider: "github",
+      runId: 9001,
+      resourceId: repository.id,
+      repositoryId: "1001",
+      workflowId: 1,
+      name: "CI",
+      runNumber: 12,
+      runAttempt: 1,
+      event: "push",
+      status: "completed",
+      conclusion: "success",
+      headBranch: "main",
+      headSha: "abc123def4567890abc123def4567890abc123de",
+      createdAt: "2026-08-16T10:00:00.000Z",
+      runStartedAt: null,
+      updatedAt: null,
+      observedAt: "2026-08-16T12:00:00.000Z",
+    });
+    store.close();
+
+    const saved = saveSnapshot(project.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Wait",
+      evidenceIds: ["9001"],
+    });
+    expect(recorded.evidenceIds).toEqual(["9001"]);
+  });
+
+  test("Sentry release version and issue id attach for a Sentry subject", () => {
+    const subject = seedSubject();
+    const store = new Store(dir);
+    store.init();
+    store.upsertSentryRelease(release());
+    store.upsertSentryIssue(issue());
+    store.close();
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Pin the release",
+      evidenceIds: ["frontend@1.2.0", "5123"],
+    });
+    expect(recorded.evidenceIds).toEqual(["frontend@1.2.0", "5123"]);
+  });
+
+  test("unknown evidence id fails the whole record and inserts nothing", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    let message = "";
+    expect(() => {
+      try {
+        recordResolution({
+          baseDir: dir,
+          investigationId: saved.record.id,
+          decision: "Rollback",
+          evidenceIds: ["dpl_zzz"],
+        });
+      } catch (error) {
+        message = String(error);
+        throw error;
+      }
+    }).toThrow(/Evidence id not found/i);
+    expect(message).toMatch(/investigate/i);
+    expect(
+      listResolutions(dir, { investigationId: saved.record.id }),
+    ).toEqual([]);
+  });
+
+  test("evidence retained for another resource is not attachable to this subject", () => {
+    const subjectA = seedVercelSubject("prj_a");
+    seedVercelSubject("prj_b");
+    const store = new Store(dir);
+    store.init();
+    store.upsertVercelDeployment(
+      deployment("dpl_a", "vercel:project:prj_a"),
+    );
+    store.upsertVercelDeployment(
+      deployment("dpl_b", "vercel:project:prj_b"),
+    );
+    store.close();
+    const saved = saveSnapshot(subjectA.id);
+    expect(() =>
+      recordResolution({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        decision: "Rollback",
+        evidenceIds: ["dpl_b"],
+      }),
+    ).toThrow(/Evidence id not found/i);
+    expect(
+      listResolutions(dir, { investigationId: saved.record.id }),
+    ).toEqual([]);
+  });
+
+  test("evidence-only record still fails RESOLUTION_FIELDS_REQUIRED", () => {
+    seedSubject();
+    const saved = saveSnapshot("sentry:project:450");
+    expect(() =>
+      recordResolution({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        evidenceIds: ["whatever"],
+      }),
+    ).toThrow(/at least one of --decision, --action, or --outcome/i);
+    expect(
+      listResolutions(dir, { investigationId: saved.record.id }),
+    ).toEqual([]);
+  });
+
+  test("omitted evidence never attaches the newest retained evidence", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+    });
+    expect(recorded.evidenceIds).toBeUndefined();
+    expect(getResolution(dir, recorded.id).evidenceIds).toBeUndefined();
+  });
+
+  test("recording evidence never rewrites the snapshot or its JSON", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const frozenJson = serializeInvestigationSnapshot(saved.record.snapshot);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      evidenceIds: ["dpl_abc"],
+    });
+    expect(recorded.evidenceIds).toEqual(["dpl_abc"]);
+    const show = formatResolution(recorded);
+    expect(show).toContain("EVIDENCE");
+    expect(show).toContain("dpl_abc");
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozenJson);
+    const store = new Store(dir);
+    store.init();
+    const snapshotJson =
+      store.getInvestigationRow(saved.record.id)?.snapshotJson ?? "";
+    store.close();
+    expect(snapshotJson).toBe(frozenJson);
+    expect(snapshotJson).not.toContain("EVIDENCE");
+  });
+
+  test("resolutions list omits evidence ids", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+    const list = formatResolutionList(
+      listResolutions(dir, { investigationId: saved.record.id }),
+    );
+    expect(list).toContain(saved.record.id);
+    expect(list).not.toContain("EVIDENCE");
+    expect(list).not.toContain("dpl_abc");
+  });
+
+  test("pre-054 resolutions table without evidence column lists empty until write init upgrades", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const prior = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`ALTER TABLE resolutions DROP COLUMN evidence_ids`);
+    db.close();
+
+    expect(getResolution(dir, prior.id).evidenceIds).toBeUndefined();
+    expect(formatResolution(getResolution(dir, prior.id))).not.toContain(
+      "EVIDENCE",
+    );
+
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      evidenceIds: ["dpl_abc"],
+    });
+    expect(recorded.evidenceIds).toEqual(["dpl_abc"]);
+    const probe = new Database(dbPath(dir));
+    const columns = probe
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string }>;
+    probe.close();
+    expect(columns.some((c) => c.name === "evidence_ids")).toBe(true);
+  });
+
+  test("corrupt stored evidence JSON is untrusted and omitted without crashing recall", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      evidenceIds: ["dpl_abc"],
+    });
+    const db = new Database(dbPath(dir));
+    db.query(`UPDATE resolutions SET evidence_ids = ? WHERE id = ?`).run(
+      `{"not": "json"`,
+      recorded.id,
+    );
+    db.close();
+
+    const fetched = getResolution(dir, recorded.id);
+    expect(fetched.evidenceIds).toBeUndefined();
+    expect(fetched.decision).toBe("Rollback 1.4.2");
+    expect(formatResolution(fetched)).not.toContain("EVIDENCE");
+    expect(formatResolution(fetched)).not.toContain("dpl_abc");
+    const section = formatResolutionMemorySection(
+      listResolutions(dir, { investigationId: saved.record.id }),
+      "investigation",
+    );
+    expect(section).not.toContain("EVIDENCE");
+    expect(section).not.toContain("dpl_abc");
+    expect(section).toContain("Rollback 1.4.2");
   });
 });
