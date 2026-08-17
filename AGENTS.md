@@ -36,7 +36,12 @@ evidence ids on a Resolution, validated against what live
 `investigate` already shows, shown as a distinct EVIDENCE block on
 `resolution <id>` and RESOLUTION MEMORY; not inferred Action, not in
 snapshot JSON, not evidence-id joins, not Incident, not MCP, not the
-Investigation Engine). Sprint 055 is the next slice.
+Investigation Engine). Sprint 055 shipped exact evidence-id Resolution
+retrieval: `resolutions --evidence <id>` lists retained Resolution
+summaries whose human-attached evidence ids include that exact string
+(ROADMAP v0.7; read-time membership over the 054 column, 050-shaped;
+not inferred, not substring, not similarity, not Incident, not MCP,
+not the Investigation Engine). Sprint 056 is the next slice.
 
 ## Mandatory reading order before any substantive change
 
@@ -58,7 +63,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–054 complete; Sprint 055 not started
+## Current baseline: Sprints 001–055 complete; Sprint 056 not started
 
 Multi-provider connection loop:
 
@@ -170,6 +175,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   first-seen; unknown ids fail the whole record; not inferred from
   provider activity, not Action, not snapshot JSON, not Known Facts,
   not MCP, not Incident).
+- **Sprint 055 shipped:** exact evidence-id Resolution retrieval:
+  `resolutions --evidence <id>` lists retained Resolution summaries
+  whose human-attached evidence ids include that exact string
+  (membership, not substring; read-time over the 054 column, no
+  schema change; known-empty for that id exits 0, never
+  `EVIDENCE_ID_NOT_FOUND`; survives subject Resource deletion and
+  evidence aging out of live compose; ANDs with `--investigation` /
+  `--resource`; one exact id on the list; not inferred from provider
+  activity, not Action, not similarity, not Incident, not MCP, not
+  snapshot JSON, not Known Facts).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -209,7 +224,11 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   054 was the smallest v0.7 slice and does not authorize Inference,
   Incident, Recommendation, Learning, similarity, or MCP writes).
   Inferred Action from provider activity remains forbidden. Sprint 055
-  is not started.
+  shipped exact evidence-id Resolution retrieval on the `resolutions`
+  list (054 leftover is not a sequence; membership retrieval is not
+  inference — the human named the id; Sprint 055 does not authorize
+  Inference, Incident, Recommendation, Learning, similarity, or MCP
+  writes). Sprint 056 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
