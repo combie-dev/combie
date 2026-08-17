@@ -110,7 +110,7 @@ Investigate options:
   --outcome <text>             Explicit outcome (what happened afterward)
 
 Resolution memory appears on investigate and investigation reopen
-when records exist.
+when records exist, including the recorded text.
 
 Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId

@@ -198,12 +198,30 @@ export function formatResolution(record: ResolutionRecord): string {
 
 export type ResolutionMemoryScope = "investigation" | "subject";
 
-function presentFields(record: ResolutionRecord): string {
-  const fields: string[] = [];
-  if (record.decision) fields.push("decision");
-  if (record.action) fields.push("action");
-  if (record.outcome) fields.push("outcome");
-  return fields.join(", ");
+function memoryIdentityLine(
+  record: ResolutionRecord,
+  scope: ResolutionMemoryScope,
+): string {
+  if (scope === "investigation") {
+    return `${record.id}  ${record.recordedAt}`;
+  }
+  return `${record.id}  ${record.investigationId}  ${record.recordedAt}`;
+}
+
+function memoryFieldBlocks(record: ResolutionRecord): string[] {
+  const blocks: string[] = [];
+  if (record.decision) {
+    blocks.push("DECISION", record.decision);
+  }
+  if (record.action) {
+    if (blocks.length > 0) blocks.push("");
+    blocks.push("ACTION", record.action);
+  }
+  if (record.outcome) {
+    if (blocks.length > 0) blocks.push("");
+    blocks.push("OUTCOME", record.outcome);
+  }
+  return blocks;
 }
 
 /** Read-time organizational-response section. Empty when there is nothing to show. */
@@ -218,57 +236,13 @@ export function formatResolutionMemorySection(
     `RESOLUTION MEMORY\n` +
     `Retained organizational response ${where}.\n` +
     `It is not current provider truth. It is not a recommendation.`;
-
-  const colId = Math.max("ID".length, ...records.map((r) => r.id.length));
-  let table: string;
-  if (scope === "investigation") {
-    const colAt = Math.max(
-      "RECORDED AT".length,
-      ...records.map((r) => r.recordedAt.length),
-    );
-    const header =
-      "ID".padEnd(colId) +
-      "  " +
-      "RECORDED AT".padEnd(colAt) +
-      "  " +
-      "FIELDS";
-    const body = records
-      .map(
-        (r) =>
-          r.id.padEnd(colId) +
-          "  " +
-          r.recordedAt.padEnd(colAt) +
-          "  " +
-          presentFields(r),
-      )
-      .join("\n");
-    table = `${header}\n${body}`;
-  } else {
-    const colInv = Math.max(
-      "INVESTIGATION".length,
-      ...records.map((r) => r.investigationId.length),
-    );
-    const header =
-      "ID".padEnd(colId) +
-      "  " +
-      "INVESTIGATION".padEnd(colInv) +
-      "  " +
-      "RECORDED AT";
-    const body = records
-      .map(
-        (r) =>
-          r.id.padEnd(colId) +
-          "  " +
-          r.investigationId.padEnd(colInv) +
-          "  " +
-          r.recordedAt,
-      )
-      .join("\n");
-    table = `${header}\n${body}`;
-  }
-
+  const rows = records.map((record) =>
+    [memoryIdentityLine(record, scope), ...memoryFieldBlocks(record)].join(
+      "\n",
+    ),
+  );
   return (
-    `${intro}\n\n${table}\n\n` +
+    `${intro}\n\n${rows.join("\n\n")}\n\n` +
     `Show: ${BINARY_NAME} resolution ${records[0]!.id}`
   );
 }

@@ -332,7 +332,7 @@ describe("exact-id resolution recall", () => {
     );
   });
 
-  test("investigation-scoped section lists summaries without essays and does not rewrite the snapshot", () => {
+  test("investigation-scoped section prints retained field text and does not rewrite the snapshot", () => {
     const subject = seedSubject();
     const saved = saveSnapshot(subject.id);
     const frozenSnapshot = formatSavedInvestigation(
@@ -370,13 +370,24 @@ describe("exact-id resolution recall", () => {
     expect(section).toContain(second.id);
     expect(section).toContain(first.id);
     expect(section.indexOf(second.id)).toBeLessThan(section.indexOf(first.id));
-    expect(section).toContain("decision, action, outcome");
-    expect(section).toContain("decision");
-    expect(section).not.toContain("Rollback 1.4.2");
-    expect(section).not.toContain("Reverted deployment to 1.4.1");
-    expect(section).not.toContain("Wait instead");
+    expect(section.split("\n")).not.toContain("RESOLUTION");
+    expect(section).toContain("DECISION");
+    expect(section).toContain("ACTION");
+    expect(section).toContain("OUTCOME");
+    expect(section).toContain("Rollback 1.4.2");
+    expect(section).toContain("Reverted deployment to 1.4.1");
+    expect(section).toContain("Wait instead");
+    expect(section).not.toContain("decision, action, outcome");
     expect(section).toContain("Show:");
     expect(section).toContain(`resolution ${second.id}`);
+    const waitBlock = section.slice(
+      section.indexOf(second.id),
+      section.indexOf(first.id),
+    );
+    expect(waitBlock).toContain("DECISION");
+    expect(waitBlock).toContain("Wait instead");
+    expect(waitBlock).not.toContain("ACTION");
+    expect(waitBlock).not.toContain("OUTCOME");
 
     const snapshot = formatSavedInvestigation(
       getSavedInvestigation(dir, saved.record.id),
@@ -397,8 +408,12 @@ describe("exact-id resolution recall", () => {
     expect(rendered.startsWith(snapshot)).toBe(true);
     expect(rendered).toContain("RESOLUTION MEMORY");
     expect(rendered).toContain(second.id);
+    expect(rendered).toContain("Wait instead");
     expect(formatInvestigationContext(saved.record.snapshot)).not.toContain(
       "RESOLUTION MEMORY",
+    );
+    expect(formatInvestigationContext(saved.record.snapshot)).not.toContain(
+      "Rollback 1.4.2",
     );
   });
 
@@ -448,8 +463,10 @@ describe("exact-id resolution recall", () => {
     expect(section).toContain(invSentry.record.id);
     expect(section).not.toContain(other.id);
     expect(section).not.toContain(invGithub.record.id);
-    expect(section).not.toContain("Pin the Sentry release");
-    expect(section).toContain("INVESTIGATION");
+    expect(section).toContain("Pin the Sentry release");
+    expect(section).not.toContain("Pin the GitHub workflow");
+    expect(section).toContain("DECISION");
+    expect(section.split("\n")).not.toContain("RESOLUTION");
 
     const rendered = formatWithResolutionMemory(
       live,
@@ -458,7 +475,9 @@ describe("exact-id resolution recall", () => {
     );
     expect(rendered).toContain("RESOLUTION MEMORY");
     expect(rendered).toContain(ours.id);
-    expect(rendered).not.toContain("Pin the Sentry release");
+    expect(rendered).toContain("Pin the Sentry release");
+    expect(rendered).not.toContain("Pin the GitHub workflow");
+    expect(live).not.toContain("Pin the Sentry release");
   });
 
   test("reopen of a later resolution still hangs on the investigation id", () => {
@@ -476,7 +495,9 @@ describe("exact-id resolution recall", () => {
     );
     expect(section).toContain(later.id);
     expect(section).toContain("2026-08-16T18:00:00.000Z");
-    expect(section).toContain("outcome");
-    expect(section).not.toContain("Recovered without intervention");
+    expect(section).toContain("OUTCOME");
+    expect(section).toContain("Recovered without intervention");
+    expect(section).not.toContain("ACTION");
+    expect(section).not.toContain("DECISION");
   });
 });

@@ -881,7 +881,7 @@ describe("CLI commands", () => {
     expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
     expect(reopened.stdout).toContain("RESOLUTION MEMORY");
     expect(reopened.stdout).toContain(resId);
-    expect(reopened.stdout).not.toContain("Rollback 1.4.2");
+    expect(reopened.stdout).toContain("Rollback 1.4.2");
     expect(reopened.stdout).not.toMatch(/incident/i);
 
     const live = await capture(() =>
@@ -913,6 +913,7 @@ describe("CLI commands", () => {
     expect(help.stdout).toContain("--outcome <text>");
     expect(help.stdout).not.toContain("resolved: true");
     expect(help.stdout).toContain("Resolution memory");
+    expect(help.stdout).toContain("recorded text");
   });
 
   test("resolutions known-empty for a subject exits 0", async () => {
@@ -992,8 +993,8 @@ describe("CLI commands", () => {
     expect(reopened.code).toBe(0);
     expect(reopened.stdout).toContain("RESOLUTION MEMORY");
     expect(reopened.stdout).toContain(resId);
-    expect(reopened.stdout).toContain("decision");
-    expect(reopened.stdout).not.toContain("Rollback 1.4.2");
+    expect(reopened.stdout).toContain("DECISION");
+    expect(reopened.stdout).toContain("Rollback 1.4.2");
     expect(reopened.stdout).not.toMatch(/you should/i);
 
     const live = await capture(() =>
@@ -1003,7 +1004,7 @@ describe("CLI commands", () => {
     expect(live.stdout).toContain("RESOLUTION MEMORY");
     expect(live.stdout).toContain(resId);
     expect(live.stdout).toContain(invId);
-    expect(live.stdout).not.toContain("Rollback 1.4.2");
+    expect(live.stdout).toContain("Rollback 1.4.2");
 
     const otherLive = await capture(() =>
       main(["investigate", other.id, "--dir", dir]),
@@ -1018,6 +1019,7 @@ describe("CLI commands", () => {
     expect(savedAgain.code).toBe(0);
     expect(savedAgain.stdout).toContain("RESOLUTION MEMORY");
     expect(savedAgain.stdout).toContain(resId);
+    expect(savedAgain.stdout).toContain("Rollback 1.4.2");
     const inv2 = savedAgain.stdout.match(
       /Saved investigation snapshot (inv:\S+)/,
     )![1]!;
