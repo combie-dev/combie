@@ -94,11 +94,22 @@ export function saveInvestigation(
   };
 }
 
-export function listInvestigations(baseDir: string): InvestigationRecord[] {
+export interface ListInvestigationsOptions {
+  subjectResourceId?: string;
+}
+
+export function listInvestigations(
+  baseDir: string,
+  options?: ListInvestigationsOptions,
+): InvestigationRecord[] {
   const store = new Store(baseDir);
   try {
     if (!store.isInitialized()) throw notInitialized();
-    return store.listInvestigationSummaries();
+    return store.listInvestigationSummaries(
+      options?.subjectResourceId !== undefined
+        ? { subjectResourceId: options.subjectResourceId }
+        : undefined,
+    );
   } finally {
     store.close();
   }
@@ -138,8 +149,15 @@ export function getSavedInvestigation(
 
 export function formatInvestigationList(
   records: InvestigationRecord[],
+  subjectResourceId?: string,
 ): string {
   if (records.length === 0) {
+    if (subjectResourceId !== undefined) {
+      return (
+        `No investigation snapshots saved for subject ${subjectResourceId}.\n` +
+        `Save one: ${BINARY_NAME} investigate ${subjectResourceId} --save`
+      );
+    }
     return (
       "No investigation snapshots saved yet.\n" +
       `Save one: ${BINARY_NAME} investigate <resource-id> --save`

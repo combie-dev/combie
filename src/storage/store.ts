@@ -1430,7 +1430,9 @@ export class Store {
       .run(row.id, row.subjectResourceId, row.composedAt, row.snapshotJson);
   }
 
-  listInvestigationSummaries(): Array<{
+  listInvestigationSummaries(filter?: {
+    subjectResourceId?: string;
+  }): Array<{
     id: string;
     subjectResourceId: string;
     composedAt: string;
@@ -1442,13 +1444,22 @@ export class Store {
       )
       .get() as { name: string } | null;
     if (!table) return [];
+    const where =
+      filter?.subjectResourceId !== undefined
+        ? "WHERE subject_resource_id = ?"
+        : "";
+    const params =
+      filter?.subjectResourceId !== undefined
+        ? [filter.subjectResourceId]
+        : [];
     const rows = db
       .query(
         `SELECT id, subject_resource_id, composed_at
          FROM investigations
+         ${where}
          ORDER BY composed_at DESC, id DESC`,
       )
-      .all() as Array<{
+      .all(...params) as Array<{
       id: string;
       subject_resource_id: string;
       composed_at: string;

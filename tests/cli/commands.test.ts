@@ -680,6 +680,104 @@ describe("CLI commands", () => {
     expect(listed.stdout).toContain(id);
   });
 
+  test("investigations --resource lists only that subject and survives subject deletion", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "cli450",
+      kind: "project",
+      name: "cli-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    const repo = createResource({
+      provider: "github",
+      providerResourceId: "cli1001",
+      kind: "repository",
+      name: "cli/api",
+      metadata: {},
+    });
+    store.applyResource(project, {
+      id: "obs-cli",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(repo, {
+      id: "obs-cli-repo",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const savedA = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const idA = savedA.stdout.match(/Saved investigation snapshot (inv:\S+)/)![1]!;
+    const savedB = await capture(() =>
+      main(["investigate", repo.id, "--save", "--dir", dir]),
+    );
+    const idB = savedB.stdout.match(/Saved investigation snapshot (inv:\S+)/)![1]!;
+
+    const filtered = await capture(() =>
+      main(["investigations", "--resource", project.id, "--dir", dir]),
+    );
+    expect(filtered.code).toBe(0);
+    expect(filtered.stdout).toContain(idA);
+    expect(filtered.stdout).not.toContain(idB);
+    expect(filtered.stdout).toContain(project.id);
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${project.id}'`);
+    db.close();
+
+    const afterDelete = await capture(() =>
+      main(["investigations", "--resource", project.id, "--dir", dir]),
+    );
+    expect(afterDelete.code).toBe(0);
+    expect(afterDelete.stdout).toContain(idA);
+    expect(afterDelete.stdout).not.toContain("Resource not found");
+
+    const unfiltered = await capture(() =>
+      main(["investigations", "--dir", dir]),
+    );
+    expect(unfiltered.stdout).toContain(idA);
+    expect(unfiltered.stdout).toContain(idB);
+  });
+
+  test("investigations --resource with zero snapshots exits 0 with subject-empty copy", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const empty = await capture(() =>
+      main(["investigations", "--resource", "sentry:project:none", "--dir", dir]),
+    );
+    expect(empty.code).toBe(0);
+    expect(empty.stdout).toContain(
+      "No investigation snapshots saved for subject sentry:project:none",
+    );
+    expect(empty.stdout).not.toContain("No investigation snapshots saved yet.");
+    expect(empty.stdout).not.toContain("Resource not found");
+  });
+
+  test("investigations --resource requires a value and help lists the flag", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const bare = await capture(() =>
+      main(["investigations", "--resource", "--dir", dir]),
+    );
+    expect(bare.code).toBe(1);
+    expect(bare.stderr).toContain("--resource requires a resource id");
+
+    const blank = await capture(() =>
+      main(["investigations", "--resource", "", "--dir", dir]),
+    );
+    expect(blank.code).toBe(1);
+    expect(blank.stderr).toContain("--resource requires a resource id");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("--resource <resource-id>");
+    expect(help.stdout).toContain(
+      'With "investigations": list snapshots for one subject',
+    );
+  });
+
   test("investigation requires an id and help lists --compare", async () => {
     const usage = await capture(() =>
       main(["investigation", "--dir", dir]),

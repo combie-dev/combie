@@ -13,7 +13,8 @@ Relationship). Sprint 048 shipped the smallest durable Investigation snapshot
 Investigation Engine). Sprint 049 shipped compare-to-current: `investigation
 <id> --compare` diffs one retained snapshot against a live one-hop compose of
 the same subject (SAME / SNAPSHOT ONLY / CURRENT ONLY / AUTHORITY CLOCK).
-Sprint 050 is the active subject-scoped Investigation history slice
+Sprint 050 shipped subject-scoped Investigation history: `investigations
+--resource <resource-id>` lists retained snapshots for one exact subject id
 (ROADMAP v0.6 historical retrieval; not lifecycle, not Operational
 Memory, not the Investigation Engine).
 
@@ -37,7 +38,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–049 complete (050 is active)
+## Current baseline: Sprints 001–050 complete
 
 Multi-provider connection loop:
 
@@ -107,14 +108,18 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   failure. Do not add Investigation lifecycle status, Incident /
   Decision / Action / Outcome, hypotheses, ContextPack, fact-budget
   redesign, new MCP tools, graph mutation, multi-hop, or execution.
-- **Sprint 050 scope:** list retained Investigation snapshots for one
-  exact Resource id (`investigations --resource <id>` or smallest
-  equivalent). Historical retrieval of Investigation objects, not
-  incidents. Survive subject Resource deletion; known-empty per
-  subject. Do not add lifecycle status, live-investigate historical
-  sections, similarity, Incident / Decision / Action / Outcome,
-  hypotheses, ContextPack, new MCP tools, graph mutation, or
-  execution.
+- **Sprint 050 shipped:** subject-scoped Investigation history:
+  `investigations --resource <resource-id>` lists retained snapshot
+  summaries for one exact `subjectResourceId` (`composedAt` DESC, `id`
+  DESC; same 048 table, read-time filter, no schema migration).
+  Filtered listing survives subject Resource deletion (never
+  `RESOURCE_NOT_FOUND`); a subject with zero snapshots is
+  known-empty (exit 0) with distinct copy; unfiltered `investigations`
+  is unchanged. Reopen/compare remain `investigation <id>` /
+  `--compare`. Do not add lifecycle status, live-investigate
+  historical sections, similarity, Incident / Decision / Action /
+  Outcome, hypotheses, ContextPack, new MCP tools, graph mutation,
+  or execution.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.

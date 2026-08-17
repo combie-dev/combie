@@ -562,21 +562,21 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 050 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: list retained snapshots for one exact subject id
-- [ ] if earned: listing survives subject Resource deletion; empty
+- [x] Sprint 050 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: list retained snapshots for one exact subject id
+- [x] if earned: listing survives subject Resource deletion; empty
       subject is known-empty; snapshots are not called incidents
-- [ ] if earned: no lifecycle status; no Incident / Decision /
+- [x] if earned: no lifecycle status; no Incident / Decision /
       Action / Outcome; MCP still four tools; live investigate
       unchanged
-- [ ] if not earned: rejection documented; do not invent an Engine
+- [x] if not earned: rejection documented; do not invent an Engine
       or start Operational Memory
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged unless material semantics require an update
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged unless material semantics require an update
 
 ---
 
@@ -587,3 +587,108 @@ git diff --check
 > Investigation compositions for one subject. It must not decide
 > whether an investigation is open, whether cases are similar, or
 > what happened.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-16)
+
+```text
+HEAD:          6f7230e76d5e52422b17a76aa9f3c3d2d88c7194
+tests:         865 pass across 76 files
+typecheck:     clean
+worktree:      clean
+MCP:           exactly four read-only tools
+Sprint 049:    Complete
+Sprint 050:    Active
+```
+
+## Repository Understanding
+
+1. **Filter without schema change.** `investigations.subject_resource_id`
+   exists (048 DDL); `listInvestigationSummaries` (store.ts) already
+   orders `composed_at DESC, id DESC` behind a `sqlite_master` table
+   probe (pre-048 DBs list empty). Optional `WHERE subject_resource_id
+   = ?` rides the existing index. No migration.
+2. **CLI flag.** `--resource <resource-id>` — matches Sprint default
+   shape and existing vocabulary (`resources --provider/--kind`,
+   `investigate <resource-id>`). `--subject` would be a new word for
+   the same concept.
+3. **Empty copy.** Distinct: global `No investigation snapshots saved
+   yet.` (048, unchanged) vs subject `No investigation snapshots saved
+   for subject <id>.` Both exit 0.
+4. **Subject-missing vs empty vs uninitialized.** The filter path reads
+   only the `investigations` table — it never calls `getResource`, so
+   `RESOURCE_NOT_FOUND` cannot fire. Missing Resource + rows → list;
+   zero rows → known-empty; uninitialized → `NOT_INITIALIZED` like all
+   read commands.
+5. **InvestigationEngine.** Not earned.
+6. **Persisted lifecycle status.** Not earned (049 gate still closed).
+7. **Operational Memory.** Not earned (v0.7).
+8. **Live investigate.** No snapshot pointers (not this Sprint).
+
+## Architecture Pressure
+
+1. Persistence not necessary — read-time filter over 048 rows
+   (Sequencing Rule 9).
+2. No second source of truth — output is retained-composition ids from
+   `investigations` only; no re-compose; no authority claim.
+3. No ARCHITECTURE `status` / trigger / hypotheses / recommendation
+   leakage into the list or its rows.
+4. No Incident / Decision / Action / Outcome vocabulary; list is
+   "investigation snapshots", never "incidents".
+5. No MCP tool; `investigate_resource` stays live compose.
+6. No live-investigate historical section.
+7. Canon change: AGENTS.md operational baseline only.
+
+## Implemented
+
+- `Store.listInvestigationSummaries(filter?: { subjectResourceId?: string })`
+  — optional `WHERE subject_resource_id = ?`, same ORDER BY, same
+  table probe; unfiltered call unchanged (048).
+- `listInvestigations(baseDir, options?)` — passes the filter through.
+- `formatInvestigationList(records, subjectResourceId?)` — distinct
+  subject-empty copy; global empty copy unchanged.
+- CLI `investigations [--resource <resource-id>]` — trims and validates
+  the flag (bare or blank value → usage error, exit 1; never a silent
+  global fallback); help lists the flag and one example.
+- No schema migration; no new MCP tools; no live-investigate changes.
+
+## Deviations
+
+- None. Flag name `--resource` (Phase 1 pin); subject-empty copy text
+  chosen as `No investigation snapshots saved for subject <id>.`
+
+## Validation
+
+```text
+bun test:          872 pass across 76 files (was 865 / 76; +7 tests)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources (read-only annotations)
+dogfood:           isolated /tmp/combie-050-dogfood: 3 saves (2× dog-a,
+                   1× dog-b); unfiltered lists all 3; --resource dog-a
+                   lists 2; after deleting resource dog-a still lists 2
+                   (exit 0); --resource never-used is known-empty
+                   (exit 0); --resource with no value errors (exit 1)
+```
+
+## Learnings
+
+- The 048 SQL `ORDER BY composed_at DESC, id DESC` was already the
+  correct contract for the filtered variant; the filter is a pure
+  WHERE addition.
+- The `sqlite_master` probe means a pre-050 DB (or a store opened
+  before a write `init()`) lists empty for both global and
+  subject-scoped reads without any upgrade step.
+- Test-authoring trap: an expected tie-break list must group by
+  `composedAt` first, then id DESC *within* the group — a plain
+  string-DESC sort of mixed `composedAt` ids is not the SQL contract
+  and fails nondeterministically with random `inv:` UUIDs.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL unchanged. AGENTS.md baseline
+becomes Sprints 001–050 complete. Sprint 051 is not started.

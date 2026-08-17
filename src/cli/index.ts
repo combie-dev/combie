@@ -90,6 +90,7 @@ Resources options:
 Investigate options:
   --save                       Persist a retained investigation snapshot
   --compare                    With "investigation <id>": compare snapshot to current compose
+  --resource <resource-id>     With "investigations": list snapshots for one subject
 
 Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId
@@ -121,6 +122,7 @@ Examples:
   ${BINARY_NAME} investigate vercel:project:prj_abc
   ${BINARY_NAME} investigate vercel:project:prj_abc --save
   ${BINARY_NAME} investigations
+  ${BINARY_NAME} investigations --resource github:repository:1001
   ${BINARY_NAME} investigation inv:…
   ${BINARY_NAME} investigation inv:… --compare
   ${BINARY_NAME} mcp
@@ -340,8 +342,19 @@ async function main(argv: string[]): Promise<number> {
         return 0;
       }
       case "investigations": {
-        const records = listInvestigations(baseDir);
-        console.log(formatInvestigationList(records));
+        const resource =
+          typeof flags.resource === "string" ? flags.resource.trim() : undefined;
+        if (flags.resource !== undefined && !resource) {
+          console.error(
+            `--resource requires a resource id.\nUsage: ${BINARY_NAME} investigations [--resource <resource-id>]\nExample: ${BINARY_NAME} investigations --resource github:repository:1001`,
+          );
+          return 1;
+        }
+        const records = listInvestigations(
+          baseDir,
+          resource !== undefined ? { subjectResourceId: resource } : undefined,
+        );
+        console.log(formatInvestigationList(records, resource));
         return 0;
       }
       case "investigation": {

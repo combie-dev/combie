@@ -9,6 +9,7 @@ import {
   getInvestigationContext,
 } from "../../src/app/investigate.ts";
 import {
+  formatInvestigationList,
   formatSavedInvestigation,
   getSavedInvestigation,
   listInvestigations,
@@ -151,6 +152,123 @@ describe("investigation snapshots", () => {
     );
     expect(reopened).toBe(frozen);
     expect(reopened).not.toContain("combie-renamed");
+  });
+
+  test("list by subject returns only matching subjectResourceId in composedAt DESC, id DESC order", () => {
+    seedSubject();
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.init();
+    store.applyResource(other, {
+      id: "obs-other",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const a = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+    const b = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const c = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "github:repository:1001",
+      composedAt: "2026-08-16T11:00:00.000Z",
+    });
+
+    const filtered = listInvestigations(dir, {
+      subjectResourceId: "sentry:project:450",
+    });
+    expect(filtered.map((r) => r.id)).toEqual([b.record.id, a.record.id]);
+    expect(
+      listInvestigations(dir, { subjectResourceId: "github:repository:1001" }).map(
+        (r) => r.id,
+      ),
+    ).toEqual([c.record.id]);
+
+    const tie = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const tied = listInvestigations(dir, { subjectResourceId: "sentry:project:450" });
+    expect(tied.map((r) => r.id)).toEqual([
+      ...[tie.record.id, b.record.id].sort((x, y) =>
+        y < x ? -1 : y > x ? 1 : 0,
+      ),
+      a.record.id,
+    ]);
+  });
+
+  test("subject with zero snapshots is known-empty for that subject", () => {
+    seedSubject();
+    const records = listInvestigations(dir, {
+      subjectResourceId: "sentry:project:450",
+    });
+    expect(records).toEqual([]);
+    const rendered = formatInvestigationList(records, "sentry:project:450");
+    expect(rendered).toContain(
+      "No investigation snapshots saved for subject sentry:project:450",
+    );
+    expect(rendered).not.toContain("No investigation snapshots saved yet.");
+  });
+
+  test("subject snapshots remain listed after the subject Resource is deleted", () => {
+    seedSubject();
+    const a = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+    const b = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = 'sentry:project:450'`);
+    db.close();
+
+    const listed = listInvestigations(dir, {
+      subjectResourceId: "sentry:project:450",
+    });
+    expect(listed.map((r) => r.id)).toEqual([b.record.id, a.record.id]);
+  });
+
+  test("subject filter is read-only and writes nothing", () => {
+    seedSubject();
+    saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const store = new Store(dir);
+    store.init();
+    const invCount = store.listInvestigationSummaries().length;
+    const changeCount = store.listChanges().length;
+    const relCount = store.listRelationships().length;
+    store.close();
+
+    listInvestigations(dir, { subjectResourceId: "sentry:project:450" });
+
+    const after = new Store(dir);
+    after.init();
+    expect(after.listInvestigationSummaries()).toHaveLength(invCount);
+    expect(after.listChanges()).toHaveLength(changeCount);
+    expect(after.listRelationships()).toHaveLength(relCount);
+    after.close();
   });
 
   test("pre-048 database upgrade creates investigations table", () => {
