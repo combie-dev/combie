@@ -26,7 +26,11 @@ Investigation Engine). Sprint 052 shipped exact-id Resolution recall
 on live `investigate` and `investigation <id>` reopen (ROADMAP v0.7;
 read-time list over the 051 table; not snapshot JSON, not Known Facts,
 not evidence-id joins, not Incident, not MCP, not the Investigation
-Engine). No next sprint is Active.
+Engine). Sprint 053 is the active Resolution body-recall slice
+(ROADMAP v0.7; show retained decision / action / outcome text on
+`investigate` and `investigation <id>` RESOLUTION MEMORY; not
+evidence-id joins, not Incident, not MCP, not the Investigation
+Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -48,7 +52,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–052 complete
+## Current baseline: Sprints 001–052 complete; Sprint 053 Active
 
 Multi-provider connection loop:
 
@@ -147,6 +151,11 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   the 051 table; distinct RESOLUTION MEMORY section omitted when empty;
   summaries only, not essays; not in snapshot JSON, not Known Facts,
   not `--compare`, not MCP, not evidence-id attribution, not Incident).
+- **Sprint 053 is Active:** Resolution body recall on live
+  `investigate` and `investigation <id>` reopen (show retained
+  decision / action / outcome text in the 052 RESOLUTION MEMORY
+  section; not in snapshot JSON, not Known Facts, not MCP, not
+  evidence-id attribution, not Incident).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -178,7 +187,9 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   Investigation lifecycle, or MCP writes. Sprint 052 shipped exact-id
   Resolution recall on live `investigate` and `investigation <id>`
   reopen. 051 leftover is not a sequence; evidence-id attribution
-  remains unearned. Sprint 053 is not started.
+  remains unearned. Sprint 053 is Active as the next smallest v0.7
+  slice: Resolution body recall on those same paths. 052 leftover is
+  not a sequence; evidence-id attribution remains unearned.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
