@@ -16,11 +16,13 @@ the same subject (SAME / SNAPSHOT ONLY / CURRENT ONLY / AUTHORITY CLOCK).
 Sprint 050 shipped subject-scoped Investigation history: `investigations
 --resource <resource-id>` lists retained snapshots for one exact subject id
 (ROADMAP v0.6 historical retrieval; not lifecycle, not Operational
-Memory, not the Investigation Engine). Sprint 051 is the active explicit
-Investigation resolution-memory slice (ROADMAP v0.7 Operational Memory
-smallest capture; founder override 2026-08-16; not Incident, not
-separate Decision / Action / Outcome models, not Recommendation, not
-the Investigation Engine).
+Memory, not the Investigation Engine). Sprint 051 shipped explicit
+Investigation resolution memory: `resolution --investigation <id>` records
+decision / action / outcome as fields on a saved Investigation;
+`resolutions --investigation` / `--resource` retrieve them (ROADMAP v0.7
+smallest capture; founder override 2026-08-16; not Incident, not separate
+Decision / Action / Outcome models, not Recommendation, not the
+Investigation Engine). No next sprint is Active.
 
 ## Mandatory reading order before any substantive change
 
@@ -42,7 +44,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–050 complete; Sprint 051 Active
+## Current baseline: Sprints 001–051 complete
 
 Multi-provider connection loop:
 
@@ -124,6 +126,18 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   historical sections, similarity, Incident / Decision / Action /
   Outcome, hypotheses, ContextPack, new MCP tools, graph mutation,
   or execution.
+- **Sprint 051 shipped:** explicit Resolution capture on a saved
+  Investigation (`resolution --investigation <id> --decision/--action/
+  --outcome`, `resolution <id>`, `resolutions [--investigation|--resource]`).
+  Decision, action, and outcome are distinguishable free-text fields on
+  one record (append-only, `res:` ids, `subjectResourceId` copied so
+  listing survives Resource deletion). At least one field is required;
+  there is no `resolved: true`, no inferred Action from provider
+  activity, no Incident, no Investigation lifecycle, no snapshot rewrite,
+  and no MCP change. Founder override 2026-08-16 started this smallest
+  v0.7 slice; it does not authorize Recommendation, Learning, similarity,
+  or MCP writes. `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains
+  the learning ledger for capture-shape use.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -150,10 +164,11 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   On 2026-08-16 a founder override started Sprint 051 as the smallest
   v0.7 slice: explicit Resolution capture on a saved Investigation
   (decision / action / outcome as fields, exact-id retrieve, no inferred
-  Action, MCP frozen). It does not authorize Incident, Recommendation,
-  Learning, similarity, Investigation lifecycle, or MCP writes.
+  Action, MCP frozen). Sprint 051 shipped that slice. It does not
+  authorize Incident, Recommendation, Learning, similarity,
+  Investigation lifecycle, or MCP writes.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
-  ledger for capture-shape use after the slice ships.
+  ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.

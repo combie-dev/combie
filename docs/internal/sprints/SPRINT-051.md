@@ -1,6 +1,6 @@
 # SPRINT-051 — Explicit Investigation Resolution Memory
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-050 (complete); ROADMAP v0.6 Investigation closed
 > at the deterministic milestone
 > **Authorized by:** founder override, 2026-08-16 — continue
@@ -652,22 +652,22 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 051 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: explicit Resolution capture on a saved Investigation
-- [ ] if earned: retrieve by investigation id and by exact subject id;
+- [x] Sprint 051 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: explicit Resolution capture on a saved Investigation
+- [x] if earned: retrieve by investigation id and by exact subject id;
       subject deletion does not hide rows
-- [ ] if earned: decision/action/outcome remain distinct fields;
+- [x] if earned: decision/action/outcome remain distinct fields;
       ≥1 required; no `resolved: true`; no inferred Action
-- [ ] if earned: no Incident; no separate D/A/O types; no lifecycle
+- [x] if earned: no Incident; no separate D/A/O types; no lifecycle
       status; MCP still four tools; snapshot schema unchanged
-- [ ] if not earned: rejection documented; do not invent an Engine or
+- [x] if not earned: rejection documented; do not invent an Engine or
       Incident
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline
 
 ---
 
@@ -677,3 +677,99 @@ git diff --check
 > decided, did, and observed afterward. Sprint 051 may retain that
 > explicit response on a saved Investigation. It must not infer what
 > happened, close the investigation, or recommend the next action.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-16)
+
+```text
+HEAD:          5d08bd404d9951e6cb2c62e5584b3a5f21ee5560
+tests:         872 pass across 76 files
+typecheck:     clean
+worktree:      clean
+MCP:           exactly four read-only tools
+Sprint 050:    Complete
+Sprint 051:    Active
+```
+
+## Repository Understanding
+
+1. **New table, no snapshot rewrite.** `investigations.snapshot_json` stays
+   048. Resolution is a sibling table + `ResolutionRecord` (`res:` id).
+2. **CLI shape.** 048-parallel noun: `resolution --investigation <id>
+   --decision/--action/--outcome` to record; `resolution <res-id>` to show;
+   `resolutions [--investigation|--resource]` to list. Investigation reopen
+   remains 048-identical (no Resolution section) so retrieve-by-investigation
+   is the list command, not a lifecycle status on the snapshot.
+3. **Distinguish composition from response.** Snapshot banner vs RESOLUTION
+   banner ("organizational response", "not current provider truth"). List
+   columns are ID / INVESTIGATION / SUBJECT / RECORDED AT — no decision text.
+4. **Many, append-only.** Two records on one investigation both list;
+   `recordedAt` DESC, `id` DESC.
+5. **≥1 of decision/action/outcome** after trim. Whitespace-only is omitted.
+   No `"unknown"` default. No `resolved: true`.
+6. **Incident.** Not earned.
+7. **Separate Decision/Action/Outcome types.** Not earned; fields only.
+8. **Investigation lifecycle.** Not earned.
+9. **MCP write.** Not earned. Four tools unchanged.
+10. **ROADMAP noun.** `Resolution` is not a ROADMAP heading. Combined storage
+    is the smallest version of Decision/Action/Outcome. Do not create three
+    tables to match the diagram. ROADMAP/VISION/ARCHITECTURE/SKILL unchanged.
+
+## Architecture Pressure
+
+1. Persistence is required for organizational response; provider activity
+   is not the Action.
+2. Resolution is labeled retained organizational response, never current
+   graph authority, never a snapshot rewrite.
+3. No `status` / recommendation leakage onto `investigations`.
+4. No Incident vocabulary in table, CLI, or formatter.
+5. No Decision/Action/Outcome tables.
+6. No MCP tool.
+7. No live-investigate Resolution section.
+8. No evidence-id joins.
+9. Canon: AGENTS.md operational baseline only.
+
+## Implemented
+
+- `src/domain/resolution.ts` — `ResolutionRecord`, `res:` id
+- `Store`: `resolutions` table (`CREATE TABLE IF NOT EXISTS`), insert /
+  list / get; missing table lists empty; write `init()` upgrades pre-051 DBs
+- `src/app/resolutions.ts` — record / list / get / format; copies
+  `subjectResourceId` from the snapshot; requires ≥1 field
+- CLI: `resolution`, `resolutions`, `--decision` / `--action` / `--outcome` /
+  `--investigation`; help examples
+- Compare ignores Resolution rows; investigation reopen unchanged
+
+## Deviations
+
+- None on product semantics. CLI uses a new `resolution`/`resolutions`
+  pair rather than flags on `investigation <id>` so `--compare` / reopen
+  stay read-only and 048 output stays byte-stable.
+
+## Validation
+
+```text
+bun test:          886 pass across 77 files (was 872 / 76)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources
+live (isolated):   investigate --save → resolution --decision/--action/
+                   --outcome → resolutions --investigation / --resource
+                   → resolution <id> show; snapshot reopen unchanged
+```
+
+## Learnings
+
+- Checking fields before Investigation lookup lets a missing-text error
+  surface even against a fake `inv:` id — useful for CLI usage tests.
+- `listResolutionSummaries` needs the same `sqlite_master` probe as 048
+  because `isInitialized()` is read-only and does not migrate.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL unchanged. AGENTS.md baseline
+becomes Sprints 001–051 complete. Sprint 052 is not started.
