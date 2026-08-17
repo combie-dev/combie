@@ -1,6 +1,6 @@
 # SPRINT-053 — Resolution Body Recall
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-052 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.7 Operational Memory
 > (organizational precedent retrieval — smallest deterministic version
@@ -530,19 +530,19 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 053 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: RESOLUTION MEMORY on reopen and live investigate
+- [x] Sprint 053 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: RESOLUTION MEMORY on reopen and live investigate
       shows retained decision / action / outcome text; omitted when
       empty; not in snapshot JSON
-- [ ] if earned: no MCP change; compare unchanged; no evidence-id;
+- [x] if earned: no MCP change; compare unchanged; no evidence-id;
       no Incident; no recommendation copy
-- [ ] if not earned: rejection documented; do not mix into Known Facts
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline
+- [x] if not earned: rejection documented; do not mix into Known Facts
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline
 
 ---
 
@@ -551,3 +551,87 @@ git diff --check
 > **Sprint 052 showed that a response was recorded. Sprint 053 may
 > show what that response was. It must not recommend, infer evidence,
 > or freeze the answers into the snapshot.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-17)
+
+```text
+HEAD:          c90d87a7bcaab6769449d07f048ef6a78f4f68ff
+tests:         891 pass across 77 files
+typecheck:     clean
+worktree:      clean
+MCP:           exactly four read-only tools
+Sprint 052:    Complete
+Sprint 053:    Active
+```
+
+## Repository Understanding
+
+1. **Formatter only.** CLI `formatWithResolutionMemory` call sites and
+   `InvestigationContext` stay 052. Bodies land in
+   `formatResolutionMemorySection`.
+2. **Compact memory-row.** Per row: identity line (`id` + `recordedAt`;
+   live also `investigationId`) then `DECISION` / `ACTION` / `OUTCOME`
+   blocks when present. Do not nest the 051 `RESOLUTION` show banner.
+3. **Empty = omit** unchanged.
+4. **`--save` serialize is already clean.** Section is not on the
+   context.
+5. **052 summary-only tests flip** for the memory section. Snapshot
+   JSON, `formatInvestigationContext`, `formatSavedInvestigation`,
+   `resolutions` list, and `--compare` still omit essays.
+6. **MCP: no.**
+7. **Compare: no.**
+8. **Evidence-id / Incident / lifecycle: no.**
+
+## Architecture Pressure
+
+1. Persistence is not necessary. 052 already SELECTs the text columns.
+2. Bodies stay labeled retained organizational response; never current
+   compose; never snapshot JSON.
+3. Outcome text is what the human wrote, not “errors stopped therefore
+   success.” 052 stale label kept.
+4. Copy still says it is not a recommendation; no “you should.”
+5. No MCP tool.
+6. No compare section.
+7. Canon: AGENTS.md operational baseline only.
+
+## Implemented
+
+- `formatResolutionMemorySection` prints retained field text
+- Help notes that Resolution memory includes the recorded text
+- CLI call sites, store, snapshot schema, MCP, compare unchanged
+
+## Deviations
+
+- None. Identity is a one-line prefix rather than the 052 FIELDS
+  table; that matches the sprint pin (per-row id / recordedAt /
+  investigationId, then field text).
+
+## Validation
+
+```text
+bun test:          891 pass across 77 files (assertions flipped;
+                   expect() calls 3710 → 3727)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources
+live (isolated):   investigate --save → resolution --decision/--action/
+                   --outcome → investigation reopen and live
+                   investigate show DECISION/ACTION/OUTCOME text →
+                   --compare has no Resolution section → snapshot
+                   JSON has neither RESOLUTION MEMORY nor the essays
+```
+
+## Learnings
+
+- `RESOLUTION MEMORY` must not be split so a line equals `RESOLUTION`,
+  or 051 show-banner collision tests fire. Keep the two-word title.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL unchanged. AGENTS.md baseline
+becomes Sprints 001–053 complete. Sprint 054 is not started.
