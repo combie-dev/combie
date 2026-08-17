@@ -120,6 +120,33 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   historical sections, similarity, Incident / Decision / Action /
   Outcome, hypotheses, ContextPack, new MCP tools, graph mutation,
   or execution.
+- **ROADMAP v0.6 Investigation is closed at the deterministic
+  milestone** (post-Sprint-050 architecture audit). Shipped minimum
+  loop: compose → save retained composition (`investigate --save`) →
+  reopen (`investigation <id>`) → compare retained vs current
+  (`--compare`) → retrieve retained compositions by subject
+  (`investigations --resource <id>`). The deterministic foundation
+  (exact Resource subject, one-hop deterministic Relationships, Known
+  Facts, Missing Context, provider-native evidence, provider activity,
+  dual chronologies / authority semantics, exact shared-commit
+  context, same-SHA correspondence) is complete.
+  `getInvestigationContext` and its projections satisfy the
+  deterministic Investigation coordination responsibility; do not
+  introduce a redundant InvestigationEngine abstraction merely to
+  match an architectural noun. Remaining v0.6 Capabilities (narrative
+  summaries, hypotheses, confidence, live historical pointers, MCP
+  snapshot/history/compare access, multi-hop graph expansion, telemetry
+  query adapters, additional provider evidence, ContextPack /
+  fact-budget redesign, notifications / Signal-driven investigation,
+  Combie-managed model reasoning) are optional and evidence-gated, not
+  unfinished v0.6 work; persisted open/closed/completed lifecycle is
+  not unfinished v0.6 work either. Operational Memory remains ROADMAP
+  v0.7 and stays distinct: Investigation ≠ Incident ≠ Decision ≠
+  Action ≠ Outcome. Closing v0.6 authorizes no Sprint 051 and no v0.7
+  work. `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the
+  active learning mechanism for whether evidence justifies an optional
+  Investigation surface, additional evidence depth, agent historical
+  access, or progression toward v0.7 Operational Memory.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or
   feedback collection.
