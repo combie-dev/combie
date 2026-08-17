@@ -879,7 +879,17 @@ describe("CLI commands", () => {
     );
     expect(reopened.code).toBe(0);
     expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
+    expect(reopened.stdout).toContain("RESOLUTION MEMORY");
+    expect(reopened.stdout).toContain(resId);
     expect(reopened.stdout).not.toContain("Rollback 1.4.2");
+    expect(reopened.stdout).not.toMatch(/incident/i);
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(live.code).toBe(1);
+    expect(live.stderr).toContain("Resource not found");
+    expect(live.stdout).not.toContain("RESOLUTION MEMORY");
   });
 
   test("resolution requires a field and help lists capture flags", async () => {
@@ -902,6 +912,7 @@ describe("CLI commands", () => {
     expect(help.stdout).toContain("--action <text>");
     expect(help.stdout).toContain("--outcome <text>");
     expect(help.stdout).not.toContain("resolved: true");
+    expect(help.stdout).toContain("Resolution memory");
   });
 
   test("resolutions known-empty for a subject exits 0", async () => {
@@ -919,6 +930,130 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain(
       "No resolutions recorded for subject sentry:project:never-used",
     );
+  });
+
+  test("investigate and investigation reopen show exact-id resolution memory", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "mem450",
+      kind: "project",
+      name: "mem-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "mem1001",
+      kind: "repository",
+      name: "acme/mem",
+      metadata: {},
+    });
+    store.applyResource(project, {
+      id: "obs-mem",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-mem-other",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(saved.stdout).not.toContain("RESOLUTION MEMORY");
+    const invId = saved.stdout.match(/Saved investigation snapshot (inv:\S+)/)![1]!;
+
+    const emptyReopen = await capture(() =>
+      main(["investigation", invId, "--dir", dir]),
+    );
+    expect(emptyReopen.code).toBe(0);
+    expect(emptyReopen.stdout).toContain("INVESTIGATION SNAPSHOT");
+    expect(emptyReopen.stdout).not.toContain("RESOLUTION MEMORY");
+
+    const recorded = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invId,
+        "--decision",
+        "Rollback 1.4.2",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resId = recorded.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const reopened = await capture(() =>
+      main(["investigation", invId, "--dir", dir]),
+    );
+    expect(reopened.code).toBe(0);
+    expect(reopened.stdout).toContain("RESOLUTION MEMORY");
+    expect(reopened.stdout).toContain(resId);
+    expect(reopened.stdout).toContain("decision");
+    expect(reopened.stdout).not.toContain("Rollback 1.4.2");
+    expect(reopened.stdout).not.toMatch(/you should/i);
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(live.code).toBe(0);
+    expect(live.stdout).toContain("RESOLUTION MEMORY");
+    expect(live.stdout).toContain(resId);
+    expect(live.stdout).toContain(invId);
+    expect(live.stdout).not.toContain("Rollback 1.4.2");
+
+    const otherLive = await capture(() =>
+      main(["investigate", other.id, "--dir", dir]),
+    );
+    expect(otherLive.code).toBe(0);
+    expect(otherLive.stdout).not.toContain("RESOLUTION MEMORY");
+    expect(otherLive.stdout).not.toContain(resId);
+
+    const savedAgain = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(savedAgain.code).toBe(0);
+    expect(savedAgain.stdout).toContain("RESOLUTION MEMORY");
+    expect(savedAgain.stdout).toContain(resId);
+    const inv2 = savedAgain.stdout.match(
+      /Saved investigation snapshot (inv:\S+)/,
+    )![1]!;
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const row = storeAfter.getInvestigationRow(inv2);
+    expect(row?.snapshotJson).not.toContain("RESOLUTION MEMORY");
+    expect(row?.snapshotJson).not.toContain(resId);
+    expect(row?.snapshotJson).not.toContain("Rollback 1.4.2");
+    storeAfter.close();
+
+    const reopenSecond = await capture(() =>
+      main(["investigation", inv2, "--dir", dir]),
+    );
+    expect(reopenSecond.stdout).not.toContain("RESOLUTION MEMORY");
+
+    const compared = await capture(() =>
+      main(["investigation", invId, "--compare", "--dir", dir]),
+    );
+    expect(compared.code).toBe(0);
+    expect(compared.stdout).toContain("INVESTIGATION COMPARE");
+    expect(compared.stdout).not.toContain("RESOLUTION MEMORY");
+    expect(compared.stdout).not.toContain(resId);
+
+    const missingInv = await capture(() =>
+      main(["investigation", "inv:missing", "--dir", dir]),
+    );
+    expect(missingInv.code).toBe(1);
+    expect(missingInv.stderr).toContain("Investigation not found");
+    expect(missingInv.stdout).not.toContain("RESOLUTION MEMORY");
+
+    const missingResource = await capture(() =>
+      main(["investigate", "sentry:project:nope", "--dir", dir]),
+    );
+    expect(missingResource.code).toBe(1);
+    expect(missingResource.stdout).not.toContain("RESOLUTION MEMORY");
   });
 
   test("context renders empty, related-only, and history-only states", async () => {

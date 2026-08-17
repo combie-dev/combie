@@ -1543,12 +1543,7 @@ export class Store {
   listResolutionSummaries(filter?: {
     investigationId?: string;
     subjectResourceId?: string;
-  }): Array<{
-    id: string;
-    investigationId: string;
-    subjectResourceId: string;
-    recordedAt: string;
-  }> {
+  }): ResolutionRow[] {
     const db = this.getDb();
     const table = db
       .query(
@@ -1569,34 +1564,17 @@ export class Store {
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = db
       .query(
-        `SELECT id, investigation_id, subject_resource_id, recorded_at
+        `SELECT id, investigation_id, subject_resource_id, recorded_at,
+                decision, action, outcome
          FROM resolutions
          ${where}
          ORDER BY recorded_at DESC, id DESC`,
       )
-      .all(...params) as Array<{
-      id: string;
-      investigation_id: string;
-      subject_resource_id: string;
-      recorded_at: string;
-    }>;
-    return rows.map((row) => ({
-      id: row.id,
-      investigationId: row.investigation_id,
-      subjectResourceId: row.subject_resource_id,
-      recordedAt: row.recorded_at,
-    }));
+      .all(...params) as ResolutionSqlRow[];
+    return rows.map(mapResolutionRow);
   }
 
-  getResolutionRow(id: string): {
-    id: string;
-    investigationId: string;
-    subjectResourceId: string;
-    recordedAt: string;
-    decision?: string;
-    action?: string;
-    outcome?: string;
-  } | null {
+  getResolutionRow(id: string): ResolutionRow | null {
     const db = this.getDb();
     const table = db
       .query(
@@ -1611,27 +1589,9 @@ export class Store {
          FROM resolutions
          WHERE id = ?`,
       )
-      .get(id) as
-      | {
-          id: string;
-          investigation_id: string;
-          subject_resource_id: string;
-          recorded_at: string;
-          decision: string | null;
-          action: string | null;
-          outcome: string | null;
-        }
-      | null;
+      .get(id) as ResolutionSqlRow | null;
     if (!row) return null;
-    return {
-      id: row.id,
-      investigationId: row.investigation_id,
-      subjectResourceId: row.subject_resource_id,
-      recordedAt: row.recorded_at,
-      ...(row.decision ? { decision: row.decision } : {}),
-      ...(row.action ? { action: row.action } : {}),
-      ...(row.outcome ? { outcome: row.outcome } : {}),
-    };
+    return mapResolutionRow(row);
   }
 
   close(): void {
@@ -1641,6 +1601,38 @@ export class Store {
       this.dbReadOnly = false;
     }
   }
+}
+
+type ResolutionSqlRow = {
+  id: string;
+  investigation_id: string;
+  subject_resource_id: string;
+  recorded_at: string;
+  decision: string | null;
+  action: string | null;
+  outcome: string | null;
+};
+
+type ResolutionRow = {
+  id: string;
+  investigationId: string;
+  subjectResourceId: string;
+  recordedAt: string;
+  decision?: string;
+  action?: string;
+  outcome?: string;
+};
+
+function mapResolutionRow(row: ResolutionSqlRow): ResolutionRow {
+  return {
+    id: row.id,
+    investigationId: row.investigation_id,
+    subjectResourceId: row.subject_resource_id,
+    recordedAt: row.recorded_at,
+    ...(row.decision ? { decision: row.decision } : {}),
+    ...(row.action ? { action: row.action } : {}),
+    ...(row.outcome ? { outcome: row.outcome } : {}),
+  };
 }
 
 function mapProvider(row: {

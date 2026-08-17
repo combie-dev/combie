@@ -196,6 +196,92 @@ export function formatResolution(record: ResolutionRecord): string {
   return lines.join("\n");
 }
 
+export type ResolutionMemoryScope = "investigation" | "subject";
+
+function presentFields(record: ResolutionRecord): string {
+  const fields: string[] = [];
+  if (record.decision) fields.push("decision");
+  if (record.action) fields.push("action");
+  if (record.outcome) fields.push("outcome");
+  return fields.join(", ");
+}
+
+/** Read-time organizational-response section. Empty when there is nothing to show. */
+export function formatResolutionMemorySection(
+  records: ResolutionRecord[],
+  scope: ResolutionMemoryScope,
+): string {
+  if (records.length === 0) return "";
+  const where =
+    scope === "investigation" ? "for this investigation" : "for this subject";
+  const intro =
+    `RESOLUTION MEMORY\n` +
+    `Retained organizational response ${where}.\n` +
+    `It is not current provider truth. It is not a recommendation.`;
+
+  const colId = Math.max("ID".length, ...records.map((r) => r.id.length));
+  let table: string;
+  if (scope === "investigation") {
+    const colAt = Math.max(
+      "RECORDED AT".length,
+      ...records.map((r) => r.recordedAt.length),
+    );
+    const header =
+      "ID".padEnd(colId) +
+      "  " +
+      "RECORDED AT".padEnd(colAt) +
+      "  " +
+      "FIELDS";
+    const body = records
+      .map(
+        (r) =>
+          r.id.padEnd(colId) +
+          "  " +
+          r.recordedAt.padEnd(colAt) +
+          "  " +
+          presentFields(r),
+      )
+      .join("\n");
+    table = `${header}\n${body}`;
+  } else {
+    const colInv = Math.max(
+      "INVESTIGATION".length,
+      ...records.map((r) => r.investigationId.length),
+    );
+    const header =
+      "ID".padEnd(colId) +
+      "  " +
+      "INVESTIGATION".padEnd(colInv) +
+      "  " +
+      "RECORDED AT";
+    const body = records
+      .map(
+        (r) =>
+          r.id.padEnd(colId) +
+          "  " +
+          r.investigationId.padEnd(colInv) +
+          "  " +
+          r.recordedAt,
+      )
+      .join("\n");
+    table = `${header}\n${body}`;
+  }
+
+  return (
+    `${intro}\n\n${table}\n\n` +
+    `Show: ${BINARY_NAME} resolution ${records[0]!.id}`
+  );
+}
+
+export function formatWithResolutionMemory(
+  body: string,
+  records: ResolutionRecord[],
+  scope: ResolutionMemoryScope,
+): string {
+  const section = formatResolutionMemorySection(records, scope);
+  return section === "" ? body : `${body}\n\n${section}`;
+}
+
 export function formatRecordConfirmation(record: ResolutionRecord): string {
   return (
     `Recorded resolution ${record.id}\n` +

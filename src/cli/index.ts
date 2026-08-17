@@ -41,6 +41,7 @@ import {
   formatRecordConfirmation,
   formatResolution,
   formatResolutionList,
+  formatWithResolutionMemory,
   getResolution,
   listResolutions,
   recordResolution,
@@ -107,6 +108,9 @@ Investigate options:
   --decision <text>            Explicit decision (what you decided)
   --action <text>              Explicit action (what you actually did)
   --outcome <text>             Explicit outcome (what happened afterward)
+
+Resolution memory appears on investigate and investigation reopen
+when records exist.
 
 Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId
@@ -364,7 +368,15 @@ async function main(argv: string[]): Promise<number> {
         }
         if (flags.save === true) {
           const saved = saveInvestigation({ baseDir, resourceRef });
-          console.log(saved.liveOutput);
+          console.log(
+            formatWithResolutionMemory(
+              saved.liveOutput,
+              listResolutions(baseDir, {
+                subjectResourceId: saved.record.subjectResourceId,
+              }),
+              "subject",
+            ),
+          );
           console.log("");
           console.log(formatSaveConfirmation(saved.record));
           return 0;
@@ -373,7 +385,15 @@ async function main(argv: string[]): Promise<number> {
           baseDir,
           resourceRef,
         });
-        console.log(formatInvestigationContext(investigation));
+        console.log(
+          formatWithResolutionMemory(
+            formatInvestigationContext(investigation),
+            listResolutions(baseDir, {
+              subjectResourceId: investigation.subject.id,
+            }),
+            "subject",
+          ),
+        );
         return 0;
       }
       case "investigations": {
@@ -409,7 +429,13 @@ async function main(argv: string[]): Promise<number> {
           return 0;
         }
         const saved = getSavedInvestigation(baseDir, investigationId);
-        console.log(formatSavedInvestigation(saved));
+        console.log(
+          formatWithResolutionMemory(
+            formatSavedInvestigation(saved),
+            listResolutions(baseDir, { investigationId: saved.id }),
+            "investigation",
+          ),
+        );
         return 0;
       }
       case "resolution": {

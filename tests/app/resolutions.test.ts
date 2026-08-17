@@ -4,11 +4,19 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initCombie } from "../../src/app/init.ts";
-import { formatSavedInvestigation, getSavedInvestigation, saveInvestigation } from "../../src/app/investigations.ts";
+import { formatInvestigationContext, getInvestigationContext } from "../../src/app/investigate.ts";
+import {
+  formatSavedInvestigation,
+  getSavedInvestigation,
+  saveInvestigation,
+  serializeInvestigationSnapshot,
+} from "../../src/app/investigations.ts";
 import {
   formatResolution,
   formatResolutionList,
   formatRecordConfirmation,
+  formatResolutionMemorySection,
+  formatWithResolutionMemory,
   getResolution,
   listResolutions,
   recordResolution,
@@ -297,5 +305,178 @@ describe("investigation resolutions", () => {
   test("invalid id and untrusted row fail without inventing fields", () => {
     expect(() => getResolution(dir, "")).toThrow(/Resolution id is required/);
     expect(() => getResolution(dir, "res:missing")).toThrow(/Resolution not found/);
+  });
+});
+
+describe("exact-id resolution recall", () => {
+  test("empty list omits the memory section and leaves compose / snapshot formatters unchanged", () => {
+    const subject = seedSubject();
+    const saved = saveSnapshot(subject.id);
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    const snapshot = formatSavedInvestigation(
+      getSavedInvestigation(dir, saved.record.id),
+    );
+
+    expect(formatResolutionMemorySection([], "investigation")).toBe("");
+    expect(formatResolutionMemorySection([], "subject")).toBe("");
+    expect(formatWithResolutionMemory(live, [], "subject")).toBe(live);
+    expect(formatWithResolutionMemory(snapshot, [], "investigation")).toBe(
+      snapshot,
+    );
+    expect(live).not.toContain("RESOLUTION MEMORY");
+    expect(snapshot).not.toContain("RESOLUTION MEMORY");
+    expect(serializeInvestigationSnapshot(saved.record.snapshot)).not.toContain(
+      "RESOLUTION MEMORY",
+    );
+  });
+
+  test("investigation-scoped section lists summaries without essays and does not rewrite the snapshot", () => {
+    const subject = seedSubject();
+    const saved = saveSnapshot(subject.id);
+    const frozenSnapshot = formatSavedInvestigation(
+      getSavedInvestigation(dir, saved.record.id),
+    );
+    const frozenJson = serializeInvestigationSnapshot(saved.record.snapshot);
+    const first = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      action: "Reverted deployment to 1.4.1",
+      outcome: "Errors returned to baseline within ~10 minutes",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Wait instead",
+      recordedAt: "2026-08-16T15:00:00.000Z",
+    });
+
+    const records = listResolutions(dir, {
+      investigationId: saved.record.id,
+    });
+    const section = formatResolutionMemorySection(records, "investigation");
+    expect(section).toContain("RESOLUTION MEMORY");
+    expect(section).toContain("organizational response");
+    expect(section).toContain("not current provider truth");
+    expect(section).toContain("It is not a recommendation");
+    expect(section).not.toMatch(/you should/i);
+    expect(section).not.toMatch(/incident/i);
+    expect(section).not.toMatch(/resolved: true/i);
+    expect(section).not.toContain("KNOWN FACTS");
+    expect(section).not.toContain("MISSING CONTEXT");
+    expect(section).toContain(second.id);
+    expect(section).toContain(first.id);
+    expect(section.indexOf(second.id)).toBeLessThan(section.indexOf(first.id));
+    expect(section).toContain("decision, action, outcome");
+    expect(section).toContain("decision");
+    expect(section).not.toContain("Rollback 1.4.2");
+    expect(section).not.toContain("Reverted deployment to 1.4.1");
+    expect(section).not.toContain("Wait instead");
+    expect(section).toContain("Show:");
+    expect(section).toContain(`resolution ${second.id}`);
+
+    const snapshot = formatSavedInvestigation(
+      getSavedInvestigation(dir, saved.record.id),
+    );
+    expect(snapshot).toBe(frozenSnapshot);
+    expect(snapshot).not.toContain("RESOLUTION MEMORY");
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozenJson);
+
+    const rendered = formatWithResolutionMemory(
+      snapshot,
+      records,
+      "investigation",
+    );
+    expect(rendered.startsWith(snapshot)).toBe(true);
+    expect(rendered).toContain("RESOLUTION MEMORY");
+    expect(rendered).toContain(second.id);
+    expect(formatInvestigationContext(saved.record.snapshot)).not.toContain(
+      "RESOLUTION MEMORY",
+    );
+  });
+
+  test("subject-scoped section includes investigation id and excludes other subjects", () => {
+    const sentry = seedSubject("450");
+    const github = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.init();
+    store.applyResource(github, {
+      id: "obs-gh",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const invSentry = saveSnapshot(sentry.id, "2026-08-16T10:00:00.000Z");
+    const invGithub = saveSnapshot(github.id, "2026-08-16T11:00:00.000Z");
+    const ours = recordResolution({
+      baseDir: dir,
+      investigationId: invSentry.record.id,
+      decision: "Pin the Sentry release",
+      recordedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const other = recordResolution({
+      baseDir: dir,
+      investigationId: invGithub.record.id,
+      decision: "Pin the GitHub workflow",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: sentry.id }),
+    );
+    expect(live).not.toContain("RESOLUTION MEMORY");
+    expect(live).not.toContain(ours.id);
+
+    const section = formatResolutionMemorySection(
+      listResolutions(dir, { subjectResourceId: sentry.id }),
+      "subject",
+    );
+    expect(section).toContain(ours.id);
+    expect(section).toContain(invSentry.record.id);
+    expect(section).not.toContain(other.id);
+    expect(section).not.toContain(invGithub.record.id);
+    expect(section).not.toContain("Pin the Sentry release");
+    expect(section).toContain("INVESTIGATION");
+
+    const rendered = formatWithResolutionMemory(
+      live,
+      listResolutions(dir, { subjectResourceId: sentry.id }),
+      "subject",
+    );
+    expect(rendered).toContain("RESOLUTION MEMORY");
+    expect(rendered).toContain(ours.id);
+    expect(rendered).not.toContain("Pin the Sentry release");
+  });
+
+  test("reopen of a later resolution still hangs on the investigation id", () => {
+    const subject = seedSubject();
+    const saved = saveSnapshot(subject.id, "2026-08-16T12:00:00.000Z");
+    const later = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      outcome: "Recovered without intervention",
+      recordedAt: "2026-08-16T18:00:00.000Z",
+    });
+    const section = formatResolutionMemorySection(
+      listResolutions(dir, { investigationId: saved.record.id }),
+      "investigation",
+    );
+    expect(section).toContain(later.id);
+    expect(section).toContain("2026-08-16T18:00:00.000Z");
+    expect(section).toContain("outcome");
+    expect(section).not.toContain("Recovered without intervention");
   });
 });

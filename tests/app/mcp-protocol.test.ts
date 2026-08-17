@@ -86,6 +86,8 @@ describe("MCP stdio contract", () => {
       ]) {
         expect(result.structuredContent).toHaveProperty(key);
       }
+      expect(result.structuredContent).not.toHaveProperty("resolutions");
+      expect(result.structuredContent).not.toHaveProperty("resolutionMemory");
     } finally {
       await client.close();
     }
