@@ -5,11 +5,13 @@ import { composeInvestigationFacts } from "../app/investigation-facts.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
 import { composeProviderActivityChronology } from "../app/provider-activity.ts";
+import { listResolutions } from "../app/resolutions.ts";
 import {
   composeSharedCommitContext,
   composeSharedCommitCorrespondences,
 } from "../app/shared-commit-context.ts";
 import { composeInvestigationTimeline } from "../app/timeline.ts";
+import type { ResolutionRecord } from "../domain/resolution.ts";
 import { safeJson } from "./serialization.ts";
 
 export interface ToolContext {
@@ -25,6 +27,30 @@ const READ_ONLY_ANNOTATIONS = {
 
 function toolError(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
+}
+
+/**
+ * MCP-facing Resolution projection (Sprint 056): plain objects, absent
+ * optional fields omitted. Retained organizational response — not current
+ * provider truth, not a recommendation.
+ */
+function toResolutionMemoryRow(
+  record: ResolutionRecord,
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: record.id,
+    investigationId: record.investigationId,
+    recordedAt: record.recordedAt,
+  };
+  if (record.decision !== undefined) row.decision = record.decision;
+  if (record.action !== undefined) row.action = record.action;
+  if (record.outcome !== undefined) row.outcome = record.outcome;
+  if (record.evidenceIds !== undefined) row.evidenceIds = record.evidenceIds;
+  return row;
+}
+
+function toResolutionMemory(records: ResolutionRecord[]) {
+  return records.map(toResolutionMemoryRow);
 }
 
 export function registerTools(server: McpServer, ctx: ToolContext): void {
@@ -129,6 +155,8 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "Return Combie's locally stored deterministic investigation context for an exact Resource ID, " +
         "including current state, changes, related Resources, provider evidence, authority, " +
         "and cross-provider shared commit context when available. " +
+        "May also include retained organizational response (resolution memory) recorded for that " +
+        "exact subject; that is not current provider truth and not a recommendation. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -159,6 +187,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         }));
 
         const sharedCommitGroups = composeSharedCommitContext(ctx);
+
+        const resolutionRows = listResolutions(baseDir, {
+          subjectResourceId: ctx.subject.id,
+        });
 
         const related = ctx.related.map((n) => ({
           direction: n.direction,
@@ -216,6 +248,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             sharedCommitCorrespondences: composeSharedCommitCorrespondences(
               sharedCommitGroups,
             ),
+            ...(resolutionRows.length > 0
+              ? { resolutionMemory: toResolutionMemory(resolutionRows) }
+              : {}),
           }) as Record<string, unknown>,
         };
       } catch (err) {
