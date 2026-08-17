@@ -22,10 +22,11 @@ decision / action / outcome as fields on a saved Investigation;
 `resolutions --investigation` / `--resource` retrieve them (ROADMAP v0.7
 smallest capture; founder override 2026-08-16; not Incident, not separate
 Decision / Action / Outcome models, not Recommendation, not the
-Investigation Engine). Sprint 052 is the active exact-id Resolution
-recall slice (ROADMAP v0.7; show retained Resolutions on `investigate`
-and `investigation <id>` reopen; not evidence-id joins, not Incident,
-not MCP, not the Investigation Engine).
+Investigation Engine). Sprint 052 shipped exact-id Resolution recall
+on live `investigate` and `investigation <id>` reopen (ROADMAP v0.7;
+read-time list over the 051 table; not snapshot JSON, not Known Facts,
+not evidence-id joins, not Incident, not MCP, not the Investigation
+Engine). No next sprint is Active.
 
 ## Mandatory reading order before any substantive change
 
@@ -47,7 +48,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–051 complete; Sprint 052 Active
+## Current baseline: Sprints 001–052 complete
 
 Multi-provider connection loop:
 
@@ -141,10 +142,11 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   v0.7 slice; it does not authorize Recommendation, Learning, similarity,
   or MCP writes. `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains
   the learning ledger for capture-shape use.
-- **Sprint 052 is Active:** exact-id Resolution recall on live
+- **Sprint 052 shipped:** exact-id Resolution recall on live
   `investigate` and `investigation <id>` reopen (read-time list over
-  the 051 table; not in snapshot JSON, not Known Facts, not MCP, not
-  evidence-id attribution, not Incident).
+  the 051 table; distinct RESOLUTION MEMORY section omitted when empty;
+  summaries only, not essays; not in snapshot JSON, not Known Facts,
+  not `--compare`, not MCP, not evidence-id attribution, not Incident).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -173,10 +175,10 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   (decision / action / outcome as fields, exact-id retrieve, no inferred
   Action, MCP frozen). Sprint 051 shipped that slice. It does not
   authorize Incident, Recommendation, Learning, similarity,
-  Investigation lifecycle, or MCP writes. Sprint 052 is Active as the
-  next smallest v0.7 slice: exact-id Resolution recall on live
-  `investigate` and `investigation <id>` reopen. 051 leftover is not a
-  sequence; evidence-id attribution remains unearned.
+  Investigation lifecycle, or MCP writes. Sprint 052 shipped exact-id
+  Resolution recall on live `investigate` and `investigation <id>`
+  reopen. 051 leftover is not a sequence; evidence-id attribution
+  remains unearned. Sprint 053 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP

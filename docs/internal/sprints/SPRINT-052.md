@@ -1,6 +1,6 @@
 # SPRINT-052 — Exact-Id Resolution Recall
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-051 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.7 Operational Memory
 > (investigation memory / organizational precedent retrieval — smallest
@@ -509,18 +509,18 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 052 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: exact-id Resolution section on reopen and live
+- [x] Sprint 052 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: exact-id Resolution section on reopen and live
       investigate; omitted when empty; not in snapshot JSON
-- [ ] if earned: no MCP change; compare unchanged; no evidence-id;
+- [x] if earned: no MCP change; compare unchanged; no evidence-id;
       no Incident; no recommendation copy
-- [ ] if not earned: rejection documented; do not mix into Known Facts
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline
+- [x] if not earned: rejection documented; do not mix into Known Facts
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline
 
 ---
 
@@ -530,3 +530,100 @@ git diff --check
 > that record when they investigate the same exact Investigation or
 > Resource again. It must not recommend, infer, or freeze response
 > memory into the snapshot.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-16)
+
+```text
+HEAD:          9511de03c3c3e173d28540374d982373456fb889
+tests:         886 pass across 77 files
+typecheck:     clean
+worktree:      clean
+MCP:           exactly four read-only tools
+Sprint 051:    Complete
+Sprint 052:    Active
+```
+
+## Repository Understanding
+
+1. **CLI append, not InvestigationContext.** `formatInvestigationContext`
+   and `formatSavedInvestigation` stay 048/049/051-identical.
+   `saveInvestigation.liveOutput` remains compose-only. Recall is
+   `formatWithResolutionMemory` after those formatters.
+2. **Summary fields.** Reopen (`investigation` scope): id, recordedAt,
+   which of decision/action/outcome are present — not the essays.
+   Live (`subject` scope): id, investigationId, recordedAt. Full text
+   remains `resolution <id>` (`Show:` line points at the newest row).
+3. **Empty = omit section.** Known-empty copy stays on `resolutions`.
+   Do not add Missing Context for “no resolutions.”
+4. **`--save` serialize is already clean.** Section is not on the
+   context; CLI print is separate. Snapshot JSON does not contain
+   `RESOLUTION MEMORY` or `res:` ids.
+5. **Later Resolutions on reopen: yes.** They hang on investigation id,
+   not `composedAt`. Do not hide them; do not rewrite `composedAt`.
+6. **MCP: no.** `investigate_resource` payload unchanged; no
+   `resolutions` / `resolutionMemory` fields.
+7. **Compare: no.** Still two `InvestigationContext` values. 051
+   regression (`compare ignores resolution records`) holds.
+8. **Evidence-id / Incident / lifecycle: no.**
+9. **Store list.** `listResolutionSummaries` now SELECTs the three
+   optional fields so reopen can show field presence without a second
+   query. No schema migration. `formatResolutionList` still omits essays.
+
+## Architecture Pressure
+
+1. Persistence is not necessary. Read the 051 table.
+2. Section is labeled retained organizational response, never current
+   compose, never snapshot JSON.
+3. Not mixed into Known Facts or Missing Context.
+4. Copy says it is not a recommendation; no “you should.”
+5. No MCP tool.
+6. No compare section.
+7. Canon: AGENTS.md operational baseline only.
+
+## Implemented
+
+- `formatResolutionMemorySection` / `formatWithResolutionMemory` in
+  `src/app/resolutions.ts`
+- CLI `investigate`, `investigate --save` (print only), and
+  `investigation <id>` reopen append the section when rows exist
+- Help notes that Resolution memory appears on those paths
+- Store list includes decision/action/outcome for field-presence
+  summaries (same 051 table)
+
+## Deviations
+
+- None on product semantics. Live subject-scoped summaries omit the
+  FIELDS column (sprint pin: id, investigationId, recordedAt). Reopen
+  includes FIELDS.
+
+## Validation
+
+```text
+bun test:          891 pass across 77 files (was 886 / 77)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources
+live (isolated):   investigate --save (no section) → resolution
+                   --decision/--action/--outcome → investigation
+                   reopen shows RESOLUTION MEMORY summaries → live
+                   investigate shows subject-scoped section →
+                   --compare has no Resolution section → snapshot
+                   JSON has neither RESOLUTION MEMORY nor res: ids
+```
+
+## Learnings
+
+- A second saved investigation of the same subject does not inherit
+  the first investigation’s Resolutions on reopen (filter is
+  investigationId). Live investigate of that subject still lists them
+  (filter is subjectResourceId). That split is the product.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL unchanged. AGENTS.md baseline
+becomes Sprints 001–052 complete. Sprint 053 is not started.
