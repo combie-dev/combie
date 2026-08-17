@@ -20,6 +20,7 @@ import {
   getSavedInvestigation,
   saveInvestigation,
 } from "../../src/app/investigations.ts";
+import { recordResolution } from "../../src/app/resolutions.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
@@ -470,6 +471,7 @@ describe("snapshot-to-current compare", () => {
     const changesBefore = store.listChanges().length;
     const relationshipsBefore = store.listRelationships().length;
     const investigationsBefore = store.listInvestigationSummaries().length;
+    const resolutionsBefore = store.listResolutionSummaries().length;
     store.close();
     const frozen = formatInvestigationCompare(
       compareInvestigationToCurrent({
@@ -484,6 +486,7 @@ describe("snapshot-to-current compare", () => {
     expect(store2.listChanges()).toHaveLength(changesBefore);
     expect(store2.listRelationships()).toHaveLength(relationshipsBefore);
     expect(store2.listInvestigationSummaries()).toHaveLength(investigationsBefore);
+    expect(store2.listResolutionSummaries()).toHaveLength(resolutionsBefore);
     store2.close();
     const reopened = formatInvestigationCompare(
       compareInvestigationToCurrent({
@@ -493,6 +496,40 @@ describe("snapshot-to-current compare", () => {
       }),
     );
     expect(reopened).toBe(frozen);
+  });
+
+  test("compare ignores resolution records", () => {
+    const subjectResourceId = seedSentryProject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subjectResourceId,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const withoutResolution = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T13:00:00.000Z",
+      }),
+    );
+    recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      action: "Reverted deployment",
+      outcome: "Errors returned to baseline",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    const withResolution = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T13:00:00.000Z",
+      }),
+    );
+    expect(withResolution).toBe(withoutResolution);
+    expect(withResolution).not.toContain("Rollback 1.4.2");
+    expect(withResolution).not.toContain("RESOLUTION");
   });
 
   test("missing ids and uninitialized state fail without inventing a compare", () => {

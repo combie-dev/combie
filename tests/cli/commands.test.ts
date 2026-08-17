@@ -793,6 +793,134 @@ describe("CLI commands", () => {
     );
   });
 
+  test("resolution records against a saved investigation and lists by subject", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "res450",
+      kind: "project",
+      name: "res-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-res",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const idMatch = saved.stdout.match(/Saved investigation snapshot (inv:\S+)/);
+    expect(idMatch).not.toBeNull();
+    const invId = idMatch![1]!;
+
+    const recorded = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invId,
+        "--decision",
+        "Rollback 1.4.2",
+        "--action",
+        "Reverted deployment to 1.4.1",
+        "--outcome",
+        "Errors returned to baseline",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(recorded.code).toBe(0);
+    expect(recorded.stdout).toContain("Recorded resolution res:");
+    expect(recorded.stdout).toContain("organizational response");
+    expect(recorded.stdout).not.toMatch(/incident/i);
+    const resMatch = recorded.stdout.match(/Recorded resolution (res:\S+)/);
+    expect(resMatch).not.toBeNull();
+    const resId = resMatch![1]!;
+
+    const shown = await capture(() =>
+      main(["resolution", resId, "--dir", dir]),
+    );
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain("RESOLUTION");
+    expect(shown.stdout).toContain("DECISION");
+    expect(shown.stdout).toContain("Rollback 1.4.2");
+    expect(shown.stdout).toContain("ACTION");
+    expect(shown.stdout).toContain("OUTCOME");
+    expect(shown.stdout).toContain("not current provider truth");
+
+    const listedInv = await capture(() =>
+      main(["resolutions", "--investigation", invId, "--dir", dir]),
+    );
+    expect(listedInv.code).toBe(0);
+    expect(listedInv.stdout).toContain(resId);
+    expect(listedInv.stdout).toContain(invId);
+
+    const listedSubject = await capture(() =>
+      main(["resolutions", "--resource", project.id, "--dir", dir]),
+    );
+    expect(listedSubject.code).toBe(0);
+    expect(listedSubject.stdout).toContain(resId);
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${project.id}'`);
+    db.close();
+
+    const afterDelete = await capture(() =>
+      main(["resolutions", "--resource", project.id, "--dir", dir]),
+    );
+    expect(afterDelete.code).toBe(0);
+    expect(afterDelete.stdout).toContain(resId);
+
+    const reopened = await capture(() =>
+      main(["investigation", invId, "--dir", dir]),
+    );
+    expect(reopened.code).toBe(0);
+    expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
+    expect(reopened.stdout).not.toContain("Rollback 1.4.2");
+  });
+
+  test("resolution requires a field and help lists capture flags", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const blank = await capture(() =>
+      main(["resolution", "--investigation", "inv:x", "--dir", dir]),
+    );
+    expect(blank.code).toBe(1);
+    expect(blank.stderr).toContain("At least one of --decision, --action, or --outcome");
+
+    const usage = await capture(() => main(["resolution", "--dir", dir]));
+    expect(usage.code).toBe(1);
+    expect(usage.stderr).toContain("--investigation");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("resolution");
+    expect(help.stdout).toContain("resolutions");
+    expect(help.stdout).toContain("--decision <text>");
+    expect(help.stdout).toContain("--action <text>");
+    expect(help.stdout).toContain("--outcome <text>");
+    expect(help.stdout).not.toContain("resolved: true");
+  });
+
+  test("resolutions known-empty for a subject exits 0", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const result = await capture(() =>
+      main([
+        "resolutions",
+        "--resource",
+        "sentry:project:never-used",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(
+      "No resolutions recorded for subject sentry:project:never-used",
+    );
+  });
+
   test("context renders empty, related-only, and history-only states", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const store = new Store(dir);

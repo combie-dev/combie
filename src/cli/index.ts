@@ -38,6 +38,14 @@ import {
   saveInvestigation,
 } from "../app/investigations.ts";
 import {
+  formatRecordConfirmation,
+  formatResolution,
+  formatResolutionList,
+  getResolution,
+  listResolutions,
+  recordResolution,
+} from "../app/resolutions.ts";
+import {
   compareInvestigationToCurrent,
   formatInvestigationCompare,
 } from "../app/compare-investigation.ts";
@@ -63,6 +71,8 @@ Commands:
   investigate <resource-id>    Compose one-hop investigation context around a resource
   investigations               List saved investigation snapshots
   investigation <id>           Reopen a saved investigation snapshot (--compare: diff against current compose)
+  resolution                   Record or show an explicit investigation resolution
+  resolutions                  List retained resolution records
   mcp                          Start read-only MCP server over stdio
   agent status                 Show MCP integration status for claude, codex, cursor
   agent setup [agent...]       Configure MCP access for agents (default: all supported)
@@ -91,6 +101,12 @@ Investigate options:
   --save                       Persist a retained investigation snapshot
   --compare                    With "investigation <id>": compare snapshot to current compose
   --resource <resource-id>     With "investigations": list snapshots for one subject
+                               With "resolutions": list resolutions for one subject
+  --investigation <id>         With "resolution": investigation to record against
+                               With "resolutions": list resolutions for one investigation
+  --decision <text>            Explicit decision (what you decided)
+  --action <text>              Explicit action (what you actually did)
+  --outcome <text>             Explicit outcome (what happened afterward)
 
 Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId
@@ -125,6 +141,10 @@ Examples:
   ${BINARY_NAME} investigations --resource github:repository:1001
   ${BINARY_NAME} investigation inv:…
   ${BINARY_NAME} investigation inv:… --compare
+  ${BINARY_NAME} resolution --investigation inv:… --decision "Rollback" --action "Reverted deploy" --outcome "Errors dropped"
+  ${BINARY_NAME} resolutions --investigation inv:…
+  ${BINARY_NAME} resolutions --resource github:repository:1001
+  ${BINARY_NAME} resolution res:…
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
   ${BINARY_NAME} agent setup
@@ -194,6 +214,21 @@ async function confirmAction(prompt: string, yes: boolean): Promise<boolean> {
   } finally {
     rl.close();
   }
+}
+
+function optionalFlagId(
+  value: string | boolean | undefined,
+): string | undefined | "missing" {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return "missing";
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "missing";
+}
+
+function optionalFlagText(
+  value: string | boolean | undefined,
+): string | undefined | "missing" {
+  return optionalFlagId(value);
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -375,6 +410,92 @@ async function main(argv: string[]): Promise<number> {
         }
         const saved = getSavedInvestigation(baseDir, investigationId);
         console.log(formatSavedInvestigation(saved));
+        return 0;
+      }
+      case "resolution": {
+        const investigationFlag = optionalFlagId(flags.investigation);
+        if (investigationFlag === "missing") {
+          console.error(
+            `--investigation requires an investigation id.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+          );
+          return 1;
+        }
+        const decision = optionalFlagText(flags.decision);
+        const action = optionalFlagText(flags.action);
+        const outcome = optionalFlagText(flags.outcome);
+        if (decision === "missing" || action === "missing" || outcome === "missing") {
+          const flag =
+            decision === "missing"
+              ? "decision"
+              : action === "missing"
+                ? "action"
+                : "outcome";
+          console.error(
+            `--${flag} requires text.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+          );
+          return 1;
+        }
+        if (investigationFlag) {
+          if (positionals[0]) {
+            console.error(
+              `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]\nShow: ${BINARY_NAME} resolution <resolution-id>`,
+            );
+            return 1;
+          }
+          const recorded = recordResolution({
+            baseDir,
+            investigationId: investigationFlag,
+            ...(decision ? { decision } : {}),
+            ...(action ? { action } : {}),
+            ...(outcome ? { outcome } : {}),
+          });
+          console.log(formatRecordConfirmation(recorded));
+          return 0;
+        }
+        const resolutionId = positionals[0];
+        if (!resolutionId) {
+          console.error(
+            `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]\nShow: ${BINARY_NAME} resolution <resolution-id>\nList ids: ${BINARY_NAME} resolutions`,
+          );
+          return 1;
+        }
+        if (decision || action || outcome) {
+          console.error(
+            `Recording a resolution requires --investigation.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+          );
+          return 1;
+        }
+        const record = getResolution(baseDir, resolutionId);
+        console.log(formatResolution(record));
+        return 0;
+      }
+      case "resolutions": {
+        const investigation =
+          optionalFlagId(flags.investigation);
+        if (investigation === "missing") {
+          console.error(
+            `--investigation requires an investigation id.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>]`,
+          );
+          return 1;
+        }
+        const resource =
+          typeof flags.resource === "string" ? flags.resource.trim() : undefined;
+        if (flags.resource !== undefined && !resource) {
+          console.error(
+            `--resource requires a resource id.\nUsage: ${BINARY_NAME} resolutions [--investigation <investigation-id>] [--resource <resource-id>]`,
+          );
+          return 1;
+        }
+        const records = listResolutions(baseDir, {
+          ...(investigation ? { investigationId: investigation } : {}),
+          ...(resource !== undefined ? { subjectResourceId: resource } : {}),
+        });
+        console.log(
+          formatResolutionList(records, {
+            ...(investigation ? { investigationId: investigation } : {}),
+            ...(resource !== undefined ? { subjectResourceId: resource } : {}),
+          }),
+        );
         return 0;
       }
       case "mcp": {

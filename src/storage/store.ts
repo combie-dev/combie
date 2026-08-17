@@ -250,6 +250,19 @@ CREATE TABLE IF NOT EXISTS investigations (
 
 CREATE INDEX IF NOT EXISTS investigations_composed_at_id_idx
   ON investigations(composed_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS resolutions (
+  id TEXT PRIMARY KEY,
+  investigation_id TEXT NOT NULL,
+  subject_resource_id TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  decision TEXT,
+  action TEXT,
+  outcome TEXT
+);
+
+CREATE INDEX IF NOT EXISTS resolutions_recorded_at_id_idx
+  ON resolutions(recorded_at DESC, id DESC);
 `;
 
 export interface ApplyResourceObservation extends ChangeObservation {
@@ -1497,6 +1510,127 @@ export class Store {
       subjectResourceId: row.subject_resource_id,
       composedAt: row.composed_at,
       snapshotJson: row.snapshot_json,
+    };
+  }
+
+  insertResolution(row: {
+    id: string;
+    investigationId: string;
+    subjectResourceId: string;
+    recordedAt: string;
+    decision?: string;
+    action?: string;
+    outcome?: string;
+  }): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO resolutions (
+           id, investigation_id, subject_resource_id, recorded_at,
+           decision, action, outcome
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.id,
+        row.investigationId,
+        row.subjectResourceId,
+        row.recordedAt,
+        row.decision ?? null,
+        row.action ?? null,
+        row.outcome ?? null,
+      );
+  }
+
+  listResolutionSummaries(filter?: {
+    investigationId?: string;
+    subjectResourceId?: string;
+  }): Array<{
+    id: string;
+    investigationId: string;
+    subjectResourceId: string;
+    recordedAt: string;
+  }> {
+    const db = this.getDb();
+    const table = db
+      .query(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'resolutions'`,
+      )
+      .get() as { name: string } | null;
+    if (!table) return [];
+    const clauses: string[] = [];
+    const params: string[] = [];
+    if (filter?.investigationId !== undefined) {
+      clauses.push("investigation_id = ?");
+      params.push(filter.investigationId);
+    }
+    if (filter?.subjectResourceId !== undefined) {
+      clauses.push("subject_resource_id = ?");
+      params.push(filter.subjectResourceId);
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .query(
+        `SELECT id, investigation_id, subject_resource_id, recorded_at
+         FROM resolutions
+         ${where}
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all(...params) as Array<{
+      id: string;
+      investigation_id: string;
+      subject_resource_id: string;
+      recorded_at: string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      investigationId: row.investigation_id,
+      subjectResourceId: row.subject_resource_id,
+      recordedAt: row.recorded_at,
+    }));
+  }
+
+  getResolutionRow(id: string): {
+    id: string;
+    investigationId: string;
+    subjectResourceId: string;
+    recordedAt: string;
+    decision?: string;
+    action?: string;
+    outcome?: string;
+  } | null {
+    const db = this.getDb();
+    const table = db
+      .query(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'resolutions'`,
+      )
+      .get() as { name: string } | null;
+    if (!table) return null;
+    const row = db
+      .query(
+        `SELECT id, investigation_id, subject_resource_id, recorded_at,
+                decision, action, outcome
+         FROM resolutions
+         WHERE id = ?`,
+      )
+      .get(id) as
+      | {
+          id: string;
+          investigation_id: string;
+          subject_resource_id: string;
+          recorded_at: string;
+          decision: string | null;
+          action: string | null;
+          outcome: string | null;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      id: row.id,
+      investigationId: row.investigation_id,
+      subjectResourceId: row.subject_resource_id,
+      recordedAt: row.recorded_at,
+      ...(row.decision ? { decision: row.decision } : {}),
+      ...(row.action ? { action: row.action } : {}),
+      ...(row.outcome ? { outcome: row.outcome } : {}),
     };
   }
 
