@@ -30,10 +30,13 @@ Engine). Sprint 053 shipped Resolution body recall on live
 `investigate` and `investigation <id>` RESOLUTION MEMORY (ROADMAP
 v0.7; retained decision / action / outcome text; not snapshot JSON,
 not Known Facts, not evidence-id joins, not Incident, not MCP, not
-the Investigation Engine). Sprint 054 is the active explicit
-Resolution evidence-reference slice (ROADMAP v0.7; human-attached
-exact local evidence ids on a Resolution; not inferred Action, not
-Incident, not MCP, not the Investigation Engine).
+the Investigation Engine). Sprint 054 shipped explicit Resolution
+evidence references (ROADMAP v0.7; human-attached exact local
+evidence ids on a Resolution, validated against what live
+`investigate` already shows, shown as a distinct EVIDENCE block on
+`resolution <id>` and RESOLUTION MEMORY; not inferred Action, not in
+snapshot JSON, not evidence-id joins, not Incident, not MCP, not the
+Investigation Engine). Sprint 055 is the next slice.
 
 ## Mandatory reading order before any substantive change
 
@@ -55,7 +58,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–053 complete; Sprint 054 Active
+## Current baseline: Sprints 001–054 complete; Sprint 055 not started
 
 Multi-provider connection loop:
 
@@ -159,9 +162,12 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   action / outcome text in the 052 RESOLUTION MEMORY section; omitted
   when empty; not in snapshot JSON, not Known Facts, not `--compare`,
   not MCP, not evidence-id attribution, not Incident).
-- **Sprint 054 is Active:** explicit Resolution evidence references
-  (optional human-attached exact local evidence ids at record time;
-  shown on `resolution <id>` and RESOLUTION MEMORY; not inferred from
+- **Sprint 054 shipped:** explicit Resolution evidence references
+  (optional human-attached exact local evidence ids at record time,
+  validated against what live `investigate` shows for that subject;
+  shown as a distinct EVIDENCE block on `resolution <id>` and
+  RESOLUTION MEMORY; omitted when empty; duplicates collapse
+  first-seen; unknown ids fail the whole record; not inferred from
   provider activity, not Action, not snapshot JSON, not Known Facts,
   not MCP, not Incident).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
@@ -197,10 +203,13 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   reopen. 051 leftover is not a sequence; evidence-id attribution
   remains unearned. Sprint 053 shipped Resolution body recall on
   those same paths. 052 leftover is not a sequence; evidence-id
-  attribution remains unearned. Sprint 054 is Active as the next
-  smallest v0.7 slice: explicit human-attached evidence references on
-  a Resolution. Inferred Action from provider activity remains
-  forbidden. Sprint 055 is not started.
+  attribution remains unearned. Sprint 054 shipped explicit
+  human-attached evidence references on a Resolution (051 leftover is
+  not a sequence; evidence-id attribution remains unearned — Sprint
+  054 was the smallest v0.7 slice and does not authorize Inference,
+  Incident, Recommendation, Learning, similarity, or MCP writes).
+  Inferred Action from provider activity remains forbidden. Sprint 055
+  is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP

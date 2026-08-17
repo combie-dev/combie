@@ -1,6 +1,6 @@
 # SPRINT-054 — Explicit Resolution Evidence References
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-053 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.7 Operational Memory
 > (what evidence supported that decision — smallest deterministic
@@ -582,19 +582,19 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 054 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: optional `--evidence` exact ids persist on a
+- [x] Sprint 054 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: optional `--evidence` exact ids persist on a
       Resolution; shown on `resolution <id>` and RESOLUTION MEMORY;
       omitted when empty; not inferred; not in snapshot JSON
-- [ ] if earned: no MCP change; compare unchanged; no inferred Action;
+- [x] if earned: no MCP change; compare unchanged; no inferred Action;
       no Incident; no recommendation copy
-- [ ] if not earned: rejection documented; do not infer from activity
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline
+- [x] if not earned: rejection documented; do not infer from activity
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline
 
 ---
 
@@ -604,3 +604,117 @@ git diff --check
 > name which local evidence they say supported it. Combie must not
 > guess, must not treat that name as the Action, and must not freeze
 > it into the snapshot.**
+
+---
+
+# Completion Notes
+
+## Baseline (2026-08-17)
+
+```text
+HEAD:          b40c7e3b921356dc666a3ab1354ad041592bd766
+tests:         907 pass across 77 files (final; Red confirmed before
+               implementation — 12 failures in the three targeted suites)
+typecheck:     clean
+worktree:      clean before changes; 7 files modified for the Sprint
+MCP:           exactly four read-only tools
+Sprint 053:    Complete
+Sprint 054:    Active
+```
+
+## Repository Understanding
+
+1. **Allowlist pinned to what investigate already shows.** Attachable
+   exact ids = `nativeEvidenceId` of retained provider-native evidence
+   families (`src/app/provider-activity.ts:131`): Vercel deployment
+   `uid`, GitHub workflow `String(runId)`, Neon `operationId`, Sentry
+   release `version`, Sentry `issueId`. Subject evidence **and** one-hop
+   neighbor evidence already displayed in that compose are in. Out:
+   Resource ids, Relationship ids, Change ids, Git SHAs as such,
+   `inv:` / `res:` ids, free text. No family tables are consulted for
+   persistence; the investigation compose is the object of record.
+2. **JSON column on `resolutions`** (`evidence_ids TEXT`), not a child
+   table — 051 rows stay append-only; there is no join engine.
+3. **Validate via live `getInvestigationContext` collect.** Local store
+   reads only; `composeProviderActivityChronology` + `nativeEvidenceId`
+   produce the attachable set. Never refreshes providers.
+4. **Flag shape: repeatable `--evidence <id>`.** `parseArgs` gains a
+   `repeated` map; duplicates collapse to unique first-seen order inside
+   the app layer.
+5. **Display: `resolution <id>` show and per-row RESOLUTION MEMORY**
+   gain a distinct `EVIDENCE` block (header + exact ids); `resolutions`
+   list unchanged. Omitted when absent — 051/053 output is
+   byte-identical otherwise.
+6. **No retrieve-by-evidence-id.**
+7. **MCP / compare / snapshot JSON: no change.**
+8. **No inferred attach** — recording without `--evidence` never
+   attaches the newest activity; a pre-054 DB (missing column) reads
+   empty without crashing.
+9. **Evidence-only records still `RESOLUTION_FIELDS_REQUIRED`.**
+
+## Architecture Pressure
+
+1. **Persistence necessary.** The claim is the human-attached ids at
+   record time; read-time inference is the forbidden alternative.
+2. **Labeled human-attached references** — never current compose, never
+   snapshot JSON, never Action; the snapshot keeps no `EVIDENCE` and
+   recording never rewrites `snapshotJson`.
+3. **EVIDENCE is not ACTION** — a deployment uid points at what
+   supported the decision; the `action` field stays the human's text.
+4. **Live investigate stays non-recommendatory**; the ids it displays
+   come from its own evidence authorities and nothing is auto-filled.
+5. **No MCP tool.**
+6. **No compare section.**
+7. **No evidence table / generic join engine.**
+8. **Canon: AGENTS.md operational baseline only.**
+
+## Implemented
+
+- `ResolutionRecord.evidenceIds?: string[]` (`src/domain/resolution.ts`)
+- `resolutions.evidence_ids TEXT` column; `applySchema` probe; read-time
+  per-row probe (`hasResolutionEvidenceColumn`); `insertResolution`
+  persists the JSON; `parseResolutionEvidence` treats corrupt /
+  non-array payloads as untrusted and omits them
+- `recordResolution` accepts `--evidence` ids, de-dupes first-seen,
+  validates each against the live-compose allowlist, and rejects
+  unknown ids with `EVIDENCE_ID_NOT_FOUND` (whole record fails, nothing
+  inserted)
+- `formatResolution` (show) and `formatResolutionMemorySection` (per
+  row) print a distinct `EVIDENCE` block when present; `resolutions`
+  list unchanged
+- CLI: repeatable `--evidence <id>` parsing, help line, usage errors
+  for value-less flag, evidence without `--investigation`
+
+## Deviations
+
+- None material. Snapshot-JSON test asserts byte-identical
+  `snapshotJson` (not "no deployment uid in JSON" — the retained
+  snapshot legitimately contains the deployment; the sprint contract is
+  that recording never rewrites it).
+
+## Validation
+
+```text
+bun test:          907 pass across 77 files (3820 expect() calls)
+bun run typecheck: clean
+git diff --check:  clean
+MCP tools:         get_related_context, investigate_resource,
+                   list_providers, list_resources
+Red:               12 failures across tests/app/resolutions.test.ts,
+                   tests/app/compare-investigation.test.ts,
+                   tests/cli/commands.test.ts before implementation
+```
+
+## Learnings
+
+- `parseArgs` previously dropped repeated flags silently; the repeated
+  map is the smallest change that keeps `--evidence` order and
+  duplicates visible to the app layer.
+- The snapshot's own deployment evidence already contains the uid, so
+  "no `dpl_abc` in snapshot JSON" is the wrong assertion; immutability
+  (byte-identical JSON) expresses the 054 contract correctly.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, and SKILL unchanged. AGENTS.md baseline
+becomes Sprints 001–054 complete. Sprint 055 is not started.
