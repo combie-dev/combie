@@ -1,6 +1,6 @@
 # SPRINT-050 — Subject-Scoped Investigation History
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-049 (complete)
 > **Authorized by:** `docs/internal/ROADMAP.md` v0.6 Investigation
 > **historical retrieval** (smallest remaining deterministic primitive
