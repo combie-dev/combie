@@ -2384,8 +2384,9 @@ describe("CLI commands", () => {
         dir,
       ]),
     );
-    expect(xorResource.code).toBe(1);
-    expect(xorResource.stderr).toContain("--incident");
+    expect(xorResource.code).toBe(0);
+    expect(xorResource.stdout).toContain(`incident ${incId}`);
+    expect(xorResource.stdout).toContain(`subject ${project.id}`);
 
     const xorInvestigation = await capture(() =>
       main([
@@ -2509,6 +2510,207 @@ describe("CLI commands", () => {
       `No incidents recorded for investigation ${invId}.`,
     );
     expect(investigationFilter.stdout).not.toContain("INVESTIGATION_NOT_FOUND");
+  });
+
+  test("resolution --incident --resource records on a mixed grouping (Sprint 064)", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const sentry = createResource({
+      provider: "sentry",
+      providerResourceId: "inc064s",
+      kind: "project",
+      name: "inc064-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    const github = createResource({
+      provider: "github",
+      providerResourceId: "inc064repo",
+      kind: "repository",
+      name: "acme/inc064",
+      metadata: {},
+    });
+    store.applyResource(sentry, {
+      id: "obs-inc064s",
+      observedAt: "2026-08-18T00:00:00.000Z",
+    });
+    store.applyResource(github, {
+      id: "obs-inc064g",
+      observedAt: "2026-08-18T00:00:00.000Z",
+    });
+    store.close();
+
+    const resAId = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          sentry.id,
+          "--decision",
+          "Rollback",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resBId = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          github.id,
+          "--decision",
+          "Hold deploys",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resAId,
+        "--resolution",
+        resBId,
+        "--title",
+        "Cross spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(grouped.code).toBe(0);
+    const incId = grouped.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+
+    const ambiguous = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--decision",
+        "Keep holding",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(ambiguous.code).toBe(1);
+    expect(ambiguous.stderr).toContain("spans different subjects");
+
+    const recorded = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--resource",
+        sentry.id,
+        "--decision",
+        "Keep holding",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(recorded.code).toBe(0);
+    expect(recorded.stdout).toContain(`incident ${incId}`);
+    expect(recorded.stdout).toContain(`subject ${sentry.id}`);
+    const newRes = recorded.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const shown = await capture(() =>
+      main(["resolution", newRes, "--dir", dir]),
+    );
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).not.toMatch(/INCIDENT|incident/i);
+
+    const incidentShow = await capture(() =>
+      main(["incident", incId, "--dir", dir]),
+    );
+    expect(incidentShow.code).toBe(0);
+    expect(incidentShow.stdout).toContain(newRes);
+
+    const missingResource = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--resource",
+        "sentry:project:never-used",
+        "--decision",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(missingResource.code).toBe(1);
+    expect(missingResource.stderr).toContain("Resource not found");
+
+    const other = createResource({
+      provider: "sentry",
+      providerResourceId: "inc064other",
+      kind: "project",
+      name: "inc064-other",
+      metadata: { organization_slug: "acme" },
+    });
+    const storeOther = new Store(dir);
+    storeOther.init();
+    storeOther.applyResource(other, {
+      id: "obs-inc064o",
+      observedAt: "2026-08-18T00:00:00.000Z",
+    });
+    storeOther.close();
+    const unrelated = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--resource",
+        other.id,
+        "--decision",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(unrelated.code).toBe(1);
+    expect(unrelated.stderr).toContain("no loadable member on subject");
+
+    const xorInvestigation = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--investigation",
+        "inv:missing",
+        "--decision",
+        "Both",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(xorInvestigation.code).toBe(1);
+    expect(xorInvestigation.stderr).toContain("exactly one of");
+
+    const repeated = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--resource",
+        sentry.id,
+        "--resource",
+        github.id,
+        "--decision",
+        "Both",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(repeated.code).toBe(1);
+    expect(repeated.stderr).toContain("takes one exact id");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.stdout).toContain(
+      "resolution --incident inc:… --resource github:repository:1001",
+    );
+    expect(help.stdout).toContain("named with --resource");
   });
 
   test("incident <id> --resolution appends an existing ungrouped member (Sprint 062)", async () => {

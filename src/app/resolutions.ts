@@ -87,16 +87,13 @@ export function recordResolution(
   const investigationId = trimField(options.investigationId);
   const subjectResourceId = trimField(options.subjectResourceId);
   const incidentId = trimField(options.incidentId);
-  const anchors = [investigationId, subjectResourceId, incidentId].filter(
-    (id) => id !== undefined,
-  );
-  if (anchors.length > 1) {
+  if (investigationId && (subjectResourceId || incidentId)) {
     throw new CombieError(
       "RESOLUTION_ANCHOR_CONFLICT",
-      `Use exactly one of --investigation, --resource, or --incident.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+      `Use exactly one of --investigation, --resource, or --incident.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
     );
   }
-  if (anchors.length === 0) {
+  if (!investigationId && !subjectResourceId && !incidentId) {
     throw new CombieError(
       "RESOLUTION_ANCHOR_REQUIRED",
       `Recording a resolution requires --investigation, --resource, or --incident.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
@@ -150,20 +147,37 @@ export function recordResolution(
           `Incident ${incidentId} has no loadable member resolutions, so no subject can be copied.\nRecord with --resource or --investigation instead (ungrouped).`,
         );
       }
-      const sharedSubject = loadedSubjects[0]!;
-      if (loadedSubjects.some((s) => s !== sharedSubject)) {
-        throw new CombieError(
-          "INCIDENT_SUBJECT_AMBIGUOUS",
-          `Incident ${incidentId} spans different subjects (${[...new Set(loadedSubjects)].join(", ")}), so no single subject can be copied.\nRecord with --resource or --investigation instead (ungrouped).`,
-        );
-      }
-      subjectId = sharedSubject;
-      const resource = store.getResource(subjectId);
-      if (!resource) {
-        throw new CombieError(
-          "RESOURCE_NOT_FOUND",
-          `Resource not found: ${subjectId}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: ${BINARY_NAME} resources`,
-        );
+      if (subjectResourceId) {
+        const resource = store.getResource(subjectResourceId);
+        if (!resource) {
+          throw new CombieError(
+            "RESOURCE_NOT_FOUND",
+            `Resource not found: ${subjectResourceId}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: ${BINARY_NAME} resources`,
+          );
+        }
+        if (!loadedSubjects.includes(subjectResourceId)) {
+          throw new CombieError(
+            "INCIDENT_SUBJECT_NOT_MEMBER",
+            `Incident ${incidentId} has no loadable member on subject ${subjectResourceId}.\nName a subject already on a member, or record with --resource (ungrouped) and append: ${BINARY_NAME} incident ${incidentId} --resolution <resolution-id>`,
+          );
+        }
+        subjectId = resource.id;
+      } else {
+        const sharedSubject = loadedSubjects[0]!;
+        if (loadedSubjects.some((s) => s !== sharedSubject)) {
+          throw new CombieError(
+            "INCIDENT_SUBJECT_AMBIGUOUS",
+            `Incident ${incidentId} spans different subjects (${[...new Set(loadedSubjects)].join(", ")}), so no single subject can be copied.\nRecord with --resource or --investigation instead (ungrouped).\nOr name the subject: ${BINARY_NAME} resolution --incident ${incidentId} --resource <resource-id>`,
+          );
+        }
+        subjectId = sharedSubject;
+        const resource = store.getResource(subjectId);
+        if (!resource) {
+          throw new CombieError(
+            "RESOURCE_NOT_FOUND",
+            `Resource not found: ${subjectId}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: ${BINARY_NAME} resources`,
+          );
+        }
       }
     } else {
       const resource = store.getResource(subjectResourceId!);

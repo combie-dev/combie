@@ -119,13 +119,13 @@ Investigate options:
   --compare                    With "investigation <id>": compare snapshot to current compose
   --resource <resource-id>     With "investigations": list snapshots for one subject
                                With "resolutions": list resolutions for one subject
-                               With "resolution": resource to record against (no saved investigation)
+                               With "resolution": resource to record against (no saved investigation), or with --incident the subject of the new row (must already be a member subject)
                                With "incidents": list groupings with a member Resolution on one subject
   --investigation <id>         With "resolution": investigation to record against
                                With "resolutions": list resolutions for one investigation
                                With "incidents": list groupings with a member Resolution recorded against that investigation (membership only; one exact id)
   --incident <incident-id>     With "resolution": existing incident grouping to record
-                               against (subject copied from its members; one exact id)
+                               against (subject copied from members, or named with --resource; one exact id)
   --decision <text>            Explicit decision (what you decided)
   --action <text>              Explicit action (what you actually did)
   --outcome <text>             Explicit outcome (what happened afterward)
@@ -175,6 +175,7 @@ Examples:
   ${BINARY_NAME} resolution --investigation inv:… --decision "Rollback" --action "Reverted deploy" --outcome "Errors dropped"
   ${BINARY_NAME} resolution --resource vercel:project:prj_abc --decision "Rollback"
   ${BINARY_NAME} resolution --incident inc:… --decision "Keep holding" --action "Held deploys"
+  ${BINARY_NAME} resolution --incident inc:… --resource github:repository:1001 --decision "Keep holding"
   ${BINARY_NAME} resolutions --investigation inv:…
   ${BINARY_NAME} resolutions --resource github:repository:1001
   ${BINARY_NAME} resolutions --evidence dpl_abc
@@ -550,17 +551,26 @@ async function main(argv: string[]): Promise<number> {
           );
           return 1;
         }
-        const anchorCount =
-          (investigationFlag ? 1 : 0) +
-          (resourceFlag ? 1 : 0) +
-          (incidentFlag ? 1 : 0);
-        if (anchorCount > 1) {
+        if ((repeated.resource ?? []).length > 0) {
           console.error(
-            `Use exactly one of --investigation, --resource, or --incident.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+            `--resource takes one exact id on record.\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
           );
           return 1;
         }
-        if (anchorCount > 0) {
+        if (
+          investigationFlag &&
+          (resourceFlag !== undefined || incidentFlag !== undefined)
+        ) {
+          console.error(
+            `Use exactly one of --investigation, --resource, or --incident.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+          );
+          return 1;
+        }
+        const hasAnchor =
+          investigationFlag !== undefined ||
+          resourceFlag !== undefined ||
+          incidentFlag !== undefined;
+        if (hasAnchor) {
           if (positionals[0]) {
             console.error(
               `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --incident <incident-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nShow: ${BINARY_NAME} resolution <resolution-id>`,

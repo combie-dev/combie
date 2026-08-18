@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CombieError } from "../../src/app/errors.ts";
-import { recordIncident } from "../../src/app/incidents.ts";
+import { recordIncident, getIncident, listIncidents } from "../../src/app/incidents.ts";
 import { initCombie } from "../../src/app/init.ts";
 import { formatInvestigationContext, getInvestigationContext } from "../../src/app/investigate.ts";
 import {
@@ -1646,26 +1646,6 @@ describe("incident-anchored resolution (Sprint 061)", () => {
     expect(shown).not.toContain("INVESTIGATION:");
   });
 
-  test("--incident with --resource fails XOR; nothing inserted", () => {
-    const subject = seedSubject();
-    const incident = seedIncident([
-      { id: "res:a", subject },
-      { id: "res:b", subject },
-    ]);
-    const error = expectCode(
-      () =>
-        recordResolution({
-          baseDir: dir,
-          incidentId: incident.id,
-          subjectResourceId: subject.id,
-          decision: "Both",
-        }),
-      "RESOLUTION_ANCHOR_CONFLICT",
-    );
-    expect(error.message).toMatch(/--incident/);
-    expect(listResolutions(dir).map((r) => r.id).sort()).toEqual(["res:a", "res:b"]);
-  });
-
   test("--incident with --investigation fails XOR; nothing inserted", () => {
     const subject = seedSubject();
     const incident = seedIncident([
@@ -1939,5 +1919,290 @@ describe("incident-anchored resolution (Sprint 061)", () => {
     expect(viaResource.investigationId).toBeUndefined();
     expect(viaResource.subjectResourceId).toBe(subject.id);
     expect(listResolutions(dir)).toHaveLength(2);
+  });
+});
+
+describe("incident-anchored resolution on mixed subjects (Sprint 064)", () => {
+  function expectCode(fn: () => unknown, code: string): CombieError {
+    try {
+      fn();
+    } catch (error) {
+      expect(error).toBeInstanceOf(CombieError);
+      expect((error as CombieError).code).toBe(code);
+      return error as CombieError;
+    }
+    throw new Error(`expected ${code} to be thrown`);
+  }
+
+  function seedIncident(
+    members: Array<{ id: string; subject: ReturnType<typeof createResource> }>,
+    title?: string,
+  ) {
+    for (const member of members) {
+      const store = new Store(dir);
+      store.init();
+      store.insertResolution({
+        id: member.id,
+        subjectResourceId: member.subject.id,
+        recordedAt: "2026-08-16T12:00:00.000Z",
+        decision: `Response ${member.id}`,
+      });
+      store.close();
+    }
+    return recordIncident({
+      baseDir: dir,
+      resolutionIds: members.map((m) => m.id),
+      recordedAt: "2026-08-17T09:00:00.000Z",
+      ...(title ? { title } : {}),
+    });
+  }
+
+  test("--incident --resource on a mixed grouping inserts and appends the named subject", () => {
+    const subjectA = seedSubject("640");
+    const subjectB = seedSubject("641");
+    const incident = seedIncident(
+      [
+        { id: "res:a", subject: subjectA },
+        { id: "res:b", subject: subjectB },
+      ],
+      "Cross spike",
+    );
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      subjectResourceId: subjectA.id,
+      decision: "Keep holding",
+      action: "Held deploys",
+      outcome: "Spike passed",
+      recordedAt: "2026-08-18T16:00:00.000Z",
+    });
+    expect(recorded.investigationId).toBeUndefined();
+    expect(recorded.subjectResourceId).toBe(subjectA.id);
+    expect(recorded.decision).toBe("Keep holding");
+    expect(getIncident(dir, incident.id).resolutionIds).toEqual([
+      "res:a",
+      "res:b",
+      recorded.id,
+    ]);
+    const confirm = formatRecordConfirmation(recorded, incident.id);
+    expect(confirm).toContain(`incident ${incident.id}`);
+    expect(confirm).toContain(`subject ${subjectA.id}`);
+    expect(confirm).not.toContain("investigation ");
+    const shown = formatResolution(recorded);
+    expect(shown).toContain(`SUBJECT: ${subjectA.id}`);
+    expect(shown).not.toMatch(/INCIDENT|incident/i);
+    expect(shown).not.toContain("INVESTIGATION:");
+    const store = new Store(dir);
+    store.init();
+    expect(store.getResolutionRow(recorded.id)).not.toHaveProperty("incidentId");
+    store.close();
+  });
+
+  test("named Resource that is not a loadable member subject fails; nothing inserted", () => {
+    const subjectA = seedSubject("642");
+    const subjectB = seedSubject("643");
+    const other = seedSubject("644");
+    const incident = seedIncident([
+      { id: "res:a", subject: subjectA },
+      { id: "res:b", subject: subjectB },
+    ]);
+    const error = expectCode(
+      () =>
+        recordResolution({
+          baseDir: dir,
+          incidentId: incident.id,
+          subjectResourceId: other.id,
+          decision: "Keep holding",
+        }),
+      "INCIDENT_SUBJECT_NOT_MEMBER",
+    );
+    expect(error.message).toContain(incident.id);
+    expect(error.message).toContain(other.id);
+    expect(listResolutions(dir).map((r) => r.id).sort()).toEqual(["res:a", "res:b"]);
+    expect(getIncident(dir, incident.id).resolutionIds).toEqual(["res:a", "res:b"]);
+  });
+
+  test("mixed --incident without --resource still INCIDENT_SUBJECT_AMBIGUOUS", () => {
+    const subjectA = seedSubject("645");
+    const subjectB = seedSubject("646");
+    const incident = seedIncident([
+      { id: "res:a", subject: subjectA },
+      { id: "res:b", subject: subjectB },
+    ]);
+    const error = expectCode(
+      () =>
+        recordResolution({
+          baseDir: dir,
+          incidentId: incident.id,
+          decision: "Keep holding",
+        }),
+      "INCIDENT_SUBJECT_AMBIGUOUS",
+    );
+    expect(error.message).toContain(incident.id);
+    expect(listResolutions(dir).map((r) => r.id).sort()).toEqual(["res:a", "res:b"]);
+  });
+
+  test("homogeneous --incident without --resource still copies the shared subject", () => {
+    const subject = seedSubject("647");
+    const incident = seedIncident([
+      { id: "res:a", subject },
+      { id: "res:b", subject },
+    ]);
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      decision: "Keep holding",
+    });
+    expect(recorded.subjectResourceId).toBe(subject.id);
+  });
+
+  test("homogeneous --incident --resource matching the shared subject succeeds; mismatch fails", () => {
+    const subject = seedSubject("648");
+    const other = seedSubject("649");
+    const incident = seedIncident([
+      { id: "res:a", subject },
+      { id: "res:b", subject },
+    ]);
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      subjectResourceId: subject.id,
+      decision: "Named same subject",
+    });
+    expect(recorded.subjectResourceId).toBe(subject.id);
+    expect(getIncident(dir, incident.id).resolutionIds).toContain(recorded.id);
+    const error = expectCode(
+      () =>
+        recordResolution({
+          baseDir: dir,
+          incidentId: incident.id,
+          subjectResourceId: other.id,
+          decision: "Wrong subject",
+        }),
+      "INCIDENT_SUBJECT_NOT_MEMBER",
+    );
+    expect(error.message).toContain(other.id);
+    expect(
+      listResolutions(dir).filter((r) => r.decision === "Wrong subject"),
+    ).toEqual([]);
+  });
+
+  test("--incident with --investigation still XOR; nothing inserted", () => {
+    const subjectA = seedSubject("650");
+    const subjectB = seedSubject("651");
+    const incident = seedIncident([
+      { id: "res:a", subject: subjectA },
+      { id: "res:b", subject: subjectB },
+    ]);
+    const error = expectCode(
+      () =>
+        recordResolution({
+          baseDir: dir,
+          incidentId: incident.id,
+          investigationId: "inv:missing",
+          decision: "Both",
+        }),
+      "RESOLUTION_ANCHOR_CONFLICT",
+    );
+    expect(error.message).toMatch(/--incident/);
+    expect(listResolutions(dir).map((r) => r.id).sort()).toEqual(["res:a", "res:b"]);
+  });
+
+  test("unknown Resource with --incident is RESOURCE_NOT_FOUND; unknown inc: is INCIDENT_NOT_FOUND", () => {
+    const subjectA = seedSubject("652");
+    const subjectB = seedSubject("653");
+    const incident = seedIncident([
+      { id: "res:a", subject: subjectA },
+      { id: "res:b", subject: subjectB },
+    ]);
+    const missingResource = expectCode(
+      () =>
+        recordResolution({
+          baseDir: dir,
+          incidentId: incident.id,
+          subjectResourceId: "sentry:project:never",
+          decision: "Keep holding",
+        }),
+      "RESOURCE_NOT_FOUND",
+    );
+    expect(missingResource.message).toContain("sentry:project:never");
+    const missingIncident = expectCode(
+      () =>
+        recordResolution({
+          baseDir: dir,
+          incidentId: "inc:missing",
+          subjectResourceId: subjectA.id,
+          decision: "Keep holding",
+        }),
+      "INCIDENT_NOT_FOUND",
+    );
+    expect(missingIncident.message).toContain("inc:missing");
+    expect(listResolutions(dir).map((r) => r.id).sort()).toEqual(["res:a", "res:b"]);
+  });
+
+  test("--evidence validates against the named subject's live compose", () => {
+    const subject = seedVercelSubject();
+    const other = seedSubject("655");
+    seedVercelEvidence(["dpl_abc"]);
+    const incident = seedIncident([
+      { id: "res:a", subject },
+      { id: "res:b", subject: other },
+    ]);
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+    expect(recorded.evidenceIds).toEqual(["dpl_abc"]);
+    expect(recorded.subjectResourceId).toBe(subject.id);
+  });
+
+  test("057 --resource without --incident and 062/063 surfaces stay unchanged", () => {
+    const subjectA = seedSubject("656");
+    const subjectB = seedSubject("657");
+    const incident = seedIncident([
+      { id: "res:a", subject: subjectA },
+      { id: "res:b", subject: subjectB },
+    ]);
+    const viaResource = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectA.id,
+      decision: "Ungrouped",
+    });
+    expect(viaResource.investigationId).toBeUndefined();
+    expect(getIncident(dir, incident.id).resolutionIds).toEqual(["res:a", "res:b"]);
+    expect(listIncidents(dir).map((row) => row.id)).toEqual([incident.id]);
+  });
+
+  test("missing member rows: named subject matches remaining loadable members", () => {
+    const subjectA = seedSubject("658");
+    const subjectB = seedSubject("659");
+    const incident = seedIncident([
+      { id: "res:a", subject: subjectA },
+      { id: "res:b", subject: subjectB },
+    ]);
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resolutions WHERE id = 'res:a'`);
+    db.close();
+    const error = expectCode(
+      () =>
+        recordResolution({
+          baseDir: dir,
+          incidentId: incident.id,
+          subjectResourceId: subjectA.id,
+          decision: "Gone member",
+        }),
+      "INCIDENT_SUBJECT_NOT_MEMBER",
+    );
+    expect(error.message).toContain(subjectA.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      subjectResourceId: subjectB.id,
+      decision: "Still loaded",
+    });
+    expect(recorded.subjectResourceId).toBe(subjectB.id);
   });
 });
