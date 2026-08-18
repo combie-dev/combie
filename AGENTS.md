@@ -45,7 +45,12 @@ not the Investigation Engine). Sprint 056 shipped exact-id Resolution
 rows on the existing agent investigate tool (ROADMAP v0.7; additive
 `resolutionMemory` on `investigate_resource`; not a fifth tool, not
 snapshot MCP, not MCP writes, not Incident, not the Investigation
-Engine).
+Engine). Sprint 057 shipped Resource-anchored Resolution:
+`resolution --resource <id>` records decision / action / outcome
+without a saved Investigation; `investigationId` omitted (ROADMAP
+v0.7; founder override 2026-08-17; not Incident, not auto-saved
+snapshot, not MCP writes, not inferred Action, not the
+Investigation Engine). Sprint 058 is the next slice.
 
 ## Mandatory reading order before any substantive change
 
@@ -67,7 +72,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–056 complete; Sprint 057 not started
+## Current baseline: Sprints 001–057 complete; Sprint 058 not started
 
 Multi-provider connection loop:
 
@@ -196,6 +201,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   mixed into Known Facts / `InvestigationContext` / snapshot JSON;
   not a fifth tool, not snapshot MCP, not MCP writes, not
   `--compare`, not Incident, not inferred Action).
+- **Sprint 057 shipped:** Resource-anchored Resolution
+  (`resolution --resource <id>` records decision / action / outcome
+  without a saved Investigation; `investigationId` omitted as SQL
+  NULL; XOR with `--investigation`; Resource must exist at record
+  time; 054 evidence validation against that Resource's live compose;
+  list placeholder `-`; show / confirmation / RESOLUTION MEMORY omit
+  the investigation token; MCP `resolutionMemory` omits
+  `investigationId`; investigation reopen stays investigation-scoped;
+  no auto-saved snapshot, no sentinel id, no MCP writes, no Incident,
+  no inferred Action).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -244,8 +259,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   recall on the existing `investigate_resource` (additive structured
   field, omitted when empty, not a fifth tool, not snapshot MCP, not
   MCP writes). 056 leftover is not a sequence; Resource-anchored
-  Resolution remains unearned. Inferred Action from provider activity
-  remains forbidden. Sprint 057 is not started.
+  Resolution remained unearned until a founder override. On 2026-08-17
+  a founder override started Sprint 057 as the smallest write-anchor
+  expansion: Resource-anchored Resolution (`resolution --resource`,
+  optional `investigationId`, no auto-saved snapshot). It does not
+  authorize Incident, Recommendation, Learning, similarity,
+  Investigation lifecycle, MCP writes, or inferred Action. Sprint 057
+  shipped that slice. Sprint 057 leftover is not a sequence; Incident
+  grouping remains unearned. Sprint 058 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP

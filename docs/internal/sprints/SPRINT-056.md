@@ -657,19 +657,19 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 056 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: `investigate_resource` returns retained Resolutions
+- [x] Sprint 056 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: `investigate_resource` returns retained Resolutions
       for that exact subject as an additive field; omitted when empty;
       not in Known Facts; not a fifth tool; not snapshot MCP
-- [ ] if earned: CLI unchanged; compare unchanged; no inferred Action;
+- [x] if earned: CLI unchanged; compare unchanged; no inferred Action;
       no Incident; no recommendation copy; no MCP writes
-- [ ] if not earned: rejection documented; do not add a fifth tool
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline and the
+- [x] if not earned: rejection documented; do not add a fifth tool
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline and the
       existing `docs/public/MCP.md` investigate_resource row
 
 ---
