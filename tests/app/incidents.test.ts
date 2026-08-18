@@ -9,15 +9,29 @@ import {
   formatIncident,
   formatIncidentConfirmation,
   formatIncidentList,
+  formatIncidentMemorySection,
+  formatWithIncidentMemory,
   getIncident,
   listIncidents,
+  listIncidentsForInvestigation,
+  listIncidentsForSubject,
   recordIncident,
 } from "../../src/app/incidents.ts";
 import {
+  formatInvestigationContext,
+  getInvestigationContext,
+} from "../../src/app/investigate.ts";
+import {
+  formatSavedInvestigation,
   getSavedInvestigation,
   saveInvestigation,
   serializeInvestigationSnapshot,
 } from "../../src/app/investigations.ts";
+import {
+  formatWithResolutionMemory,
+  listResolutions,
+  recordResolution,
+} from "../../src/app/resolutions.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
 import { Store } from "../../src/storage/store.ts";
@@ -472,5 +486,245 @@ describe("Incident grouping (Sprint 058)", () => {
       recordedAt: "2026-08-17T09:00:00.000Z",
     });
     expect(recorded.resolutionIds).toEqual(["res:a", "res:b"]);
+  });
+});
+
+describe("exact-id incident recall (Sprint 059)", () => {
+  test("empty membership omits the section and leaves compose / snapshot formatters unchanged", () => {
+    const subject = seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    const snapshot = formatSavedInvestigation(
+      getSavedInvestigation(dir, saved.record.id),
+    );
+
+    expect(formatIncidentMemorySection([], "investigation")).toBe("");
+    expect(formatIncidentMemorySection([], "subject")).toBe("");
+    expect(formatWithIncidentMemory(live, [], "subject")).toBe(live);
+    expect(formatWithIncidentMemory(snapshot, [], "investigation")).toBe(
+      snapshot,
+    );
+    expect(live).not.toContain("INCIDENT MEMORY");
+    expect(snapshot).not.toContain("INCIDENT MEMORY");
+    expect(serializeInvestigationSnapshot(saved.record.snapshot)).not.toContain(
+      "INCIDENT MEMORY",
+    );
+    expect(listIncidentsForSubject(dir, subject.id)).toEqual([]);
+    expect(listIncidentsForInvestigation(dir, saved.record.id)).toEqual([]);
+  });
+
+  test("subject membership matches any member, dedups, and does not dump resolution essays", () => {
+    const subjectA = seedSubject("451");
+    const subjectB = seedSubject("452");
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subjectA.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const first = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback 1.4.2",
+      action: "Reverted deployment",
+      outcome: "Errors returned to baseline",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectB.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const older = recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      title: "API error spike",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const laterResA = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectA.id,
+      decision: "Keep holding",
+      recordedAt: "2026-08-17T10:00:00.000Z",
+    });
+    const laterResB = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectB.id,
+      decision: "Page on-call",
+      recordedAt: "2026-08-17T10:01:00.000Z",
+    });
+    const later = recordIncident({
+      baseDir: dir,
+      resolutionIds: [laterResA.id, laterResB.id],
+      recordedAt: "2026-08-17T11:00:00.000Z",
+    });
+
+    const forA = listIncidentsForSubject(dir, subjectA.id);
+    expect(forA.map((row) => row.id)).toEqual([later.id, older.id]);
+    const forB = listIncidentsForSubject(dir, subjectB.id);
+    expect(forB.map((row) => row.id)).toEqual([later.id, older.id]);
+
+    const section = formatIncidentMemorySection(forA, "subject");
+    expect(section).toContain("INCIDENT MEMORY");
+    expect(section).toContain("organizational grouping");
+    expect(section).toContain("for this subject");
+    expect(section).toContain("not current provider truth");
+    expect(section).toContain("It is not a recommendation");
+    expect(section).not.toMatch(/you should/i);
+    expect(section).not.toMatch(/similar incidents/i);
+    expect(section).not.toMatch(/this Resource is now an Incident/i);
+    expect(section).not.toMatch(/resolved: true/i);
+    expect(section).not.toContain("KNOWN FACTS");
+    expect(section).not.toContain("MISSING CONTEXT");
+    expect(section).not.toContain("RESOLUTION MEMORY");
+    expect(section).not.toContain("Rollback 1.4.2");
+    expect(section).not.toContain("Hold deploys");
+    expect(section).not.toContain("Keep holding");
+    expect(section).toContain(later.id);
+    expect(section).toContain(older.id);
+    expect(section.indexOf(later.id)).toBeLessThan(section.indexOf(older.id));
+    expect(section).toContain("API error spike");
+    expect(section).toContain(first.id);
+    expect(section).toContain(second.id);
+    expect(section).toContain("Show:");
+    expect(section).toContain(`incident ${later.id}`);
+    expect(section).not.toContain(`incident ${older.id}`);
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subjectA.id }),
+    );
+    const rendered = formatWithIncidentMemory(
+      formatWithResolutionMemory(
+        live,
+        listResolutions(dir, { subjectResourceId: subjectA.id }),
+        "subject",
+      ),
+      forA,
+      "subject",
+    );
+    expect(rendered.indexOf("RESOLUTION MEMORY")).toBeLessThan(
+      rendered.indexOf("INCIDENT MEMORY"),
+    );
+    expect(serializeInvestigationSnapshot(saved.record.snapshot)).not.toContain(
+      "INCIDENT MEMORY",
+    );
+    expect(serializeInvestigationSnapshot(saved.record.snapshot)).not.toContain(
+      older.id,
+    );
+  });
+
+  test("investigation membership includes mixed members and excludes resource-anchored-only groupings", () => {
+    const subject = seedSubject("453");
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const invMember = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const resourceMember = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const mixed = recordIncident({
+      baseDir: dir,
+      resolutionIds: [invMember.id, resourceMember.id],
+      title: "Mixed grouping",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const onlyA = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Scale up",
+      recordedAt: "2026-08-17T10:00:00.000Z",
+    });
+    const onlyB = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Scale down",
+      recordedAt: "2026-08-17T10:01:00.000Z",
+    });
+    const resourceOnly = recordIncident({
+      baseDir: dir,
+      resolutionIds: [onlyA.id, onlyB.id],
+      title: "Resource only",
+      recordedAt: "2026-08-17T11:00:00.000Z",
+    });
+
+    const forInv = listIncidentsForInvestigation(dir, saved.record.id);
+    expect(forInv.map((row) => row.id)).toEqual([mixed.id]);
+    expect(forInv.map((row) => row.id)).not.toContain(resourceOnly.id);
+
+    const forSubject = listIncidentsForSubject(dir, subject.id);
+    expect(forSubject.map((row) => row.id)).toEqual([
+      resourceOnly.id,
+      mixed.id,
+    ]);
+
+    const section = formatIncidentMemorySection(forInv, "investigation");
+    expect(section).toContain("for this investigation");
+    expect(section).toContain(mixed.id);
+    expect(section).not.toContain(resourceOnly.id);
+    expect(section).not.toContain("Rollback");
+    expect(section).not.toContain("Scale up");
+  });
+
+  test("missing member rows are skipped; unmatched incidents are omitted", () => {
+    const subject = seedSubject("454");
+    seedResolution("res:keep", subject.id, { decision: "Keep" });
+    seedResolution("res:gone", subject.id, { decision: "Gone" });
+    const recorded = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:keep", "res:gone"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resolutions WHERE id = 'res:gone'`);
+    db.close();
+    expect(listIncidentsForSubject(dir, subject.id).map((row) => row.id)).toEqual(
+      [recorded.id],
+    );
+
+    const db2 = new Database(dbPath(dir));
+    db2.exec(`DELETE FROM resolutions WHERE id = 'res:keep'`);
+    db2.close();
+    expect(listIncidentsForSubject(dir, subject.id)).toEqual([]);
+  });
+
+  test("pre-058 missing incidents table omits recall without crashing", () => {
+    const subject = seedSubject("455");
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(`DROP TABLE incidents`);
+    db.close();
+    expect(listIncidentsForSubject(dir, subject.id)).toEqual([]);
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    expect(
+      formatWithIncidentMemory(
+        live,
+        listIncidentsForSubject(dir, subject.id),
+        "subject",
+      ),
+    ).toBe(live);
   });
 });

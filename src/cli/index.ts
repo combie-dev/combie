@@ -50,8 +50,11 @@ import {
   formatIncident,
   formatIncidentConfirmation,
   formatIncidentList,
+  formatWithIncidentMemory,
   getIncident,
   listIncidents,
+  listIncidentsForInvestigation,
+  listIncidentsForSubject,
   recordIncident,
 } from "../app/incidents.ts";
 import {
@@ -126,6 +129,7 @@ Investigate options:
 
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
+Incident memory appears on those same paths when groupings exist.
 
 Resource references:
   <resource-id>                Stable id: provider:kind:providerResourceId
@@ -396,11 +400,18 @@ async function main(argv: string[]): Promise<number> {
         if (flags.save === true) {
           const saved = saveInvestigation({ baseDir, resourceRef });
           console.log(
-            formatWithResolutionMemory(
-              saved.liveOutput,
-              listResolutions(baseDir, {
-                subjectResourceId: saved.record.subjectResourceId,
-              }),
+            formatWithIncidentMemory(
+              formatWithResolutionMemory(
+                saved.liveOutput,
+                listResolutions(baseDir, {
+                  subjectResourceId: saved.record.subjectResourceId,
+                }),
+                "subject",
+              ),
+              listIncidentsForSubject(
+                baseDir,
+                saved.record.subjectResourceId,
+              ),
               "subject",
             ),
           );
@@ -413,11 +424,15 @@ async function main(argv: string[]): Promise<number> {
           resourceRef,
         });
         console.log(
-          formatWithResolutionMemory(
-            formatInvestigationContext(investigation),
-            listResolutions(baseDir, {
-              subjectResourceId: investigation.subject.id,
-            }),
+          formatWithIncidentMemory(
+            formatWithResolutionMemory(
+              formatInvestigationContext(investigation),
+              listResolutions(baseDir, {
+                subjectResourceId: investigation.subject.id,
+              }),
+              "subject",
+            ),
+            listIncidentsForSubject(baseDir, investigation.subject.id),
             "subject",
           ),
         );
@@ -457,9 +472,13 @@ async function main(argv: string[]): Promise<number> {
         }
         const saved = getSavedInvestigation(baseDir, investigationId);
         console.log(
-          formatWithResolutionMemory(
-            formatSavedInvestigation(saved),
-            listResolutions(baseDir, { investigationId: saved.id }),
+          formatWithIncidentMemory(
+            formatWithResolutionMemory(
+              formatSavedInvestigation(saved),
+              listResolutions(baseDir, { investigationId: saved.id }),
+              "investigation",
+            ),
+            listIncidentsForInvestigation(baseDir, saved.id),
             "investigation",
           ),
         );

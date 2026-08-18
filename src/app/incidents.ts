@@ -180,3 +180,118 @@ export function formatIncidentConfirmation(record: IncidentRecord): string {
     `Show: ${BINARY_NAME} incident ${record.id}`
   );
 }
+
+export type IncidentMemoryScope = "investigation" | "subject";
+
+function incidentMatches(
+  incident: IncidentRecord,
+  resolutions: Map<string, { subjectResourceId: string; investigationId?: string }>,
+  memberMatches: (member: {
+    subjectResourceId: string;
+    investigationId?: string;
+  }) => boolean,
+): boolean {
+  return incident.resolutionIds.some((id) => {
+    const member = resolutions.get(id);
+    return member !== undefined && memberMatches(member);
+  });
+}
+
+function listIncidentsMatching(
+  baseDir: string,
+  memberMatches: (member: {
+    subjectResourceId: string;
+    investigationId?: string;
+  }) => boolean,
+): IncidentRecord[] {
+  const store = new Store(baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    const incidents = store.listIncidentSummaries();
+    if (incidents.length === 0) return [];
+    const resolutions = new Map(
+      store.listResolutionSummaries().map((row) => [
+        row.id,
+        {
+          subjectResourceId: row.subjectResourceId,
+          ...(row.investigationId !== undefined
+            ? { investigationId: row.investigationId }
+            : {}),
+        },
+      ]),
+    );
+    return incidents.filter((incident) =>
+      incidentMatches(incident, resolutions, memberMatches),
+    );
+  } finally {
+    store.close();
+  }
+}
+
+/** Read-time: Incidents whose named members include this exact subject. */
+export function listIncidentsForSubject(
+  baseDir: string,
+  subjectResourceId: string,
+): IncidentRecord[] {
+  return listIncidentsMatching(
+    baseDir,
+    (member) => member.subjectResourceId === subjectResourceId,
+  );
+}
+
+/** Read-time: Incidents whose named members include this exact investigation. */
+export function listIncidentsForInvestigation(
+  baseDir: string,
+  investigationId: string,
+): IncidentRecord[] {
+  return listIncidentsMatching(
+    baseDir,
+    (member) => member.investigationId === investigationId,
+  );
+}
+
+function incidentMemoryIdentityLine(record: IncidentRecord): string {
+  return `${record.id}  ${record.recordedAt}`;
+}
+
+function incidentMemoryFieldBlocks(record: IncidentRecord): string[] {
+  const blocks: string[] = [];
+  if (record.title) {
+    blocks.push("TITLE", record.title);
+  }
+  if (blocks.length > 0) blocks.push("");
+  blocks.push("RESOLUTIONS", ...record.resolutionIds);
+  return blocks;
+}
+
+/** Read-time organizational-grouping section. Empty when there is nothing to show. */
+export function formatIncidentMemorySection(
+  records: IncidentRecord[],
+  scope: IncidentMemoryScope,
+): string {
+  if (records.length === 0) return "";
+  const where =
+    scope === "investigation" ? "for this investigation" : "for this subject";
+  const intro =
+    `INCIDENT MEMORY\n` +
+    `Retained organizational grouping ${where}.\n` +
+    `It is not current provider truth. It is not a recommendation.`;
+  const rows = records.map((record) =>
+    [incidentMemoryIdentityLine(record), ...incidentMemoryFieldBlocks(record)].join(
+      "\n",
+    ),
+  );
+  return (
+    `${intro}\n\n${rows.join("\n\n")}\n\n` +
+    `Show: ${BINARY_NAME} incident ${records[0]!.id}`
+  );
+}
+
+export function formatWithIncidentMemory(
+  body: string,
+  records: IncidentRecord[],
+  scope: IncidentMemoryScope,
+): string {
+  const section = formatIncidentMemorySection(records, scope);
+  return section === "" ? body : `${body}\n\n${section}`;
+}

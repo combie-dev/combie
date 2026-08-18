@@ -1772,6 +1772,219 @@ describe("CLI commands", () => {
     );
   });
 
+  test("investigate and investigation reopen show exact-id incident memory", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "inc059",
+      kind: "project",
+      name: "inc-recall-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "inc059repo",
+      kind: "repository",
+      name: "acme/inc-recall",
+      metadata: {},
+    });
+    store.applyResource(project, {
+      id: "obs-inc059",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-inc059-other",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(saved.stdout).not.toContain("INCIDENT MEMORY");
+    const invId = saved.stdout.match(/Saved investigation snapshot (inv:\S+)/)![1]!;
+
+    const invRes = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        invId,
+        "--decision",
+        "Rollback 1.4.2",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resA = invRes.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const otherRes = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        other.id,
+        "--decision",
+        "Hold deploys",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resB = otherRes.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--title",
+        "Cross spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    const incMixed = grouped.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+
+    const liveA = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(liveA.code).toBe(0);
+    expect(liveA.stdout).toContain("RESOLUTION MEMORY");
+    expect(liveA.stdout).toContain("INCIDENT MEMORY");
+    expect(liveA.stdout.indexOf("RESOLUTION MEMORY")).toBeLessThan(
+      liveA.stdout.indexOf("INCIDENT MEMORY"),
+    );
+    expect(liveA.stdout).toContain(incMixed);
+    expect(liveA.stdout).toContain("Cross spike");
+    expect(liveA.stdout).toContain(resA);
+    expect(liveA.stdout).toContain(resB);
+    expect(liveA.stdout).toContain("Rollback 1.4.2");
+    expect(liveA.stdout).not.toContain("Hold deploys");
+    expect(liveA.stdout).not.toMatch(/you should/i);
+    expect(liveA.stdout).toContain(`incident ${incMixed}`);
+
+    const liveB = await capture(() =>
+      main(["investigate", other.id, "--dir", dir]),
+    );
+    expect(liveB.code).toBe(0);
+    expect(liveB.stdout).toContain("INCIDENT MEMORY");
+    expect(liveB.stdout).toContain(incMixed);
+    expect(liveB.stdout).toContain("Hold deploys");
+    expect(liveB.stdout).not.toContain("Rollback 1.4.2");
+
+    const reopened = await capture(() =>
+      main(["investigation", invId, "--dir", dir]),
+    );
+    expect(reopened.code).toBe(0);
+    expect(reopened.stdout).toContain("INCIDENT MEMORY");
+    expect(reopened.stdout).toContain(incMixed);
+    expect(reopened.stdout).toContain("Cross spike");
+
+    const onlyA = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Scale up",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resC = onlyA.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const onlyB = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Scale down",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resD = onlyB.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resourceOnly = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resC,
+        "--resolution",
+        resD,
+        "--title",
+        "Resource only",
+        "--dir",
+        dir,
+      ]),
+    );
+    const incResource = resourceOnly.stdout.match(
+      /Recorded incident (inc:\S+)/,
+    )![1]!;
+
+    const reopenAfter = await capture(() =>
+      main(["investigation", invId, "--dir", dir]),
+    );
+    expect(reopenAfter.stdout).toContain(incMixed);
+    expect(reopenAfter.stdout).not.toContain(incResource);
+    expect(reopenAfter.stdout).not.toContain("Resource only");
+
+    const liveAfter = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(liveAfter.stdout).toContain(incMixed);
+    expect(liveAfter.stdout).toContain(incResource);
+    expect(liveAfter.stdout.indexOf(incResource)).toBeLessThan(
+      liveAfter.stdout.indexOf(incMixed),
+    );
+
+    const compared = await capture(() =>
+      main(["investigation", invId, "--compare", "--dir", dir]),
+    );
+    expect(compared.code).toBe(0);
+    expect(compared.stdout).toContain("INVESTIGATION COMPARE");
+    expect(compared.stdout).not.toContain("INCIDENT MEMORY");
+    expect(compared.stdout).not.toContain(incMixed);
+
+    const savedAgain = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(savedAgain.code).toBe(0);
+    expect(savedAgain.stdout).toContain("INCIDENT MEMORY");
+    const inv2 = savedAgain.stdout.match(
+      /Saved investigation snapshot (inv:\S+)/,
+    )![1]!;
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const row = storeAfter.getInvestigationRow(inv2);
+    expect(row?.snapshotJson).not.toContain("INCIDENT MEMORY");
+    expect(row?.snapshotJson).not.toContain(incMixed);
+    expect(row?.snapshotJson).not.toContain("Cross spike");
+    storeAfter.close();
+
+    const reopenSecond = await capture(() =>
+      main(["investigation", inv2, "--dir", dir]),
+    );
+    expect(reopenSecond.stdout).not.toContain("INCIDENT MEMORY");
+
+    const missingInv = await capture(() =>
+      main(["investigation", "inv:missing", "--dir", dir]),
+    );
+    expect(missingInv.code).toBe(1);
+    expect(missingInv.stdout).not.toContain("INCIDENT MEMORY");
+
+    const missingResource = await capture(() =>
+      main(["investigate", "sentry:project:nope", "--dir", dir]),
+    );
+    expect(missingResource.code).toBe(1);
+    expect(missingResource.stdout).not.toContain("INCIDENT MEMORY");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.stdout).toContain(
+      "Incident memory appears on those same paths when groupings exist.",
+    );
+  });
+
   test("help lists the resolutions --evidence list line and example", async () => {
     const help = await capture(() => main(["help"]));
     expect(help.code).toBe(0);

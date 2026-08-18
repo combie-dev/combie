@@ -92,6 +92,7 @@ describe("MCP stdio contract", () => {
       }
       expect(result.structuredContent).not.toHaveProperty("resolutions");
       expect(result.structuredContent).not.toHaveProperty("resolutionMemory");
+      expect(result.structuredContent).not.toHaveProperty("incidentMemory");
     } finally {
       await client.close();
     }
@@ -799,16 +800,279 @@ describe("MCP stdio contract (Sprint 058)", () => {
       });
       expect(result.isError).not.toBe(true);
       const content = result.structuredContent as Record<string, unknown>;
-      expect(content).not.toHaveProperty("incidentMemory");
       expect(content).not.toHaveProperty("incidents");
       const memory = content.resolutionMemory as Array<Record<string, unknown>>;
       expect(memory.map((row) => row.id).sort()).toEqual(
         [first.id, second.id].sort(),
       );
-      expect(JSON.stringify(content)).not.toContain("API error spike");
+      expect(JSON.stringify(memory)).not.toContain("API error spike");
     } finally {
       await client.close();
     }
     expect(digest()).toBe(before);
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 059)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource returns additive incidentMemory for the exact subject without mutating state", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-059-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    const other = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_other",
+      kind: "project",
+      name: "other",
+      metadata: { accountId: "team_1" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-2",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      action: "Reverted deployment",
+      outcome: "Errors returned to baseline",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId: other.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      title: "API error spike",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-059", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const investigate = listed.tools.find(
+        (tool) => tool.name === "investigate_resource",
+      );
+      expect(investigate?.description).toMatch(/incident memory/i);
+      expect(listed.tools.every((tool) => tool.name !== "list_incidents")).toBe(
+        true,
+      );
+
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.content).toEqual([
+        {
+          type: "text",
+          text: `Investigation context for ${subject.name}. 0 change(s), 0 related resource(s).`,
+        },
+      ]);
+      const content = result.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+        resolutionMemory?: Array<Record<string, unknown>>;
+        knownFacts?: Array<Record<string, unknown>>;
+        missingContext?: Array<Record<string, unknown>>;
+        providerActivity?: { entries?: Array<Record<string, unknown>> };
+        timeline?: { entries?: Array<Record<string, unknown>> };
+        sharedCommitContext?: Array<Record<string, unknown>>;
+        sharedCommitCorrespondences?: Array<Record<string, unknown>>;
+      };
+      expect(content.incidentMemory).toEqual([
+        {
+          id: incident.id,
+          recordedAt: "2026-08-16T14:00:00.000Z",
+          title: "API error spike",
+          resolutionIds: [first.id, second.id],
+        },
+      ]);
+      expect(content.incidentMemory![0]).not.toHaveProperty("decision");
+      expect(content.incidentMemory![0]).not.toHaveProperty("action");
+      expect(content.incidentMemory![0]).not.toHaveProperty("outcome");
+      expect(content).not.toHaveProperty("incidents");
+      expect(content.resolutionMemory?.map((row) => row.id)).toEqual([first.id]);
+      expect(JSON.stringify(content.knownFacts)).not.toContain(incident.id);
+      expect(JSON.stringify(content.missingContext)).not.toContain(incident.id);
+      expect(JSON.stringify(content.providerActivity)).not.toContain(
+        incident.id,
+      );
+      expect(JSON.stringify(content.timeline)).not.toContain(incident.id);
+      expect(JSON.stringify(content.sharedCommitContext)).not.toContain(
+        incident.id,
+      );
+      expect(JSON.stringify(content.sharedCommitCorrespondences)).not.toContain(
+        incident.id,
+      );
+
+      const otherResult = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: other.id },
+      });
+      expect(otherResult.isError).not.toBe(true);
+      const otherContent = otherResult.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+      };
+      expect(otherContent.incidentMemory).toEqual([
+        {
+          id: incident.id,
+          recordedAt: "2026-08-16T14:00:00.000Z",
+          title: "API error spike",
+          resolutionIds: [first.id, second.id],
+        },
+      ]);
+
+      const related = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: subject.id },
+      });
+      expect(related.isError).not.toBe(true);
+      expect(related.structuredContent).not.toHaveProperty("incidentMemory");
+
+      const unknown = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: "sentry:project:nope" },
+      });
+      expect(unknown.isError).toBe(true);
+      const unknownText = (unknown.content as Array<{ text: string }>)
+        .map((part) => part.text)
+        .join("\n");
+      expect(unknownText).toContain("Resource not found");
+      expect(unknown.structuredContent ?? {}).not.toHaveProperty(
+        "incidentMemory",
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("investigate_resource omits incidentMemory when empty and omits absent title", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-059-omit-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/other",
+      metadata: {},
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-2",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+
+    const client = new Client({
+      name: "combie-test-059-omit",
+      version: "1.0.0",
+    });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const withIncident = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      const withContent = withIncident.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+      };
+      expect(withContent.incidentMemory).toEqual([
+        {
+          id: incident.id,
+          recordedAt: "2026-08-16T14:00:00.000Z",
+          resolutionIds: [first.id, second.id],
+        },
+      ]);
+      expect(withContent.incidentMemory![0]).not.toHaveProperty("title");
+
+      const empty = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: other.id },
+      });
+      expect(empty.structuredContent).not.toHaveProperty("incidentMemory");
+      expect(empty.structuredContent).not.toHaveProperty("resolutionMemory");
+    } finally {
+      await client.close();
+    }
   }, 15_000);
 });

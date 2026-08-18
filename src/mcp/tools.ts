@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { CombieError } from "../app/errors.ts";
+import { listIncidentsForSubject } from "../app/incidents.ts";
 import { composeInvestigationFacts } from "../app/investigation-facts.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
@@ -11,6 +12,7 @@ import {
   composeSharedCommitCorrespondences,
 } from "../app/shared-commit-context.ts";
 import { composeInvestigationTimeline } from "../app/timeline.ts";
+import type { IncidentRecord } from "../domain/incident.ts";
 import type { ResolutionRecord } from "../domain/resolution.ts";
 import { safeJson } from "./serialization.ts";
 
@@ -53,6 +55,27 @@ function toResolutionMemoryRow(
 
 function toResolutionMemory(records: ResolutionRecord[]) {
   return records.map(toResolutionMemoryRow);
+}
+
+/**
+ * MCP-facing Incident projection (Sprint 059): plain objects, absent
+ * optional fields omitted. Retained organizational grouping — not current
+ * provider truth, not a recommendation.
+ */
+function toIncidentMemoryRow(
+  record: IncidentRecord,
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: record.id,
+    recordedAt: record.recordedAt,
+    resolutionIds: record.resolutionIds,
+  };
+  if (record.title !== undefined) row.title = record.title;
+  return row;
+}
+
+function toIncidentMemory(records: IncidentRecord[]) {
+  return records.map(toIncidentMemoryRow);
 }
 
 export function registerTools(server: McpServer, ctx: ToolContext): void {
@@ -159,6 +182,8 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "and cross-provider shared commit context when available. " +
         "May also include retained organizational response (resolution memory) recorded for that " +
         "exact subject; that is not current provider truth and not a recommendation. " +
+        "May also include retained organizational grouping (incident memory) whose members include " +
+        "a Resolution for that exact subject; that is not current provider truth and not a recommendation. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -193,6 +218,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         const resolutionRows = listResolutions(baseDir, {
           subjectResourceId: ctx.subject.id,
         });
+        const incidentRows = listIncidentsForSubject(baseDir, ctx.subject.id);
 
         const related = ctx.related.map((n) => ({
           direction: n.direction,
@@ -252,6 +278,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             ),
             ...(resolutionRows.length > 0
               ? { resolutionMemory: toResolutionMemory(resolutionRows) }
+              : {}),
+            ...(incidentRows.length > 0
+              ? { incidentMemory: toIncidentMemory(incidentRows) }
               : {}),
           }) as Record<string, unknown>,
         };
