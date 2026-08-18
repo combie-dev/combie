@@ -330,6 +330,72 @@ export function clearIncidentTitle(
   }
 }
 
+export interface RestampIncidentOptions {
+  baseDir: string;
+  incidentId: string;
+  recordedAt: string;
+}
+
+function canonicalizeIncidentRecordedAt(value: string): string {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) {
+    throw new CombieError(
+      "INCIDENT_RECORDED_AT_INVALID",
+      `--recorded-at requires a valid ISO timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
+    );
+  }
+  return new Date(ms).toISOString();
+}
+
+export function restampIncident(
+  options: RestampIncidentOptions,
+): IncidentRecord {
+  const incidentId = options.incidentId.trim();
+  if (!incidentId) {
+    throw new CombieError(
+      "INCIDENT_ID_REQUIRED",
+      `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>\nList ids: ${BINARY_NAME} incidents`,
+    );
+  }
+  const raw = trimField(options.recordedAt);
+  if (!raw) {
+    throw new CombieError(
+      "INCIDENT_RECORDED_AT_INVALID",
+      `--recorded-at requires a valid ISO timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
+    );
+  }
+  const recordedAt = canonicalizeIncidentRecordedAt(raw);
+  const store = new Store(options.baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    store.init();
+    const incident = store.getIncidentRow(incidentId);
+    if (!incident) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incidentId}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    if (incident.recordedAt === recordedAt) {
+      throw new CombieError(
+        "INCIDENT_RECORDED_AT_UNCHANGED",
+        `Incident ${incident.id} already has that recorded time.\nNothing was restamped.\nShow: ${BINARY_NAME} incident ${incident.id}`,
+      );
+    }
+    store.updateIncidentRecordedAt(incident.id, recordedAt);
+    const record = store.getIncidentRow(incident.id);
+    if (!record) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incident.id}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    return record;
+  } finally {
+    store.close();
+  }
+}
+
 export function listIncidents(baseDir: string): IncidentRecord[] {
   const store = new Store(baseDir);
   try {
@@ -517,6 +583,16 @@ export function formatIncidentClearTitleConfirmation(
 ): string {
   return (
     `Cleared incident title ${record.id}\n` +
+    `Show: ${BINARY_NAME} incident ${record.id}`
+  );
+}
+
+export function formatIncidentRestampConfirmation(
+  record: IncidentRecord,
+): string {
+  return (
+    `Set incident time ${record.id}\n` +
+    `${record.recordedAt}\n` +
     `Show: ${BINARY_NAME} incident ${record.id}`
   );
 }

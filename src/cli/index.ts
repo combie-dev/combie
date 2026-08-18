@@ -54,6 +54,7 @@ import {
   formatIncidentRemoveConfirmation,
   formatIncidentRetitleConfirmation,
   formatIncidentClearTitleConfirmation,
+  formatIncidentRestampConfirmation,
   formatWithIncidentMemory,
   getIncident,
   listIncidents,
@@ -65,6 +66,7 @@ import {
   removeIncidentResolutions,
   retitleIncident,
   clearIncidentTitle,
+  restampIncident,
 } from "../app/incidents.ts";
 import {
   compareInvestigationToCurrent,
@@ -142,6 +144,7 @@ Investigate options:
   --remove-resolution <resolution-id> With "incident <id>": exact current member Resolution id to detach (repeatable; remaining members must stay ≥2)
   --title <text>               Optional name for an incident grouping at create, or to retitle incident <id>
   --clear-title                With "incident <id>": omit the stored title (members and recordedAt unchanged)
+  --recorded-at <iso>          With "incident <id>": replace recordedAt (title and members unchanged)
 
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
@@ -193,6 +196,7 @@ Examples:
   ${BINARY_NAME} incident inc:… --remove-resolution res:…
   ${BINARY_NAME} incident inc:… --title "Better name"
   ${BINARY_NAME} incident inc:… --clear-title
+  ${BINARY_NAME} incident inc:… --recorded-at 2026-08-17T20:00:00.000Z
   ${BINARY_NAME} incidents
   ${BINARY_NAME} incidents --resolution res:…
   ${BINARY_NAME} incidents --resource github:repository:1001
@@ -727,6 +731,31 @@ async function main(argv: string[]): Promise<number> {
           return 1;
         }
         const clearTitle = clearTitleFlag === true;
+        const recordedAt = optionalFlagText(flags["recorded-at"]);
+        if (recordedAt === "missing") {
+          console.error(
+            `--recorded-at requires an ISO timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
+          );
+          return 1;
+        }
+        if ((repeated["recorded-at"] ?? []).length > 0) {
+          console.error(
+            `--recorded-at takes one exact timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
+          );
+          return 1;
+        }
+        if (recordedAt && title) {
+          console.error(
+            `Use --title to retitle or --recorded-at to restamp; not both.\nUsage: ${BINARY_NAME} incident <incident-id> --title <text>\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
+          );
+          return 1;
+        }
+        if (recordedAt && clearTitle) {
+          console.error(
+            `Use --clear-title to omit the title or --recorded-at to restamp; not both.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
+          );
+          return 1;
+        }
         if (clearTitle && title) {
           console.error(
             `Use --title to retitle or --clear-title to omit; not both.\nUsage: ${BINARY_NAME} incident <incident-id> --title <text>\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`,
@@ -736,6 +765,15 @@ async function main(argv: string[]): Promise<number> {
         if (resolutionParts.length > 0 && removeParts.length > 0) {
           console.error(
             `Use --resolution to append or --remove-resolution to detach; not both.\nUsage: ${BINARY_NAME} incident <incident-id> --resolution <resolution-id>\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+          );
+          return 1;
+        }
+        if (
+          recordedAt &&
+          (resolutionParts.length > 0 || removeParts.length > 0)
+        ) {
+          console.error(
+            `Use --recorded-at without --resolution or --remove-resolution.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
           );
           return 1;
         }
@@ -806,11 +844,22 @@ async function main(argv: string[]): Promise<number> {
         const incidentShowId = positionals[0];
         if (!incidentShowId) {
           console.error(
-            clearTitle
-              ? `--clear-title requires an existing incident id.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`
-              : `Usage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>\nList ids: ${BINARY_NAME} incidents`,
+            recordedAt
+              ? `--recorded-at requires an existing incident id.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`
+              : clearTitle
+                ? `--clear-title requires an existing incident id.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`
+                : `Usage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>\nList ids: ${BINARY_NAME} incidents`,
           );
           return 1;
+        }
+        if (recordedAt) {
+          const restamped = restampIncident({
+            baseDir,
+            incidentId: incidentShowId,
+            recordedAt,
+          });
+          console.log(formatIncidentRestampConfirmation(restamped));
+          return 0;
         }
         if (clearTitle) {
           const cleared = clearIncidentTitle({

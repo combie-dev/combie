@@ -1829,6 +1829,25 @@ export class Store {
     db.query(`UPDATE incidents SET title = NULL WHERE id = ?`).run(incidentId);
   }
 
+  /**
+   * Replace an Incident's recordedAt. title and resolution_ids are
+   * untouched. This never DELETEs the Incident or any Resolution row,
+   * and never stores an empty string.
+   */
+  updateIncidentRecordedAt(incidentId: string, recordedAt: string): void {
+    const db = this.getWritableDb();
+    const row = db
+      .query(`SELECT id FROM incidents WHERE id = ?`)
+      .get(incidentId) as { id: string } | null;
+    if (!row) {
+      throw new Error(`Incident not found: ${incidentId}`);
+    }
+    db.query(`UPDATE incidents SET recorded_at = ? WHERE id = ?`).run(
+      recordedAt,
+      incidentId,
+    );
+  }
+
   listIncidentSummaries(): IncidentRow[] {
     const db = this.getDb();
     if (!this.hasIncidentsTable(db)) return [];
