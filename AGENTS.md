@@ -95,7 +95,13 @@ founder override 2026-08-18 (ROADMAP v0.7; `resolution --incident
 not grouping snapshots as members, not first-seen subject, not
 `incident_id`, not a fifth tool, not MCP writes, not member
 removal, not lifecycle, not inferred Action, not the Investigation
-Engine). Sprint 065 is not started.
+Engine). Sprint 065 shipped
+the membership-remove slice under founder override 2026-08-18
+(ROADMAP v0.7; `incident <inc> --remove-resolution`; named current
+members; remaining ≥2; Resolution rows unchanged; not grouping
+snapshots as members, not retitle, not `incident_id`, not a fifth
+tool, not MCP writes, not lifecycle, not inferred Action, not the
+Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -117,7 +123,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–064 complete; Sprint 065 not started
+## Current baseline: Sprints 001–065 complete; Sprint 066 not started
 
 Multi-provider connection loop:
 
@@ -306,6 +312,13 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   not first-seen subject, not `incident_id`, not a fifth tool, not
   MCP writes, not member removal, not lifecycle, not inferred
   Action).
+- **Sprint 065 shipped:** remove existing members after Incident
+  record under founder override 2026-08-18 (`incident <inc>
+  --remove-resolution`; named current `res:` ids; remaining ≥2;
+  Resolution rows unchanged; no `incident_id`; not grouping
+  snapshots as members, not retitle, not 058 create, not 062
+  append, not a fifth tool, not MCP writes, not lifecycle, not
+  inferred Action).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -423,7 +436,17 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   inferred Action, grouping snapshots as members, or member
   removal. Sprint 064 shipped that slice. Sprint 064 leftover is
   not a sequence; grouping Investigation snapshots as Incident
-  members remains unearned. Sprint 065 is not started.
+  members remains unearned. On 2026-08-18 a founder
+  override started Sprint 065 as the smallest membership-remove
+  slice: `incident <inc> --remove-resolution` (named current
+  members, remaining ≥2, Resolution rows unchanged, no
+  `incident_id` column). It does not authorize Recommendation,
+  Learning, similarity, Investigation lifecycle, MCP writes,
+  inferred Action, grouping snapshots as members, or retitle.
+  Sprint 065 shipped that slice. Sprint 065 leftover is not a
+  sequence; grouping Investigation snapshots as Incident members
+  remains unearned. Retitle remains unearned. Sprint 066 is not
+  started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
