@@ -66,7 +66,13 @@ shipped exact-id Incident list retrieve under founder override
 exact stored-member and 059 subject membership, known-empty exit 0,
 AND when both flags; not `--investigation`, not a fifth tool, not
 MCP writes, not lifecycle, not inferred members, not `resolution
---incident`, not the Investigation Engine).
+--incident`, not the Investigation Engine). Sprint 061 shipped
+the third Resolution write identity under founder override
+2026-08-18 (ROADMAP v0.7; `resolution --incident` XOR;
+homogeneous-subject copy; new `res:` appended to the 058 member
+array; not `incident_id` on resolutions, not add-existing-members,
+not a fifth tool, not MCP writes, not lifecycle, not inferred
+Action, not the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -88,7 +94,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–060 complete; Sprint 061 not started
+## Current baseline: Sprints 001–061 complete; Sprint 062 not started
 
 Multi-provider connection loop:
 
@@ -245,6 +251,15 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   exact stored-member and 059 subject membership; known-empty exit 0;
   AND when both flags; not `--investigation`, not lifecycle, not
   inferred members, not MCP writes, not `resolution --incident`).
+- **Sprint 061 shipped:** Incident-anchored Resolution write under
+  founder override 2026-08-18 (`resolution --incident` XOR with
+  `--investigation` / `--resource`; copy `subjectResourceId` only
+  when every loaded member shares one subject; append the new `res:`
+  to that Incident’s stored members in the same transaction; no
+  `incident_id` column; confirmation names the `inc:`; show has no
+  INCIDENT heading; not add-existing-members, not
+  `--investigation` list retrieve, not lifecycle, not inferred
+  Action, not MCP writes).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -325,9 +340,17 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   lifecycle, MCP writes, inferred Action, `incidents --investigation`,
   Incident-anchored write, or add-members mutation. Sprint 060
   shipped that slice. Sprint 060 leftover is not a sequence;
-  `resolution --incident` write, add-members mutation, and
-  `incidents --investigation` remain unearned. Sprint 061 is not
-  started.
+  `resolution --incident` write remained unearned until a founder
+  override. On 2026-08-18 a founder override started Sprint 061 as
+  the smallest third Resolution write identity: `resolution
+  --incident` (XOR, homogeneous-subject copy, append the new `res:`
+  to the 058 member array, no `incident_id` column). It does not
+  authorize Recommendation, Learning, similarity, Investigation
+  lifecycle, MCP writes, inferred Action, add-existing-members, or
+  `incidents --investigation`. Sprint 061 shipped that slice.
+  Sprint 061 leftover is not a sequence; add-existing-members of
+  already-recorded `res:` ids remains unearned. Sprint 062 is
+  not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
