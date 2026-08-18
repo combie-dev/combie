@@ -100,6 +100,7 @@ describe("MCP stdio contract", () => {
       expect(result.structuredContent).not.toHaveProperty("resolutions");
       expect(result.structuredContent).not.toHaveProperty("resolutionMemory");
       expect(result.structuredContent).not.toHaveProperty("incidentMemory");
+      expect(result.structuredContent).not.toHaveProperty("investigationHistory");
     } finally {
       await client.close();
     }
@@ -1694,7 +1695,7 @@ describe("MCP stdio contract (Sprint 069)", () => {
     dirs.length = 0;
   });
 
-  test("investigate_resource stays four tools with no snapshot-history field", async () => {
+  test("investigate_resource observes snapshot summaries without a fifth tool", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-069-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -1711,7 +1712,7 @@ describe("MCP stdio contract (Sprint 069)", () => {
       observedAt: "2026-08-16T00:00:00.000Z",
     });
     store.close();
-    saveInvestigation({
+    const saved = saveInvestigation({
       baseDir: dir,
       resourceRef: subject.id,
       composedAt: "2026-08-16T12:00:00.000Z",
@@ -1737,13 +1738,24 @@ describe("MCP stdio contract (Sprint 069)", () => {
         "list_providers",
         "list_resources",
       ]);
+      expect(
+        listed.tools.every((tool) => tool.name !== "list_investigations"),
+      ).toBe(true);
       const result = await client.callTool({
         name: "investigate_resource",
         arguments: { resourceId: subject.id },
       });
       expect(result.isError).not.toBe(true);
       const content = result.structuredContent as Record<string, unknown>;
-      expect(content).not.toHaveProperty("investigationHistory");
+      expect(content.investigationHistory).toEqual([
+        { id: saved.record.id, composedAt: "2026-08-16T12:00:00.000Z" },
+      ]);
+      expect(
+        (content.investigationHistory as Array<Record<string, unknown>>)[0],
+      ).not.toHaveProperty("subjectResourceId");
+      expect(
+        (content.investigationHistory as Array<Record<string, unknown>>)[0],
+      ).not.toHaveProperty("occurredAt");
       expect(content).not.toHaveProperty("savedInvestigations");
       expect(content).not.toHaveProperty("investigationSnapshots");
       expect(content).not.toHaveProperty("incidents");
@@ -1751,5 +1763,207 @@ describe("MCP stdio contract (Sprint 069)", () => {
       await client.close();
     }
     expect(digest()).toBe(before);
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 070)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource omits investigationHistory when empty and isolates subjects", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-070-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-2",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+
+    const clientEmpty = new Client({
+      name: "combie-test-070-empty",
+      version: "1.0.0",
+    });
+    const transportEmpty = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await clientEmpty.connect(transportEmpty);
+      const emptyResult = await clientEmpty.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(emptyResult.isError).not.toBe(true);
+      expect(emptyResult.structuredContent).not.toHaveProperty(
+        "investigationHistory",
+      );
+      const emptyMissing = JSON.stringify(
+        (emptyResult.structuredContent as { missingContext?: unknown })
+          .missingContext,
+      );
+      expect(emptyMissing).not.toMatch(/investigation history|no snapshots/i);
+    } finally {
+      await clientEmpty.close();
+    }
+
+    const older = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+    const newer = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const otherSaved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: other.id,
+      composedAt: "2026-08-16T11:00:00.000Z",
+    });
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-070", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const investigate = listed.tools.find(
+        (tool) => tool.name === "investigate_resource",
+      );
+      expect(investigate?.description).toMatch(/investigation history/i);
+      expect(investigate?.description).toMatch(/retained composition/i);
+      expect(
+        listed.tools.every((tool) => tool.name !== "list_investigations"),
+      ).toBe(true);
+
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.content).toEqual([
+        {
+          type: "text",
+          text: `Investigation context for ${subject.name}. 0 change(s), 0 related resource(s).`,
+        },
+      ]);
+      const content = result.structuredContent as Record<string, unknown>;
+      expect(content.investigationHistory).toEqual([
+        { id: newer.record.id, composedAt: "2026-08-16T12:00:00.000Z" },
+        { id: older.record.id, composedAt: "2026-08-16T10:00:00.000Z" },
+      ]);
+      expect(JSON.stringify(content.investigationHistory)).not.toContain(
+        otherSaved.record.id,
+      );
+      expect(JSON.stringify(content.investigationHistory)).not.toContain(
+        "github:repository:1001",
+      );
+      for (const key of [
+        "knownFacts",
+        "missingContext",
+        "providerActivity",
+        "timeline",
+        "sharedCommitContext",
+        "sharedCommitCorrespondences",
+      ]) {
+        const serialized = JSON.stringify(content[key]);
+        expect(serialized).not.toContain(newer.record.id);
+        expect(serialized).not.toContain(older.record.id);
+      }
+      expect(content).not.toHaveProperty("resolutionMemory");
+      expect(content).not.toHaveProperty("incidentMemory");
+      expect(content).not.toHaveProperty("savedInvestigations");
+      expect(content).not.toHaveProperty("investigationSnapshots");
+
+      const otherResult = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: other.id },
+      });
+      expect(otherResult.isError).not.toBe(true);
+      const otherContent = otherResult.structuredContent as Record<
+        string,
+        unknown
+      >;
+      expect(otherContent.investigationHistory).toEqual([
+        { id: otherSaved.record.id, composedAt: "2026-08-16T11:00:00.000Z" },
+      ]);
+      expect(JSON.stringify(otherContent.investigationHistory)).not.toContain(
+        newer.record.id,
+      );
+
+      const related = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: subject.id },
+      });
+      expect(related.isError).not.toBe(true);
+      expect(related.structuredContent).not.toHaveProperty(
+        "investigationHistory",
+      );
+
+      const missing = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: "sentry:project:missing" },
+      });
+      expect(missing.isError).toBe(true);
+      expect(JSON.stringify(missing.structuredContent ?? {})).not.toContain(
+        newer.record.id,
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const row = storeAfter.getInvestigationRow(newer.record.id);
+    storeAfter.close();
+    expect(row?.snapshotJson).not.toContain("investigationHistory");
+    expect(row?.snapshotJson).not.toContain("INVESTIGATION HISTORY");
+    expect(JSON.parse(row!.snapshotJson)).not.toHaveProperty(
+      "investigationHistory",
+    );
   }, 15_000);
 });

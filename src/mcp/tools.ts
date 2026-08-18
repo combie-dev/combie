@@ -3,6 +3,7 @@ import * as z from "zod/v4";
 import { CombieError } from "../app/errors.ts";
 import { listIncidentsForSubject } from "../app/incidents.ts";
 import { composeInvestigationFacts } from "../app/investigation-facts.ts";
+import { listInvestigations } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
 import { composeProviderActivityChronology } from "../app/provider-activity.ts";
@@ -13,6 +14,7 @@ import {
 } from "../app/shared-commit-context.ts";
 import { composeInvestigationTimeline } from "../app/timeline.ts";
 import type { IncidentRecord } from "../domain/incident.ts";
+import type { InvestigationRecord } from "../domain/investigation.ts";
 import type { ResolutionRecord } from "../domain/resolution.ts";
 import { safeJson } from "./serialization.ts";
 
@@ -76,6 +78,23 @@ function toIncidentMemoryRow(
 
 function toIncidentMemory(records: IncidentRecord[]) {
   return records.map(toIncidentMemoryRow);
+}
+
+/**
+ * MCP-facing Investigation snapshot pointers (Sprint 070): id + composedAt
+ * only. Retained composition — not current provider truth, not an incident.
+ */
+function toInvestigationHistoryRow(
+  record: InvestigationRecord,
+): Record<string, unknown> {
+  return {
+    id: record.id,
+    composedAt: record.composedAt,
+  };
+}
+
+function toInvestigationHistory(records: InvestigationRecord[]) {
+  return records.map(toInvestigationHistoryRow);
 }
 
 export function registerTools(server: McpServer, ctx: ToolContext): void {
@@ -184,6 +203,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "exact subject; that is not current provider truth and not a recommendation. " +
         "May also include retained organizational grouping (incident memory) whose members include " +
         "a Resolution for that exact subject; that is not current provider truth and not a recommendation. " +
+        "May also include retained investigation history (snapshot summaries: exact inv: id and composedAt) " +
+        "for that exact subject; that is retained composition, not current provider truth, not an incident, " +
+        "and not a recommendation. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -219,6 +241,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           subjectResourceId: ctx.subject.id,
         });
         const incidentRows = listIncidentsForSubject(baseDir, ctx.subject.id);
+        const investigationRows = listInvestigations(baseDir, {
+          subjectResourceId: ctx.subject.id,
+        });
 
         const related = ctx.related.map((n) => ({
           direction: n.direction,
@@ -281,6 +306,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               : {}),
             ...(incidentRows.length > 0
               ? { incidentMemory: toIncidentMemory(incidentRows) }
+              : {}),
+            ...(investigationRows.length > 0
+              ? { investigationHistory: toInvestigationHistory(investigationRows) }
               : {}),
           }) as Record<string, unknown>,
         };
