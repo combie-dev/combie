@@ -50,7 +50,12 @@ Engine). Sprint 057 shipped Resource-anchored Resolution:
 without a saved Investigation; `investigationId` omitted (ROADMAP
 v0.7; founder override 2026-08-17; not Incident, not auto-saved
 snapshot, not MCP writes, not inferred Action, not the
-Investigation Engine). Sprint 058 is the next slice.
+Investigation Engine). Sprint 058 shipped explicit Incident grouping:
+`incident --resolution` groups ≥2 existing Resolution ids as one
+occurrence (`inc:` ids, exclusive membership; ROADMAP v0.7; founder
+override 2026-08-17; not lifecycle, not MCP writes, not inferred
+Action, not similarity, not Incident recall on investigate, not the
+Investigation Engine). Sprint 059 is the next slice.
 
 ## Mandatory reading order before any substantive change
 
@@ -72,7 +77,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–057 complete; Sprint 058 not started
+## Current baseline: Sprints 001–058 complete; Sprint 059 not started
 
 Multi-provider connection loop:
 
@@ -211,6 +216,12 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `investigationId`; investigation reopen stays investigation-scoped;
   no auto-saved snapshot, no sentinel id, no MCP writes, no Incident,
   no inferred Action).
+- **Sprint 058 shipped:** explicit Incident grouping
+  (`incident --resolution` groups ≥2 existing `res:` ids as one
+  occurrence; exclusive membership; optional `--title`; Resolution
+  rows unchanged; list count not member essays; show lists exact
+  member ids; no lifecycle; no inferred members; no MCP writes; no
+  Incident surface on investigate / compare / `investigate_resource`).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -266,7 +277,15 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   authorize Incident, Recommendation, Learning, similarity,
   Investigation lifecycle, MCP writes, or inferred Action. Sprint 057
   shipped that slice. Sprint 057 leftover is not a sequence; Incident
-  grouping remains unearned. Sprint 058 is not started.
+  grouping remained unearned until a founder override. On 2026-08-17
+  a founder override started Sprint 058 as the smallest Incident
+  grouping slice: explicit grouping of existing Resolution ids
+  (`incident --resolution`, `inc:` ids, no inferred members, no
+  lifecycle). It does not authorize Recommendation, Learning,
+  similarity, Investigation lifecycle, MCP writes, inferred Action,
+  or Incident recall on investigate. Sprint 058 shipped that slice.
+  Sprint 058 leftover is not a sequence; Incident recall on
+  investigate remains unearned. Sprint 059 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
@@ -297,6 +316,14 @@ tests/                 bun:test suites (no live provider credentials required)
 
 - Stack: TypeScript + Bun (`bun:sqlite`, `bun:test`).
 - TDD: Red → Green → Refactor; smallest implementation that satisfies the Sprint; provider-specific logic stays inside the provider adapter.
+- New providers and material provider expansions must follow the
+  **Provider Integration Workflow** in `skills/build-combie/SKILL.md`:
+  use integrations.sh for surface/auth reconnaissance, verify every relied-on
+  contract against first-party provider evidence, use fixtures plus local
+  emulator contract tests when compatible, and finish with explicitly
+  authorized live-provider dogfood. Registry metadata and emulator behavior
+  are never provider authority; never place real secrets or private provider
+  data in an emulator.
 - Test suite must run **without live provider credentials** (fixtures/mocks).
 - Credentials: explicit authorization only.
   - Cloudflare: `--token` or `--use-env` with `CLOUDFLARE_API_TOKEN`
