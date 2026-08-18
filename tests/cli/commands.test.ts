@@ -3347,6 +3347,219 @@ describe("CLI commands", () => {
     expect(help.stdout).toContain("or to retitle");
   });
 
+  test("incident <id> --clear-title omits the stored title (Sprint 067)", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "inc067",
+      kind: "project",
+      name: "inc-clear-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-inc067",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const resA = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Rollback",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resB = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Hold deploys",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resC = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Scale up",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resD = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Hold again",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--title",
+        "API error spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(grouped.code).toBe(0);
+    const incId = grouped.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+
+    const cleared = await capture(() =>
+      main(["incident", incId, "--clear-title", "--dir", dir]),
+    );
+    expect(cleared.code).toBe(0);
+    expect(cleared.stdout).toContain(`Cleared incident title ${incId}`);
+    expect(cleared.stdout).not.toMatch(/^Recorded incident/);
+    expect(cleared.stdout).not.toMatch(/^Renamed incident/);
+
+    const shown = await capture(() => main(["incident", incId, "--dir", dir]));
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).not.toContain("TITLE");
+    expect(shown.stdout).not.toContain("API error spike");
+    expect(shown.stdout).toContain(resA);
+    expect(shown.stdout).toContain(resB);
+
+    const listed = await capture(() => main(["incidents", "--dir", dir]));
+    expect(listed.stdout).not.toContain("API error spike");
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    const incidentMemory = live.stdout.slice(
+      live.stdout.indexOf("INCIDENT MEMORY"),
+    );
+    expect(incidentMemory).toContain("INCIDENT MEMORY");
+    expect(incidentMemory).not.toContain("TITLE");
+    expect(incidentMemory).not.toContain("API error spike");
+
+    const retitled = await capture(() =>
+      main(["incident", incId, "--title", "Named again", "--dir", dir]),
+    );
+    expect(retitled.code).toBe(0);
+    expect(retitled.stdout).toContain("Named again");
+
+    const already = await capture(() =>
+      main(["incident", incId, "--clear-title", "--dir", dir]),
+    );
+    expect(already.code).toBe(0);
+    const secondClear = await capture(() =>
+      main(["incident", incId, "--clear-title", "--dir", dir]),
+    );
+    expect(secondClear.code).toBe(1);
+    expect(secondClear.stderr).toContain("already");
+
+    const omitted = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resC,
+        "--resolution",
+        resD,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(omitted.code).toBe(0);
+    const inc2 = omitted.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+    const omittedClear = await capture(() =>
+      main(["incident", inc2, "--clear-title", "--dir", dir]),
+    );
+    expect(omittedClear.code).toBe(1);
+    expect(omittedClear.stderr).toContain("already");
+
+    const blankTitle = await capture(() =>
+      main(["incident", incId, "--title", "--dir", dir]),
+    );
+    expect(blankTitle.code).toBe(1);
+    expect(blankTitle.stderr).toContain("--title requires text");
+
+    const mixedTitle = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--clear-title",
+        "--title",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedTitle.code).toBe(1);
+    expect(mixedTitle.stderr).toMatch(/--clear-title|--title/);
+
+    const mixedAppend = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--resolution",
+        resC,
+        "--clear-title",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedAppend.code).toBe(1);
+    expect(mixedAppend.stderr).toMatch(/--clear-title|--resolution/);
+
+    const noPositional = await capture(() =>
+      main(["incident", "--clear-title", "--dir", dir]),
+    );
+    expect(noPositional.code).toBe(1);
+    expect(noPositional.stderr).toMatch(/--clear-title|Usage:/);
+
+    const withValue = await capture(() =>
+      main(["incident", incId, "--clear-title", "extra", "--dir", dir]),
+    );
+    expect(withValue.code).toBe(1);
+
+    const groupingSnapshots = await capture(() =>
+      main([
+        "incident",
+        "--investigation",
+        "inv:a",
+        "--investigation",
+        "inv:b",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(groupingSnapshots.code).toBe(1);
+    expect(groupingSnapshots.stderr).toContain("do not pass --investigation");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.stdout).toContain("incident inc:… --clear-title");
+    expect(help.stdout).toContain("--clear-title");
+  });
+
   test("investigate and investigation reopen show exact-id incident memory", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const store = new Store(dir);

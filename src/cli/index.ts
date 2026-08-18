@@ -53,6 +53,7 @@ import {
   formatIncidentList,
   formatIncidentRemoveConfirmation,
   formatIncidentRetitleConfirmation,
+  formatIncidentClearTitleConfirmation,
   formatWithIncidentMemory,
   getIncident,
   listIncidents,
@@ -63,6 +64,7 @@ import {
   appendIncidentResolutions,
   removeIncidentResolutions,
   retitleIncident,
+  clearIncidentTitle,
 } from "../app/incidents.ts";
 import {
   compareInvestigationToCurrent,
@@ -139,6 +141,7 @@ Investigate options:
                                With "incidents": list groupings that named that exact resolution id (membership only; one exact id)
   --remove-resolution <resolution-id> With "incident <id>": exact current member Resolution id to detach (repeatable; remaining members must stay ≥2)
   --title <text>               Optional name for an incident grouping at create, or to retitle incident <id>
+  --clear-title                With "incident <id>": omit the stored title (members and recordedAt unchanged)
 
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
@@ -189,6 +192,7 @@ Examples:
   ${BINARY_NAME} incident inc:… --resolution res:…
   ${BINARY_NAME} incident inc:… --remove-resolution res:…
   ${BINARY_NAME} incident inc:… --title "Better name"
+  ${BINARY_NAME} incident inc:… --clear-title
   ${BINARY_NAME} incidents
   ${BINARY_NAME} incidents --resolution res:…
   ${BINARY_NAME} incidents --resource github:repository:1001
@@ -709,9 +713,38 @@ async function main(argv: string[]): Promise<number> {
           );
           return 1;
         }
+        const clearTitleFlag = flags["clear-title"];
+        if (typeof clearTitleFlag === "string") {
+          console.error(
+            `--clear-title does not take a value.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`,
+          );
+          return 1;
+        }
+        if ((repeated["clear-title"] ?? []).length > 0) {
+          console.error(
+            `--clear-title takes one flag.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`,
+          );
+          return 1;
+        }
+        const clearTitle = clearTitleFlag === true;
+        if (clearTitle && title) {
+          console.error(
+            `Use --title to retitle or --clear-title to omit; not both.\nUsage: ${BINARY_NAME} incident <incident-id> --title <text>\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`,
+          );
+          return 1;
+        }
         if (resolutionParts.length > 0 && removeParts.length > 0) {
           console.error(
             `Use --resolution to append or --remove-resolution to detach; not both.\nUsage: ${BINARY_NAME} incident <incident-id> --resolution <resolution-id>\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+          );
+          return 1;
+        }
+        if (
+          clearTitle &&
+          (resolutionParts.length > 0 || removeParts.length > 0)
+        ) {
+          console.error(
+            `Use --clear-title without --resolution or --remove-resolution.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`,
           );
           return 1;
         }
@@ -773,9 +806,19 @@ async function main(argv: string[]): Promise<number> {
         const incidentShowId = positionals[0];
         if (!incidentShowId) {
           console.error(
-            `Usage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>\nList ids: ${BINARY_NAME} incidents`,
+            clearTitle
+              ? `--clear-title requires an existing incident id.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title`
+              : `Usage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>\nList ids: ${BINARY_NAME} incidents`,
           );
           return 1;
+        }
+        if (clearTitle) {
+          const cleared = clearIncidentTitle({
+            baseDir,
+            incidentId: incidentShowId,
+          });
+          console.log(formatIncidentClearTitleConfirmation(cleared));
+          return 0;
         }
         if (title) {
           const renamed = retitleIncident({

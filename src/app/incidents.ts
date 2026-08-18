@@ -284,6 +284,52 @@ export function retitleIncident(
   }
 }
 
+export interface ClearIncidentTitleOptions {
+  baseDir: string;
+  incidentId: string;
+}
+
+export function clearIncidentTitle(
+  options: ClearIncidentTitleOptions,
+): IncidentRecord {
+  const incidentId = options.incidentId.trim();
+  if (!incidentId) {
+    throw new CombieError(
+      "INCIDENT_ID_REQUIRED",
+      `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-title\nList ids: ${BINARY_NAME} incidents`,
+    );
+  }
+  const store = new Store(options.baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    store.init();
+    const incident = store.getIncidentRow(incidentId);
+    if (!incident) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incidentId}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    if (incident.title === undefined) {
+      throw new CombieError(
+        "INCIDENT_TITLE_UNCHANGED",
+        `Incident ${incident.id} already has no title.\nNothing was cleared.\nShow: ${BINARY_NAME} incident ${incident.id}`,
+      );
+    }
+    store.clearIncidentTitle(incident.id);
+    const record = store.getIncidentRow(incident.id);
+    if (!record) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incident.id}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    return record;
+  } finally {
+    store.close();
+  }
+}
+
 export function listIncidents(baseDir: string): IncidentRecord[] {
   const store = new Store(baseDir);
   try {
@@ -462,6 +508,15 @@ export function formatIncidentRetitleConfirmation(
   return (
     `Renamed incident ${record.id}\n` +
     `${record.title}\n` +
+    `Show: ${BINARY_NAME} incident ${record.id}`
+  );
+}
+
+export function formatIncidentClearTitleConfirmation(
+  record: IncidentRecord,
+): string {
+  return (
+    `Cleared incident title ${record.id}\n` +
     `Show: ${BINARY_NAME} incident ${record.id}`
   );
 }
