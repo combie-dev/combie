@@ -107,7 +107,13 @@ the retitle slice under founder override 2026-08-18 (ROADMAP v0.7;
 unchanged; not grouping snapshots as members, not `recordedAt`
 rewrite, not title-clear, not `incident_id`, not a fifth tool, not
 MCP writes, not lifecycle, not inferred Action, not the
-Investigation Engine).
+Investigation Engine). Sprint 067 shipped
+the title-clear slice under founder override 2026-08-18 (ROADMAP
+v0.7; `incident <inc> --clear-title`; omit stored title;
+`recordedAt` / members unchanged; not grouping snapshots as
+members, not `recordedAt` rewrite, not blank `--title` as clear,
+not `incident_id`, not a fifth tool, not MCP writes, not
+lifecycle, not inferred Action, not the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -129,7 +135,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–066 complete; Sprint 067 not started
+## Current baseline: Sprints 001–067 complete; Sprint 068 not started
 
 Multi-provider connection loop:
 
@@ -332,6 +338,13 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   title-clear, not 058 create, not 062 append, not 065 remove, not
   a fifth tool, not MCP writes, not lifecycle, not inferred
   Action).
+- **Sprint 067 shipped:** clear an existing Incident title under
+  founder override 2026-08-18 (`incident <inc> --clear-title`;
+  omit stored title; `recordedAt` / members unchanged; no
+  `incident_id`; not grouping snapshots as members, not
+  `recordedAt` rewrite, not blank `--title` as clear, not 058
+  create, not 066 retitle, not 062 append, not 065 remove, not a
+  fifth tool, not MCP writes, not lifecycle, not inferred Action).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -466,8 +479,17 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   inferred Action, grouping snapshots as members, `recordedAt`
   rewrite, or title-clear. Sprint 066 shipped that slice. Sprint
   066 leftover is not a sequence; grouping Investigation snapshots
-  as Incident members remains unearned. `recordedAt` rewrite and
-  title-clear remain unearned. Sprint 067 is not started.
+  as Incident members remains unearned. On 2026-08-18 a founder
+  override started Sprint 067 as the smallest title-clear slice:
+  `incident <inc> --clear-title` (omit stored title, `recordedAt`
+  / members unchanged, no `incident_id` column). It does not
+  authorize Recommendation, Learning, similarity, Investigation
+  lifecycle, MCP writes, inferred Action, grouping snapshots as
+  members, `recordedAt` rewrite, or blank `--title` as clear.
+  Sprint 067 shipped that slice. Sprint 067 leftover is not a
+  sequence; grouping Investigation snapshots as Incident members
+  remains unearned. `recordedAt` rewrite remains unearned. Sprint
+  068 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
