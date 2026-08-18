@@ -21,6 +21,7 @@ import {
   saveInvestigation,
 } from "../../src/app/investigations.ts";
 import { recordResolution } from "../../src/app/resolutions.ts";
+import { recordIncident } from "../../src/app/incidents.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
@@ -611,6 +612,50 @@ describe("snapshot-to-current compare", () => {
     expect(withResolution).toBe(withoutResolution);
     expect(withResolution).not.toContain("Resource-anchored rollback");
     expect(withResolution).not.toContain("RESOLUTION");
+  });
+
+  test("compare ignores incident grouping records", () => {
+    const subjectResourceId = seedSentryProject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subjectResourceId,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const first = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const withoutIncident = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T14:00:00.000Z",
+      }),
+    );
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      title: "API error spike",
+      recordedAt: "2026-08-16T15:00:00.000Z",
+    });
+    const withIncident = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T14:00:00.000Z",
+      }),
+    );
+    expect(withIncident).toBe(withoutIncident);
+    expect(withIncident).not.toContain("API error spike");
+    expect(withIncident).not.toContain("INCIDENT");
   });
 
   test("missing ids and uninitialized state fail without inventing a compare", () => {

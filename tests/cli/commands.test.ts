@@ -1601,6 +1601,177 @@ describe("CLI commands", () => {
     );
   });
 
+  test("incident groups existing resolutions and help lists the command", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "inc058",
+      kind: "project",
+      name: "inc-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-inc058",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Rollback",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(first.code).toBe(0);
+    const resA = first.stdout.match(/res:[a-f0-9-]+/)![0];
+    const second = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Hold deploys",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(second.code).toBe(0);
+    const resB = second.stdout.match(/res:[a-f0-9-]+/)![0];
+
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--title",
+        "API error spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(grouped.code).toBe(0);
+    expect(grouped.stdout).toMatch(/^Recorded incident inc:/);
+    expect(grouped.stdout).toContain("API error spike");
+    expect(grouped.stdout).toContain(resA);
+    expect(grouped.stdout).toContain(resB);
+    const incId = grouped.stdout.match(/inc:[a-f0-9-]+/)![0];
+
+    const listed = await capture(() => main(["incidents", "--dir", dir]));
+    expect(listed.code).toBe(0);
+    expect(listed.stdout).toContain(incId);
+    expect(listed.stdout).toContain("API error spike");
+    expect(listed.stdout).not.toContain(resA);
+    expect(listed.stdout).toContain("2");
+
+    const shown = await capture(() => main(["incident", incId, "--dir", dir]));
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain("INCIDENT");
+    expect(shown.stdout).toContain(resA);
+    expect(shown.stdout).toContain(resB);
+    expect(shown.stdout).not.toContain("Rollback");
+
+    const resolutionShow = await capture(() =>
+      main(["resolution", resA, "--dir", dir]),
+    );
+    expect(resolutionShow.code).toBe(0);
+    expect(resolutionShow.stdout).not.toMatch(/INCIDENT/);
+
+    const investigated = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(investigated.code).toBe(0);
+    expect(investigated.stdout).toContain("RESOLUTION MEMORY");
+    expect(investigated.stdout).not.toMatch(/\nINCIDENT\n/);
+
+    const emptyOther = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(emptyOther.code).toBe(1);
+    expect(emptyOther.stderr).toContain("already belongs to another Incident");
+
+    const bothAnchors = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--investigation",
+        "inv:x",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(bothAnchors.code).toBe(1);
+    expect(bothAnchors.stderr).toContain("--investigation");
+
+    const viaResource = await capture(() =>
+      main([
+        "incident",
+        "--resource",
+        project.id,
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(viaResource.code).toBe(1);
+    expect(viaResource.stderr).toContain("--resource");
+
+    const one = await capture(() =>
+      main(["incident", "--resolution", resA, "--dir", dir]),
+    );
+    expect(one.code).toBe(1);
+    expect(one.stderr).toContain("at least two distinct");
+
+    const missing = await capture(() =>
+      main(["incident", "--resolution", "--dir", dir]),
+    );
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain("--resolution requires a resolution id");
+
+    const unknown = await capture(() =>
+      main(["incident", "inc:missing", "--dir", dir]),
+    );
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("Incident not found");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain(
+      "incident                     Record or show an explicit incident grouping of resolutions",
+    );
+    expect(help.stdout).toContain(
+      'incident --resolution res:… --resolution res:… --title "API error spike"',
+    );
+    expect(help.stdout).toContain(
+      'resolution --investigation inv:… --decision "Rollback" --action "Reverted deploy" --outcome "Errors dropped"',
+    );
+    expect(help.stdout).toContain(
+      'resolution --resource vercel:project:prj_abc --decision "Rollback"',
+    );
+  });
+
   test("help lists the resolutions --evidence list line and example", async () => {
     const help = await capture(() => main(["help"]));
     expect(help.code).toBe(0);

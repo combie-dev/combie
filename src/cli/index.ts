@@ -47,6 +47,14 @@ import {
   recordResolution,
 } from "../app/resolutions.ts";
 import {
+  formatIncident,
+  formatIncidentConfirmation,
+  formatIncidentList,
+  getIncident,
+  listIncidents,
+  recordIncident,
+} from "../app/incidents.ts";
+import {
   compareInvestigationToCurrent,
   formatInvestigationCompare,
 } from "../app/compare-investigation.ts";
@@ -74,6 +82,8 @@ Commands:
   investigation <id>           Reopen a saved investigation snapshot (--compare: diff against current compose)
   resolution                   Record or show an explicit investigation resolution
   resolutions                  List retained resolution records
+  incident                     Record or show an explicit incident grouping of resolutions
+  incidents                    List retained incident groupings
   mcp                          Start read-only MCP server over stdio
   agent status                 Show MCP integration status for claude, codex, cursor
   agent setup [agent...]       Configure MCP access for agents (default: all supported)
@@ -111,6 +121,8 @@ Investigate options:
   --outcome <text>             Explicit outcome (what happened afterward)
   --evidence <id>              Attach an exact local evidence id (optional, repeatable; never inferred)
                                With "resolutions": list retained resolutions that attached that exact local id (membership only; one exact id)
+  --resolution <resolution-id> With "incident": exact Resolution id to group (repeatable; never inferred)
+  --title <text>               Optional name for an incident grouping
 
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
@@ -154,6 +166,9 @@ Examples:
   ${BINARY_NAME} resolutions --resource github:repository:1001
   ${BINARY_NAME} resolutions --evidence dpl_abc
   ${BINARY_NAME} resolution res:…
+  ${BINARY_NAME} incident --resolution res:… --resolution res:… --title "API error spike"
+  ${BINARY_NAME} incidents
+  ${BINARY_NAME} incident inc:…
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
   ${BINARY_NAME} agent setup
@@ -575,6 +590,79 @@ async function main(argv: string[]): Promise<number> {
             ...(evidence !== undefined ? { evidenceId: evidence } : {}),
           }),
         );
+        return 0;
+      }
+      case "incident": {
+        if (flags.investigation !== undefined || flags.resource !== undefined) {
+          console.error(
+            `Recording an incident groups existing --resolution ids; do not pass --investigation or --resource.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>`,
+          );
+          return 1;
+        }
+        const resolutionParts = [
+          ...(repeated.resolution ?? []),
+          ...(typeof flags.resolution === "string" ? [flags.resolution] : []),
+        ];
+        if (
+          flags.resolution === true ||
+          resolutionParts.some((id) => id.trim().length === 0)
+        ) {
+          console.error(
+            `--resolution requires a resolution id.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]`,
+          );
+          return 1;
+        }
+        const title = optionalFlagText(flags.title);
+        if (title === "missing") {
+          console.error(
+            `--title requires text.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]`,
+          );
+          return 1;
+        }
+        if (resolutionParts.length > 0) {
+          if (positionals[0]) {
+            console.error(
+              `Usage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>`,
+            );
+            return 1;
+          }
+          const recorded = recordIncident({
+            baseDir,
+            resolutionIds: resolutionParts,
+            ...(title ? { title } : {}),
+          });
+          console.log(formatIncidentConfirmation(recorded));
+          return 0;
+        }
+        const incidentShowId = positionals[0];
+        if (!incidentShowId) {
+          console.error(
+            `Usage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>\nList ids: ${BINARY_NAME} incidents`,
+          );
+          return 1;
+        }
+        if (title) {
+          console.error(
+            `Recording an incident requires --resolution ids.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>`,
+          );
+          return 1;
+        }
+        const incident = getIncident(baseDir, incidentShowId);
+        console.log(formatIncident(incident));
+        return 0;
+      }
+      case "incidents": {
+        if (
+          flags.resolution !== undefined ||
+          flags.resource !== undefined ||
+          flags.investigation !== undefined
+        ) {
+          console.error(
+            `incidents lists retained groupings; it does not filter by --resolution, --resource, or --investigation.\nUsage: ${BINARY_NAME} incidents`,
+          );
+          return 1;
+        }
+        console.log(formatIncidentList(listIncidents(baseDir)));
         return 0;
       }
       case "mcp": {

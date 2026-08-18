@@ -264,6 +264,16 @@ CREATE TABLE IF NOT EXISTS resolutions (
 
 CREATE INDEX IF NOT EXISTS resolutions_recorded_at_id_idx
   ON resolutions(recorded_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS incidents (
+  id TEXT PRIMARY KEY,
+  recorded_at TEXT NOT NULL,
+  title TEXT,
+  resolution_ids TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS incidents_recorded_at_id_idx
+  ON incidents(recorded_at DESC, id DESC);
 `;
 
 export interface ApplyResourceObservation extends ChangeObservation {
@@ -1677,6 +1687,61 @@ export class Store {
     return mapResolutionRow(row, evidence !== "");
   }
 
+  insertIncident(row: {
+    id: string;
+    resolutionIds: string[];
+    recordedAt: string;
+    title?: string;
+  }): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO incidents (id, recorded_at, title, resolution_ids)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(
+        row.id,
+        row.recordedAt,
+        row.title ?? null,
+        JSON.stringify(row.resolutionIds),
+      );
+  }
+
+  listIncidentSummaries(): IncidentRow[] {
+    const db = this.getDb();
+    if (!this.hasIncidentsTable(db)) return [];
+    const rows = db
+      .query(
+        `SELECT id, recorded_at, title, resolution_ids
+         FROM incidents
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all() as IncidentSqlRow[];
+    return rows.map(mapIncidentRow);
+  }
+
+  getIncidentRow(id: string): IncidentRow | null {
+    const db = this.getDb();
+    if (!this.hasIncidentsTable(db)) return null;
+    const row = db
+      .query(
+        `SELECT id, recorded_at, title, resolution_ids
+         FROM incidents
+         WHERE id = ?`,
+      )
+      .get(id) as IncidentSqlRow | null;
+    if (!row) return null;
+    return mapIncidentRow(row);
+  }
+
+  private hasIncidentsTable(db: Database): boolean {
+    const table = db
+      .query(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'incidents'`,
+      )
+      .get() as { name: string } | null;
+    return table !== null;
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
@@ -1726,6 +1791,49 @@ function parseResolutionEvidence(raw: string | null | undefined): string[] | und
     // Untrusted stored payload: skip without inventing ids.
   }
   return undefined;
+}
+
+type IncidentSqlRow = {
+  id: string;
+  recorded_at: string;
+  title: string | null;
+  resolution_ids: string;
+};
+
+type IncidentRow = {
+  id: string;
+  resolutionIds: string[];
+  recordedAt: string;
+  title?: string;
+};
+
+/**
+ * Stored resolution_ids is a JSON array of exact res: ids. Corrupt or
+ * non-array payloads are untrusted and omitted — never invented members.
+ */
+function parseIncidentMembers(raw: string | null | undefined): string[] {
+  if (raw == null) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((value) => typeof value === "string")
+    ) {
+      return parsed as string[];
+    }
+  } catch {
+    // Untrusted stored payload: skip without inventing ids.
+  }
+  return [];
+}
+
+function mapIncidentRow(row: IncidentSqlRow): IncidentRow {
+  return {
+    id: row.id,
+    resolutionIds: parseIncidentMembers(row.resolution_ids),
+    recordedAt: row.recorded_at,
+    ...(row.title ? { title: row.title } : {}),
+  };
 }
 
 function mapResolutionRow(
