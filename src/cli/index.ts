@@ -123,6 +123,7 @@ Investigate options:
                                With "incidents": list groupings with a member Resolution on one subject
   --investigation <id>         With "resolution": investigation to record against
                                With "resolutions": list resolutions for one investigation
+                               With "incidents": list groupings with a member Resolution recorded against that investigation (membership only; one exact id)
   --incident <incident-id>     With "resolution": existing incident grouping to record
                                against (subject copied from its members; one exact id)
   --decision <text>            Explicit decision (what you decided)
@@ -183,6 +184,7 @@ Examples:
   ${BINARY_NAME} incidents
   ${BINARY_NAME} incidents --resolution res:…
   ${BINARY_NAME} incidents --resource github:repository:1001
+  ${BINARY_NAME} incidents --investigation inv:…
   ${BINARY_NAME} incident inc:…
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
@@ -716,9 +718,16 @@ async function main(argv: string[]): Promise<number> {
         return 0;
       }
       case "incidents": {
-        if (flags.investigation !== undefined) {
+        const investigationFlag = optionalFlagId(flags.investigation);
+        if (investigationFlag === "missing") {
           console.error(
-            `incidents lists retained groupings; it does not filter by --investigation.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
+            `--investigation requires an investigation id.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>] [--investigation <investigation-id>]`,
+          );
+          return 1;
+        }
+        if ((repeated.investigation ?? []).length > 0) {
+          console.error(
+            `--investigation takes one exact id on the incidents list.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>] [--investigation <investigation-id>]`,
           );
           return 1;
         }
@@ -728,13 +737,13 @@ async function main(argv: string[]): Promise<number> {
             : undefined;
         if (flags.resolution !== undefined && !resolution) {
           console.error(
-            `--resolution requires a resolution id.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
+            `--resolution requires a resolution id.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>] [--investigation <investigation-id>]`,
           );
           return 1;
         }
         if ((repeated.resolution ?? []).length > 0) {
           console.error(
-            `--resolution takes one exact id on the incidents list.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
+            `--resolution takes one exact id on the incidents list.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>] [--investigation <investigation-id>]`,
           );
           return 1;
         }
@@ -742,16 +751,21 @@ async function main(argv: string[]): Promise<number> {
           typeof flags.resource === "string" ? flags.resource.trim() : undefined;
         if (flags.resource !== undefined && !resource) {
           console.error(
-            `--resource requires a resource id.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
+            `--resource requires a resource id.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>] [--investigation <investigation-id>]`,
           );
           return 1;
         }
         const filter =
-          resolution !== undefined || resource !== undefined
+          resolution !== undefined ||
+          resource !== undefined ||
+          investigationFlag !== undefined
             ? {
                 ...(resolution !== undefined ? { resolutionId: resolution } : {}),
                 ...(resource !== undefined
                   ? { subjectResourceId: resource }
+                  : {}),
+                ...(investigationFlag !== undefined
+                  ? { investigationId: investigationFlag }
                   : {}),
               }
             : undefined;

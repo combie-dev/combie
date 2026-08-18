@@ -192,6 +192,33 @@ export function formatIncidentList(
   filter?: ListIncidentsOptions,
 ): string {
   if (records.length === 0) {
+    if (filter?.investigationId !== undefined) {
+      if (
+        filter.resolutionId !== undefined &&
+        filter.subjectResourceId !== undefined
+      ) {
+        return (
+          `No incidents recorded for investigation ${filter.investigationId}, resolution ${filter.resolutionId}, and subject ${filter.subjectResourceId}.\n` +
+          `This is known-empty for those exact ids — no retained grouping matches all.`
+        );
+      }
+      if (filter.resolutionId !== undefined) {
+        return (
+          `No incidents recorded for investigation ${filter.investigationId} and resolution ${filter.resolutionId}.\n` +
+          `This is known-empty for those exact ids — no retained grouping matches both.`
+        );
+      }
+      if (filter.subjectResourceId !== undefined) {
+        return (
+          `No incidents recorded for investigation ${filter.investigationId} and subject ${filter.subjectResourceId}.\n` +
+          `This is known-empty for those exact ids — no retained grouping matches both.`
+        );
+      }
+      return (
+        `No incidents recorded for investigation ${filter.investigationId}.\n` +
+        `This is known-empty for that exact investigation id — no retained grouping has a member recorded against it.`
+      );
+    }
     if (filter?.resolutionId !== undefined) {
       if (filter?.subjectResourceId !== undefined) {
         return (
@@ -359,10 +386,7 @@ export function listIncidentsForInvestigation(
   baseDir: string,
   investigationId: string,
 ): IncidentRecord[] {
-  return listIncidentsMatching(
-    baseDir,
-    (member) => member.investigationId === investigationId,
-  );
+  return listIncidentsFiltered(baseDir, { investigationId });
 }
 
 export interface ListIncidentsOptions {
@@ -370,6 +394,8 @@ export interface ListIncidentsOptions {
   resolutionId?: string;
   /** Exact subject Resource id of any member Resolution. */
   subjectResourceId?: string;
+  /** Exact Investigation id of any member Resolution (Sprint 063). */
+  investigationId?: string;
 }
 
 /** Read-time: Incidents whose stored member ids include this exact resolution id. */
@@ -381,10 +407,10 @@ export function listIncidentsForResolution(
 }
 
 /**
- * Read-time exact-id list filters; AND when both are present. The named
- * resolution id matches the stored member id array whether or not its
- * Resolution row still exists; the subject matches any member Resolution's
- * subjectResourceId (059 rule).
+ * Read-time exact-id list filters; AND when more than one is present.
+ * The named resolution id matches the stored member id array whether or
+ * not its Resolution row still exists; the subject and investigation
+ * match any member Resolution (059 skip for missing rows).
  */
 export function listIncidentsFiltered(
   baseDir: string,
@@ -392,6 +418,7 @@ export function listIncidentsFiltered(
 ): IncidentRecord[] {
   const resolutionId = options.resolutionId;
   const subjectResourceId = options.subjectResourceId;
+  const investigationId = options.investigationId;
   return listIncidentsWhere(baseDir, (incident, resolutions) => {
     if (
       resolutionId !== undefined &&
@@ -403,6 +430,14 @@ export function listIncidentsFiltered(
       subjectResourceId !== undefined &&
       !incidentMatches(incident, resolutions, (member) => {
         return member.subjectResourceId === subjectResourceId;
+      })
+    ) {
+      return false;
+    }
+    if (
+      investigationId !== undefined &&
+      !incidentMatches(incident, resolutions, (member) => {
+        return member.investigationId === investigationId;
       })
     ) {
       return false;
