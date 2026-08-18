@@ -3,6 +3,10 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  compareInvestigationToCurrent,
+  formatInvestigationCompare,
+} from "../../src/app/compare-investigation.ts";
 import { initCombie } from "../../src/app/init.ts";
 import { CombieError } from "../../src/app/errors.ts";
 import {
@@ -1035,5 +1039,224 @@ describe("incident list retrieve (Sprint 060)", () => {
       { resolutionId: "res:a" },
     );
     expect(empty).toContain("No incidents recorded for resolution res:a.");
+  });
+});
+
+describe("incident-anchored resolution membership (Sprint 061)", () => {
+  test("recordResolution with incidentId appends the new id only; count increments", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id, { decision: "Rollback" });
+    seedResolution("res:b", subject.id, { decision: "Hold deploys" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      decision: "Keep holding",
+      recordedAt: "2026-08-18T10:00:00.000Z",
+    });
+
+    const listed = listIncidents(dir);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.id).toBe(incident.id);
+    expect(listed[0]!.resolutionIds).toEqual([
+      "res:a",
+      "res:b",
+      recorded.id,
+    ]);
+    expect(listed[0]!.recordedAt).toBe("2026-08-17T09:00:00.000Z");
+    expect(listed[0]!.title).toBe("API error spike");
+
+    const shown = formatIncident(getIncident(dir, incident.id));
+    expect(shown).toContain(recorded.id);
+    expect(shown).not.toContain(recorded.decision!);
+  });
+
+  test("incidents --resolution <new res> lists that Incident; count column increments", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      decision: "Keep holding",
+      recordedAt: "2026-08-18T10:00:00.000Z",
+    });
+
+    const forNew = listIncidentsForResolution(dir, recorded.id);
+    expect(forNew.map((row) => row.id)).toEqual([incident.id]);
+    expect(forNew).toHaveLength(1);
+    expect(forNew[0]!.resolutionIds).toHaveLength(3);
+
+    const listed = formatIncidentList(listIncidents(dir));
+    expect(listed).toContain(incident.id);
+    expect(listed).toContain("3");
+    expect(listed).not.toMatch(/res:[a-f0-9-]+/);
+  });
+
+  test("exclusive membership: the new id is not on another Incident", () => {
+    const subjectA = seedSubject("470");
+    const subjectB = seedSubject("471");
+    seedResolution("res:r1", subjectA.id);
+    seedResolution("res:r2", subjectB.id);
+    seedResolution("res:r3", subjectA.id);
+    seedResolution("res:r4", subjectB.id);
+    const targeted = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:r1", "res:r3"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const other = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:r2", "res:r4"],
+      recordedAt: "2026-08-17T10:00:00.000Z",
+    });
+
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: targeted.id,
+      decision: "Keep holding",
+      recordedAt: "2026-08-18T10:00:00.000Z",
+    });
+
+    expect(listIncidentsForResolution(dir, recorded.id).map((r) => r.id)).toEqual(
+      [targeted.id],
+    );
+    const otherRow = getIncident(dir, other.id);
+    expect(otherRow.resolutionIds).not.toContain(recorded.id);
+    expect(otherRow.resolutionIds).toHaveLength(2);
+  });
+
+  test("investigation reopen excludes the incident-anchored row; live subject memory includes it", () => {
+    const subject = seedSubject();
+    seedInvestigation("inv:061", subject.id);
+    seedResolution("res:a", subject.id, { investigationId: "inv:061" });
+    seedResolution("res:b", subject.id, { investigationId: "inv:061" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      decision: "Keep holding",
+      recordedAt: "2026-08-18T10:00:00.000Z",
+    });
+
+    expect(
+      listResolutions(dir, { investigationId: "inv:061" }).map((r) => r.id),
+    ).toEqual(["res:b", "res:a"]);
+    expect(
+      listResolutions(dir, { investigationId: "inv:061" }).map((r) => r.id),
+    ).not.toContain(recorded.id);
+    expect(
+      listResolutions(dir, { subjectResourceId: subject.id }).map((r) => r.id),
+    ).toContain(recorded.id);
+  });
+
+  test("058 incident --resolution still cannot add existing members after record (leftover[1])", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:d", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      decision: "Keep holding",
+    });
+    const error = expectCode(
+      () =>
+        recordIncident({
+          baseDir: dir,
+          resolutionIds: [recorded.id, "res:d"],
+        }),
+      "INCIDENT_MEMBERSHIP_CONFLICT",
+    );
+    expect(error.message).toMatch(/already belongs to another Incident/);
+    expect(getIncident(dir, incident.id).resolutionIds).toEqual([
+      "res:a",
+      "res:b",
+      recorded.id,
+    ]);
+    expect(listIncidents(dir)).toHaveLength(1);
+  });
+
+  test("live INCIDENT MEMORY lists the appended member; snapshot JSON stays frozen", () => {
+    const subject = seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const frozen = serializeInvestigationSnapshot(saved.record.snapshot);
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const recorded = recordResolution({
+      baseDir: dir,
+      incidentId: incident.id,
+      decision: "Keep holding",
+      recordedAt: "2026-08-18T10:00:00.000Z",
+    });
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    const rendered = formatWithIncidentMemory(
+      formatWithResolutionMemory(
+        live,
+        listResolutions(dir, { subjectResourceId: subject.id }),
+        "subject",
+      ),
+      listIncidentsForSubject(dir, subject.id),
+      "subject",
+    );
+    expect(rendered).toContain("RESOLUTION MEMORY");
+    expect(rendered).toContain(recorded.id);
+    expect(rendered).toContain("INCIDENT MEMORY");
+    expect(rendered).toContain(incident.id);
+    expect(rendered).toContain("RESOLUTIONS");
+    const resolutionsBlock = rendered.slice(rendered.indexOf("RESOLUTIONS"));
+    expect(resolutionsBlock).toContain(recorded.id);
+
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozen);
+    expect(frozen).not.toContain("INCIDENT MEMORY");
+    expect(frozen).not.toContain(recorded.id);
+
+    const compared = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+      }),
+    );
+    expect(compared).toContain("INVESTIGATION COMPARE");
+    expect(compared).not.toContain("INCIDENT MEMORY");
+    expect(compared).not.toContain(recorded.id);
+    expect(compared).not.toContain(incident.id);
   });
 });

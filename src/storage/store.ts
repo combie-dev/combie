@@ -1706,6 +1706,56 @@ export class Store {
       );
   }
 
+  /**
+   * Sprint 061: insert a Resolution and append it to one Incident's stored
+   * member array in the same transaction. No `incident_id` column; the 058
+   * resolution_ids array stays the single membership source of truth.
+   * Only the new id is appended — never an existing member. The Incident's
+   * recordedAt and title are untouched.
+   */
+  insertResolutionForIncident(
+    row: {
+      id: string;
+      investigationId?: string;
+      subjectResourceId: string;
+      recordedAt: string;
+      decision?: string;
+      action?: string;
+      outcome?: string;
+      evidenceIds?: string[];
+    },
+    incidentId: string,
+  ): void {
+    const db = this.getWritableDb();
+    const apply = db.transaction(() => {
+      this.insertResolution(row);
+      this.appendIncidentMember(incidentId, row.id);
+    });
+    apply();
+  }
+
+  /**
+   * Append one new Resolution id to an Incident's stored member array.
+   * First-seen unique: a member already present is never duplicated or
+   * removed. The Incident row's other fields are untouched.
+   */
+  appendIncidentMember(incidentId: string, resolutionId: string): void {
+    const db = this.getWritableDb();
+    const row = db
+      .query(`SELECT resolution_ids FROM incidents WHERE id = ?`)
+      .get(incidentId) as { resolution_ids: string } | null;
+    if (!row) {
+      throw new Error(`Incident not found: ${incidentId}`);
+    }
+    const members = parseIncidentMembers(row.resolution_ids);
+    if (members.includes(resolutionId)) return;
+    members.push(resolutionId);
+    db.query(`UPDATE incidents SET resolution_ids = ? WHERE id = ?`).run(
+      JSON.stringify(members),
+      incidentId,
+    );
+  }
+
   listIncidentSummaries(): IncidentRow[] {
     const db = this.getDb();
     if (!this.hasIncidentsTable(db)) return [];

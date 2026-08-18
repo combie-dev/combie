@@ -2037,6 +2037,261 @@ describe("CLI commands", () => {
     );
   });
 
+  test("resolution --incident records into an existing grouping (Sprint 061)", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "inc061",
+      kind: "project",
+      name: "inc-anchor-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-inc061",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const resA = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Rollback",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(resA.code).toBe(0);
+    const resAId = resA.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resB = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Hold deploys",
+        "--dir",
+        dir,
+      ]),
+    );
+    const resBId = resB.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resAId,
+        "--resolution",
+        resBId,
+        "--title",
+        "API error spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(grouped.code).toBe(0);
+    const incId = grouped.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+
+    const recorded = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--decision",
+        "Keep holding",
+        "--action",
+        "Held deploys",
+        "--outcome",
+        "Spike passed",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(recorded.code).toBe(0);
+    expect(recorded.stdout).toContain(`incident ${incId}`);
+    expect(recorded.stdout).toContain(`subject ${project.id}`);
+    const newRes = recorded.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const shown = await capture(() =>
+      main(["resolution", newRes, "--dir", dir]),
+    );
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain("DECISION");
+    expect(shown.stdout).toContain("Keep holding");
+    expect(shown.stdout).not.toMatch(/INCIDENT|incident/i);
+    expect(shown.stdout).not.toContain("INVESTIGATION:");
+
+    const incidentShow = await capture(() =>
+      main(["incident", incId, "--dir", dir]),
+    );
+    expect(incidentShow.code).toBe(0);
+    expect(incidentShow.stdout).toContain(resAId);
+    expect(incidentShow.stdout).toContain(resBId);
+    expect(incidentShow.stdout).toContain(newRes);
+
+    const incidentsList = await capture(() =>
+      main(["incidents", "--dir", dir]),
+    );
+    expect(incidentsList.code).toBe(0);
+    expect(incidentsList.stdout).toContain(incId);
+    expect(incidentsList.stdout).toContain("3");
+
+    const byNewRes = await capture(() =>
+      main(["incidents", "--resolution", newRes, "--dir", dir]),
+    );
+    expect(byNewRes.code).toBe(0);
+    expect(byNewRes.stdout).toContain(incId);
+
+    const investigate = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(investigate.code).toBe(0);
+    expect(investigate.stdout).toContain("RESOLUTION MEMORY");
+    expect(investigate.stdout).toContain(newRes);
+    expect(investigate.stdout).toContain("INCIDENT MEMORY");
+    expect(investigate.stdout).toContain(incId);
+
+    const xorResource = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--resource",
+        project.id,
+        "--decision",
+        "Both",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(xorResource.code).toBe(1);
+    expect(xorResource.stderr).toContain("--incident");
+
+    const xorInvestigation = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--investigation",
+        "inv:missing",
+        "--decision",
+        "Both",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(xorInvestigation.code).toBe(1);
+    expect(xorInvestigation.stderr).toContain("--incident");
+
+    const unknown = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        "inc:missing",
+        "--decision",
+        "Rollback",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("Incident not found");
+
+    const repeated = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        incId,
+        "--incident",
+        incId,
+        "--decision",
+        "Both",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(repeated.code).toBe(1);
+    expect(repeated.stderr).toContain("one exact id");
+
+    const blank = await capture(() =>
+      main([
+        "resolution",
+        "--incident",
+        "--decision",
+        "Rollback",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(blank.code).toBe(1);
+    expect(blank.stderr).toContain("--incident requires");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain(
+      'With "resolution": existing incident grouping to record',
+    );
+    expect(help.stdout).toContain("resolution --incident inc:…");
+
+    const extra = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Ungrouped later",
+        "--dir",
+        dir,
+      ]),
+    );
+    const extraId = extra.stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const leftover = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        newRes,
+        "--resolution",
+        extraId,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(leftover.code).toBe(1);
+    expect(leftover.stderr).toMatch(/already belongs to another Incident/);
+
+    const saved = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(saved.code).toBe(0);
+    const invId = saved.stdout.match(
+      /Saved investigation snapshot (inv:\S+)/,
+    )![1]!;
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const snapshotRow = storeAfter.getInvestigationRow(invId);
+    expect(snapshotRow?.snapshotJson).not.toContain("INCIDENT MEMORY");
+    expect(snapshotRow?.snapshotJson).not.toContain(newRes);
+    storeAfter.close();
+
+    const compared = await capture(() =>
+      main(["investigation", invId, "--compare", "--dir", dir]),
+    );
+    expect(compared.code).toBe(0);
+    expect(compared.stdout).toContain("INVESTIGATION COMPARE");
+    expect(compared.stdout).not.toContain("INCIDENT MEMORY");
+    expect(compared.stdout).not.toContain(newRes);
+
+    const investigationFilter = await capture(() =>
+      main(["incidents", "--investigation", invId, "--dir", dir]),
+    );
+    expect(investigationFilter.code).toBe(1);
+    expect(investigationFilter.stderr).toContain("does not filter by --investigation");
+  });
+
   test("investigate and investigation reopen show exact-id incident memory", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const store = new Store(dir);

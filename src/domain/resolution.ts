@@ -3,6 +3,9 @@
  *
  * Explicit organizational response hung on a saved Investigation or,
  * from Sprint 057, on an exact Resource with no Investigation snapshot.
+ * From Sprint 061 the human may name an existing Incident as the write
+ * identity; membership stays that Incident's stored resolution_ids
+ * array — this row has no incidentId.
  * Decision, action, and outcome are distinguishable fields — not
  * separate types, not an Incident, not Investigation lifecycle.
  *
