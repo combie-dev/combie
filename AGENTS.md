@@ -88,7 +88,14 @@ exit 0; AND with `--resolution` / `--resource`; not a fifth tool,
 not MCP writes, not grouping snapshots as members, not
 cross-resource `resolution --incident`, not member removal, not
 lifecycle, not inferred Action, not the Investigation Engine).
-Sprint 064 is not started.
+Sprint 064 shipped
+the Incident-anchored write for mixed-subject Incidents under
+founder override 2026-08-18 (ROADMAP v0.7; `resolution --incident
+--resource`; named member subject; 061 homogeneous path unchanged;
+not grouping snapshots as members, not first-seen subject, not
+`incident_id`, not a fifth tool, not MCP writes, not member
+removal, not lifecycle, not inferred Action, not the Investigation
+Engine). Sprint 065 is not started.
 
 ## Mandatory reading order before any substantive change
 
@@ -110,7 +117,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–063 complete; Sprint 064 not started
+## Current baseline: Sprints 001–064 complete; Sprint 065 not started
 
 Multi-provider connection loop:
 
@@ -291,6 +298,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   fifth tool, not MCP writes, not grouping snapshots as members,
   not cross-resource `resolution --incident`, not member removal,
   not lifecycle, not inferred Action).
+- **Sprint 064 shipped:** Incident-anchored write for mixed-subject
+  Incidents under founder override 2026-08-18 (`resolution
+  --incident --resource`; named member subject; 061 homogeneous
+  `--incident` unchanged; mixed without `--resource` still
+  `INCIDENT_SUBJECT_AMBIGUOUS`; not grouping snapshots as members,
+  not first-seen subject, not `incident_id`, not a fifth tool, not
+  MCP writes, not member removal, not lifecycle, not inferred
+  Action).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -399,7 +414,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   cross-resource `resolution --incident`, or member removal.
   Sprint 063 shipped that slice. Sprint 063 leftover is not a
   sequence; grouping Investigation snapshots as Incident members
-  remains unearned. Sprint 064 is not started.
+  remains unearned. On 2026-08-18 a founder override started
+  Sprint 064 as the smallest remaining Incident-anchored write
+  slice: `resolution --incident --resource` (named member subject
+  on a mixed grouping; 061 homogeneous path unchanged; no
+  `incident_id` column). It does not authorize Recommendation,
+  Learning, similarity, Investigation lifecycle, MCP writes,
+  inferred Action, grouping snapshots as members, or member
+  removal. Sprint 064 shipped that slice. Sprint 064 leftover is
+  not a sequence; grouping Investigation snapshots as Incident
+  members remains unearned. Sprint 065 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
