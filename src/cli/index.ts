@@ -48,6 +48,7 @@ import {
 } from "../app/resolutions.ts";
 import {
   formatIncident,
+  formatIncidentAppendConfirmation,
   formatIncidentConfirmation,
   formatIncidentList,
   formatWithIncidentMemory,
@@ -57,6 +58,7 @@ import {
   listIncidentsForInvestigation,
   listIncidentsForSubject,
   recordIncident,
+  appendIncidentResolutions,
 } from "../app/incidents.ts";
 import {
   compareInvestigationToCurrent,
@@ -86,7 +88,7 @@ Commands:
   investigation <id>           Reopen a saved investigation snapshot (--compare: diff against current compose)
   resolution                   Record or show an explicit investigation resolution
   resolutions                  List retained resolution records
-  incident                     Record or show an explicit incident grouping of resolutions
+  incident                     Record, show, or add members to an explicit incident grouping of resolutions
   incidents                    List retained incident groupings
   mcp                          Start read-only MCP server over stdio
   agent status                 Show MCP integration status for claude, codex, cursor
@@ -128,7 +130,7 @@ Investigate options:
   --outcome <text>             Explicit outcome (what happened afterward)
   --evidence <id>              Attach an exact local evidence id (optional, repeatable; never inferred)
                                With "resolutions": list retained resolutions that attached that exact local id (membership only; one exact id)
-  --resolution <resolution-id> With "incident": exact Resolution id to group (repeatable; never inferred)
+  --resolution <resolution-id> With "incident": exact Resolution id to group at create (repeatable), or to append to incident <id>
                                With "incidents": list groupings that named that exact resolution id (membership only; one exact id)
   --title <text>               Optional name for an incident grouping
 
@@ -177,6 +179,7 @@ Examples:
   ${BINARY_NAME} resolutions --evidence dpl_abc
   ${BINARY_NAME} resolution res:…
   ${BINARY_NAME} incident --resolution res:… --resolution res:… --title "API error spike"
+  ${BINARY_NAME} incident inc:… --resolution res:…
   ${BINARY_NAME} incidents
   ${BINARY_NAME} incidents --resolution res:…
   ${BINARY_NAME} incidents --resource github:repository:1001
@@ -668,10 +671,24 @@ async function main(argv: string[]): Promise<number> {
         }
         if (resolutionParts.length > 0) {
           if (positionals[0]) {
-            console.error(
-              `Usage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>`,
+            if (title) {
+              console.error(
+                `--title is only for recording a new incident grouping.\nUsage: ${BINARY_NAME} incident <incident-id> --resolution <resolution-id>`,
+              );
+              return 1;
+            }
+            const result = appendIncidentResolutions({
+              baseDir,
+              incidentId: positionals[0],
+              resolutionIds: resolutionParts,
+            });
+            console.log(
+              formatIncidentAppendConfirmation(
+                result.record,
+                result.appendedIds,
+              ),
             );
-            return 1;
+            return 0;
           }
           const recorded = recordIncident({
             baseDir,

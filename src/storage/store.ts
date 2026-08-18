@@ -1735,11 +1735,11 @@ export class Store {
   }
 
   /**
-   * Append one new Resolution id to an Incident's stored member array.
-   * First-seen unique: a member already present is never duplicated or
+   * Append one or more Resolution ids to an Incident's stored member array.
+   * First-seen unique: members already present are never duplicated or
    * removed. The Incident row's other fields are untouched.
    */
-  appendIncidentMember(incidentId: string, resolutionId: string): void {
+  appendIncidentMembers(incidentId: string, resolutionIds: string[]): void {
     const db = this.getWritableDb();
     const row = db
       .query(`SELECT resolution_ids FROM incidents WHERE id = ?`)
@@ -1748,12 +1748,26 @@ export class Store {
       throw new Error(`Incident not found: ${incidentId}`);
     }
     const members = parseIncidentMembers(row.resolution_ids);
-    if (members.includes(resolutionId)) return;
-    members.push(resolutionId);
+    let changed = false;
+    for (const resolutionId of resolutionIds) {
+      if (members.includes(resolutionId)) continue;
+      members.push(resolutionId);
+      changed = true;
+    }
+    if (!changed) return;
     db.query(`UPDATE incidents SET resolution_ids = ? WHERE id = ?`).run(
       JSON.stringify(members),
       incidentId,
     );
+  }
+
+  /**
+   * Append one new Resolution id to an Incident's stored member array.
+   * First-seen unique: a member already present is never duplicated or
+   * removed. The Incident row's other fields are untouched.
+   */
+  appendIncidentMember(incidentId: string, resolutionId: string): void {
+    this.appendIncidentMembers(incidentId, [resolutionId]);
   }
 
   listIncidentSummaries(): IncidentRow[] {

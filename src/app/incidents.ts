@@ -12,6 +12,17 @@ export interface RecordIncidentOptions {
   recordedAt?: string;
 }
 
+export interface AppendIncidentResolutionsOptions {
+  baseDir: string;
+  incidentId: string;
+  resolutionIds: string[];
+}
+
+export interface AppendIncidentResult {
+  record: IncidentRecord;
+  appendedIds: string[];
+}
+
 function trimField(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
@@ -74,6 +85,69 @@ export function recordIncident(
     };
     store.insertIncident(record);
     return record;
+  } finally {
+    store.close();
+  }
+}
+
+export function appendIncidentResolutions(
+  options: AppendIncidentResolutionsOptions,
+): AppendIncidentResult {
+  const incidentId = options.incidentId.trim();
+  if (!incidentId) {
+    throw new CombieError(
+      "INCIDENT_ID_REQUIRED",
+      `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --resolution <resolution-id>\nList ids: ${BINARY_NAME} incidents`,
+    );
+  }
+  const namedIds = uniqueFirstSeen(options.resolutionIds);
+  const store = new Store(options.baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    store.init();
+    const incident = store.getIncidentRow(incidentId);
+    if (!incident) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incidentId}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    for (const id of namedIds) {
+      if (!store.getResolutionRow(id)) {
+        throw new CombieError(
+          "RESOLUTION_NOT_FOUND",
+          `Resolution not found: ${id}\nList recorded resolutions: ${BINARY_NAME} resolutions`,
+        );
+      }
+    }
+    const existing = store.listIncidentSummaries();
+    for (const id of namedIds) {
+      const owner = existing.find((row) => row.resolutionIds.includes(id));
+      if (owner && owner.id !== incident.id) {
+        throw new CombieError(
+          "INCIDENT_MEMBERSHIP_CONFLICT",
+          `Resolution ${id} already belongs to another Incident (${owner.id}).\nA resolution can be a member of at most one incident.\nShow: ${BINARY_NAME} incident ${owner.id}`,
+        );
+      }
+    }
+    const appendedIds = namedIds.filter(
+      (id) => !incident.resolutionIds.includes(id),
+    );
+    if (appendedIds.length === 0) {
+      throw new CombieError(
+        "INCIDENT_MEMBERS_UNCHANGED",
+        `Incident ${incident.id} already includes those resolution ids.\nNothing was appended.\nShow: ${BINARY_NAME} incident ${incident.id}`,
+      );
+    }
+    store.appendIncidentMembers(incident.id, appendedIds);
+    const record = store.getIncidentRow(incident.id);
+    if (!record) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incident.id}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    return { record, appendedIds };
   } finally {
     store.close();
   }
@@ -198,6 +272,17 @@ export function formatIncidentConfirmation(record: IncidentRecord): string {
     `Recorded incident ${record.id}\n` +
     (record.title ? `${record.title}\n` : "") +
     `${record.resolutionIds.join("\n")}\n` +
+    `Show: ${BINARY_NAME} incident ${record.id}`
+  );
+}
+
+export function formatIncidentAppendConfirmation(
+  record: IncidentRecord,
+  appendedIds: string[],
+): string {
+  return (
+    `Updated incident ${record.id}\n` +
+    `${appendedIds.join("\n")}\n` +
     `Show: ${BINARY_NAME} incident ${record.id}`
   );
 }

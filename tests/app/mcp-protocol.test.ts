@@ -8,7 +8,7 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { saveInvestigation } from "../../src/app/investigations.ts";
 import { recordResolution } from "../../src/app/resolutions.ts";
-import { recordIncident } from "../../src/app/incidents.ts";
+import { recordIncident, appendIncidentResolutions } from "../../src/app/incidents.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
@@ -1171,6 +1171,108 @@ describe("MCP stdio contract (Sprint 061)", () => {
           recordedAt: "2026-08-16T14:00:00.000Z",
           title: "API error spike",
           resolutionIds: [first.id, second.id, anchored.id],
+        },
+      ]);
+      expect(content).not.toHaveProperty("incidents");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 062)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource observes appended members with no schema change", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-062-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const later = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Scale up",
+      recordedAt: "2026-08-16T13:02:00.000Z",
+    });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      title: "API error spike",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    appendIncidentResolutions({
+      baseDir: dir,
+      incidentId: incident.id,
+      resolutionIds: [later.id],
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-062", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+      };
+      expect(content.incidentMemory).toEqual([
+        {
+          id: incident.id,
+          recordedAt: "2026-08-16T14:00:00.000Z",
+          title: "API error spike",
+          resolutionIds: [first.id, second.id, later.id],
         },
       ]);
       expect(content).not.toHaveProperty("incidents");
