@@ -80,6 +80,15 @@ exclusive membership; no `incident_id`; not create-a-new-Incident,
 not `incidents --investigation`, not cross-resource
 `resolution --incident`, not a fifth tool, not MCP writes, not
 lifecycle, not inferred Action, not the Investigation Engine).
+Sprint 063 shipped
+the remaining Incident list-retrieve-by-investigation slice under
+founder override 2026-08-18 (ROADMAP v0.7; `incidents
+--investigation`; 059 membership; 060 list shape; known-empty
+exit 0; AND with `--resolution` / `--resource`; not a fifth tool,
+not MCP writes, not grouping snapshots as members, not
+cross-resource `resolution --incident`, not member removal, not
+lifecycle, not inferred Action, not the Investigation Engine).
+Sprint 064 is not started.
 
 ## Mandatory reading order before any substantive change
 
@@ -101,7 +110,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–062 complete; Sprint 063 not started
+## Current baseline: Sprints 001–063 complete; Sprint 064 not started
 
 Multi-provider connection loop:
 
@@ -275,6 +284,13 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `incidents --investigation`, not cross-resource
   `resolution --incident`, not member removal, not lifecycle, not
   inferred Action, not MCP writes).
+- **Sprint 063 shipped:** Incident list retrieve by Investigation
+  under founder override 2026-08-18 (`incidents --investigation`;
+  059 `listIncidentsForInvestigation` membership; 060 list shape;
+  known-empty exit 0; AND with `--resolution` / `--resource`; not a
+  fifth tool, not MCP writes, not grouping snapshots as members,
+  not cross-resource `resolution --incident`, not member removal,
+  not lifecycle, not inferred Action).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -373,8 +389,17 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   MCP writes, inferred Action, `incidents --investigation`,
   cross-resource `resolution --incident`, or member removal.
   Sprint 062 shipped that slice. Sprint 062 leftover is not a
-  sequence; `incidents --investigation` retrieve remains unearned.
-  Sprint 063 is not started.
+  sequence; `incidents --investigation` retrieve remained unearned
+  until a founder override. On 2026-08-18 a founder override
+  started Sprint 063 as the smallest remaining Incident
+  list-retrieve slice: `incidents --investigation` (059 membership,
+  060 list shape, no new persistence). It does not authorize
+  Recommendation, Learning, similarity, Investigation lifecycle,
+  MCP writes, inferred Action, grouping snapshots as members,
+  cross-resource `resolution --incident`, or member removal.
+  Sprint 063 shipped that slice. Sprint 063 leftover is not a
+  sequence; grouping Investigation snapshots as Incident members
+  remains unearned. Sprint 064 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
