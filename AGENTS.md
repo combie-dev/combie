@@ -128,6 +128,13 @@ the Investigation-snapshot-pointer slice under founder override
 grouping snapshots as members, not snapshot MCP, not a fifth tool,
 not MCP writes, not lifecycle, not `occurredAt`, not inferred
 Action, not the Investigation Engine).
+Sprint 070 shipped
+the Investigation-history-on-`investigate_resource` slice
+(ROADMAP v0.6; additive `investigationHistory` on the existing
+agent investigate tool; 069 summaries; omitted when empty; not a
+fifth tool, not grouping snapshots as members, not MCP writes,
+not lifecycle, not `occurredAt`, not snapshot JSON, not the
+Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -149,7 +156,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–069 complete; Sprint 070 not started
+## Current baseline: Sprints 001–070 complete; Sprint 071 not started
 
 Multi-provider connection loop:
 
@@ -374,6 +381,13 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   grouping snapshots as members, not snapshot MCP, not a fifth
   tool, not MCP writes, not lifecycle, not `occurredAt`, not 048
   snapshot rewrite, not 049 `--compare`, not inferred Action).
+- **Sprint 070 shipped:** Investigation history on
+  `investigate_resource` (ROADMAP v0.6; additive
+  `investigationHistory` on the existing agent investigate tool;
+  069 summaries; omitted when empty; no `incident_id`; not
+  grouping snapshots as members, not a fifth tool, not MCP writes,
+  not lifecycle, not `occurredAt`, not 048 snapshot rewrite, not
+  049 `--compare`, not inferred Action).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -534,9 +548,19 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   MCP writes, a fifth tool, grouping snapshots as members,
   snapshot MCP, or `occurredAt`. Sprint 069 shipped that slice.
   Sprint 069 leftover is not a sequence; grouping Investigation
-  snapshots as Incident members remains unearned. Snapshot MCP /
-  fifth tool remains unearned. `occurredAt` remains unearned.
-  Sprint 070 is not started.
+  snapshots as Incident members remains unearned. Fifth-tool
+  snapshot reopen / list / compare MCP remains unearned.
+  `occurredAt` remains unearned. On 2026-08-18 Sprint 070 started
+  as the smallest MCP observe of 069 snapshot pointers: additive
+  `investigationHistory` on existing `investigate_resource`
+  (069 summaries, omitted when empty, no snapshot JSON). It does
+  not authorize Recommendation, Learning, similarity, Investigation
+  lifecycle, MCP writes, a fifth tool, grouping snapshots as
+  members, or `occurredAt`. Sprint 070 shipped that slice.
+  Sprint 070 leftover is not a sequence; grouping Investigation
+  snapshots as Incident members remains unearned. Fifth-tool
+  snapshot reopen / list / compare MCP remains unearned.
+  `occurredAt` remains unearned. Sprint 071 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
