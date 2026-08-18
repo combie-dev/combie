@@ -101,6 +101,7 @@ describe("MCP stdio contract", () => {
       expect(result.structuredContent).not.toHaveProperty("resolutionMemory");
       expect(result.structuredContent).not.toHaveProperty("incidentMemory");
       expect(result.structuredContent).not.toHaveProperty("investigationHistory");
+      expect(result.structuredContent).not.toHaveProperty("investigationCompare");
     } finally {
       await client.close();
     }
@@ -1964,6 +1965,238 @@ describe("MCP stdio contract (Sprint 070)", () => {
     expect(row?.snapshotJson).not.toContain("INVESTIGATION HISTORY");
     expect(JSON.parse(row!.snapshotJson)).not.toHaveProperty(
       "investigationHistory",
+    );
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 071)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource returns named investigationCompare without inferring latest", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-071-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-2",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const older = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+    const newer = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const otherSaved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: other.id,
+      composedAt: "2026-08-16T11:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-071", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      expect(
+        listed.tools.every(
+          (tool) =>
+            tool.name !== "list_investigations" &&
+            tool.name !== "compare_investigation" &&
+            tool.name !== "get_investigation",
+        ),
+      ).toBe(true);
+      const investigate = listed.tools.find(
+        (tool) => tool.name === "investigate_resource",
+      );
+      expect(investigate?.description).toMatch(/investigationId/i);
+      expect(investigate?.description).toMatch(/snapshot-versus-current/i);
+      expect(investigate?.description).toMatch(/not snapshot reopen/i);
+
+      const omitted = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(omitted.isError).not.toBe(true);
+      expect(omitted.content).toEqual([
+        {
+          type: "text",
+          text: `Investigation context for ${subject.name}. 0 change(s), 0 related resource(s).`,
+        },
+      ]);
+      const omittedContent = omitted.structuredContent as Record<
+        string,
+        unknown
+      >;
+      expect(omittedContent).not.toHaveProperty("investigationCompare");
+      expect(omittedContent.investigationHistory).toEqual([
+        { id: newer.record.id, composedAt: "2026-08-16T12:00:00.000Z" },
+        { id: older.record.id, composedAt: "2026-08-16T10:00:00.000Z" },
+      ]);
+      expect(JSON.stringify(omittedContent.knownFacts)).not.toContain(
+        newer.record.id,
+      );
+
+      const named = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: older.record.id,
+        },
+      });
+      expect(named.isError).not.toBe(true);
+      expect(named.content).toEqual(omitted.content);
+      const namedContent = named.structuredContent as Record<string, unknown>;
+      const compare = namedContent.investigationCompare as Record<
+        string,
+        unknown
+      >;
+      expect(compare.snapshotId).toBe(older.record.id);
+      expect(compare.snapshotId).not.toBe(newer.record.id);
+      expect(compare.subjectResourceId).toBe(subject.id);
+      expect(compare.snapshotComposedAt).toBe("2026-08-16T10:00:00.000Z");
+      expect(compare.currentStatus).toBe("available");
+      expect(typeof compare.comparedAt).toBe("string");
+      expect(compare.comparedAt).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      );
+      expect(Array.isArray(compare.sections)).toBe(true);
+      expect((compare.sections as unknown[]).length).toBeGreaterThan(0);
+      expect(compare).not.toHaveProperty("occurredAt");
+      expect(namedContent.investigationHistory).toEqual(
+        omittedContent.investigationHistory,
+      );
+      expect(JSON.stringify(namedContent.knownFacts)).not.toContain(
+        "INVESTIGATION COMPARE",
+      );
+      expect(JSON.stringify(namedContent.missingContext)).not.toMatch(
+        /investigation compare/i,
+      );
+      expect(JSON.stringify(namedContent)).not.toContain("INVESTIGATION COMPARE");
+
+      const mismatch = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: otherSaved.record.id,
+        },
+      });
+      expect(mismatch.isError).toBe(true);
+      const mismatchText = (
+        mismatch.content as Array<{ type: string; text: string }>
+      )[0]?.text;
+      expect(mismatchText).toContain(otherSaved.record.id);
+      expect(mismatchText).toContain(other.id);
+      expect(mismatchText).toContain(`not ${subject.id}`);
+      expect(JSON.stringify(mismatch.structuredContent ?? {})).not.toContain(
+        "investigationCompare",
+      );
+
+      const unknown = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: "inv:missing",
+        },
+      });
+      expect(unknown.isError).toBe(true);
+      const unknownText = (
+        unknown.content as Array<{ type: string; text: string }>
+      )[0]?.text;
+      expect(unknownText).toContain("Investigation not found");
+      expect(JSON.stringify(unknown.structuredContent ?? {})).not.toContain(
+        "investigationCompare",
+      );
+
+      const blank = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id, investigationId: "" },
+      });
+      expect(blank.isError).toBe(true);
+      const blankText = (
+        blank.content as Array<{ type: string; text: string }>
+      )[0]?.text;
+      expect(blankText).toContain("Investigation id is required");
+      expect(JSON.stringify(blank.structuredContent ?? {})).not.toContain(
+        "investigationCompare",
+      );
+
+      const whitespace = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id, investigationId: "   " },
+      });
+      expect(whitespace.isError).toBe(true);
+      expect(
+        (whitespace.content as Array<{ type: string; text: string }>)[0]?.text,
+      ).toContain("Investigation id is required");
+
+      const related = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: subject.id },
+      });
+      expect(related.isError).not.toBe(true);
+      expect(related.structuredContent).not.toHaveProperty(
+        "investigationCompare",
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const row = storeAfter.getInvestigationRow(older.record.id);
+    storeAfter.close();
+    expect(row?.snapshotJson).not.toContain("investigationCompare");
+    expect(row?.snapshotJson).not.toContain("INVESTIGATION COMPARE");
+    expect(JSON.parse(row!.snapshotJson)).not.toHaveProperty(
+      "investigationCompare",
     );
   }, 15_000);
 });

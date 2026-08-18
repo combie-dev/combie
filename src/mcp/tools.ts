@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { CombieError } from "../app/errors.ts";
+import { compareInvestigationToCurrent } from "../app/compare-investigation.ts";
 import { listIncidentsForSubject } from "../app/incidents.ts";
 import { composeInvestigationFacts } from "../app/investigation-facts.ts";
 import { listInvestigations } from "../app/investigations.ts";
@@ -206,13 +207,22 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "May also include retained investigation history (snapshot summaries: exact inv: id and composedAt) " +
         "for that exact subject; that is retained composition, not current provider truth, not an incident, " +
         "and not a recommendation. " +
+        "Optional investigationId (exact inv: id for this Resource) also returns an ephemeral " +
+        "snapshot-versus-current comparison; that is not current provider truth, not an incident, " +
+        "not a recommendation, and not snapshot reopen. Omit investigationId to skip compare. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
         resourceId: z.string().describe("Exact Combie Resource ID (e.g. 'vercel:project:prj_abc')"),
+        investigationId: z
+          .string()
+          .optional()
+          .describe(
+            "Exact saved Investigation id (inv:…). When set, also returns an ephemeral snapshot-versus-current comparison if that snapshot belongs to this Resource. Omit to skip compare.",
+          ),
       }),
     },
-    async ({ resourceId }) => {
+    async ({ resourceId, investigationId }) => {
       try {
         const { getInvestigationContext } = await import("../app/investigate.ts");
         const ctx = getInvestigationContext({ baseDir, resourceRef: resourceId });
@@ -276,6 +286,30 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           issues: n.issues,
         }));
 
+        let investigationCompare: ReturnType<
+          typeof compareInvestigationToCurrent
+        > | undefined;
+        if (investigationId !== undefined) {
+          const named = investigationId.trim();
+          if (!named) {
+            throw new CombieError(
+              "INVESTIGATION_ID_REQUIRED",
+              "Investigation id is required.\nPass an exact inv: id as investigationId, or omit investigationId.",
+            );
+          }
+          const comparison = compareInvestigationToCurrent({
+            baseDir,
+            investigationId: named,
+          });
+          if (comparison.subjectResourceId !== resourceId) {
+            throw new CombieError(
+              "INVESTIGATION_SUBJECT_MISMATCH",
+              `Investigation ${named} is retained for ${comparison.subjectResourceId}, not ${resourceId}.\nCompare a snapshot of this subject, or investigate that snapshot's subject.`,
+            );
+          }
+          investigationCompare = comparison;
+        }
+
         return {
           content: [
             {
@@ -309,6 +343,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               : {}),
             ...(investigationRows.length > 0
               ? { investigationHistory: toInvestigationHistory(investigationRows) }
+              : {}),
+            ...(investigationCompare
+              ? { investigationCompare }
               : {}),
           }) as Record<string, unknown>,
         };
