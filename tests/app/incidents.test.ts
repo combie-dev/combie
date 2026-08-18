@@ -14,6 +14,7 @@ import {
   formatIncident,
   formatIncidentAppendConfirmation,
   formatIncidentConfirmation,
+  formatIncidentRemoveConfirmation,
   formatIncidentList,
   formatIncidentMemorySection,
   formatWithIncidentMemory,
@@ -24,6 +25,7 @@ import {
   listIncidentsForResolution,
   listIncidentsForSubject,
   recordIncident,
+  removeIncidentResolutions,
 } from "../../src/app/incidents.ts";
 import {
   formatInvestigationContext,
@@ -2051,5 +2053,363 @@ describe("add existing members after Incident record (Sprint 062)", () => {
     );
     expect(error.message).toMatch(/already belongs to another Incident/);
     expect(listIncidents(dir)).toHaveLength(1);
+  });
+});
+
+describe("remove existing members after Incident record (Sprint 065)", () => {
+  test("drops one current member; remaining ≥2; Resolution row still loads", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id, { decision: "Rollback" });
+    seedResolution("res:b", subject.id, { decision: "Hold deploys" });
+    seedResolution("res:c", subject.id, { decision: "Scale up" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+
+    const result = removeIncidentResolutions({
+      baseDir: dir,
+      incidentId: incident.id,
+      resolutionIds: ["res:c"],
+    });
+    expect(result.removedIds).toEqual(["res:c"]);
+    expect(result.record.id).toBe(incident.id);
+    expect(result.record.resolutionIds).toEqual(["res:a", "res:b"]);
+    expect(result.record.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(result.record.title).toBe("API error spike");
+
+    const stored = getIncident(dir, incident.id);
+    expect(stored.resolutionIds).toEqual(["res:a", "res:b"]);
+    expect(stored.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(stored.title).toBe("API error spike");
+
+    const resolution = getResolution(dir, "res:c");
+    expect(resolution).not.toHaveProperty("incidentId");
+    expect(resolution.decision).toBe("Scale up");
+
+    const probe = new Database(dbPath(dir));
+    const resolutionColumns = probe
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string }>;
+    const incidents = probe
+      .query(`SELECT id FROM incidents`)
+      .all() as Array<{ id: string }>;
+    probe.close();
+    expect(resolutionColumns.map((c) => c.name)).not.toContain("incident_id");
+    expect(incidents.map((row) => row.id)).toEqual([incident.id]);
+    expect(stored.resolutionIds.some((id) => id.startsWith("inv:"))).toBe(
+      false,
+    );
+  });
+
+  test("confirmation names the inc: and removed ids; resolution show has no INCIDENT heading", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id, { decision: "Scale up" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const result = removeIncidentResolutions({
+      baseDir: dir,
+      incidentId: incident.id,
+      resolutionIds: ["res:c"],
+    });
+    const confirm = formatIncidentRemoveConfirmation(
+      result.record,
+      result.removedIds,
+    );
+    expect(confirm).toContain(`Removed from incident ${incident.id}`);
+    expect(confirm).toContain("res:c");
+    expect(confirm).not.toMatch(/^Recorded incident/);
+    expect(confirm).not.toMatch(/^Updated incident/);
+    expect(confirm).not.toContain("res:a");
+    const shown = formatIncident(result.record);
+    expect(shown).toContain("res:a");
+    expect(shown).toContain("res:b");
+    expect(shown).not.toContain("res:c");
+    expect(formatResolution(getResolution(dir, "res:c"))).not.toMatch(
+      /INCIDENT|incident/i,
+    );
+  });
+
+  test("two named ids remove in first-seen order; remaining keep order", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id);
+    seedResolution("res:d", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c", "res:d"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const result = removeIncidentResolutions({
+      baseDir: dir,
+      incidentId: incident.id,
+      resolutionIds: ["res:c", "res:a", "res:c"],
+    });
+    expect(result.removedIds).toEqual(["res:c", "res:a"]);
+    expect(result.record.resolutionIds).toEqual(["res:b", "res:d"]);
+  });
+
+  test("duplicates collapse first-seen", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const result = removeIncidentResolutions({
+      baseDir: dir,
+      incidentId: incident.id,
+      resolutionIds: ["res:c", "res:c"],
+    });
+    expect(result.removedIds).toEqual(["res:c"]);
+    expect(result.record.resolutionIds).toEqual(["res:a", "res:b"]);
+  });
+
+  test("named id not on this Incident fails; nothing removed", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id);
+    seedResolution("res:d", subject.id);
+    seedResolution("res:e", subject.id);
+    const targeted = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const other = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:d", "res:e"],
+      recordedAt: "2026-08-18T10:00:00.000Z",
+    });
+    const onOther = expectCode(
+      () =>
+        removeIncidentResolutions({
+          baseDir: dir,
+          incidentId: targeted.id,
+          resolutionIds: ["res:d"],
+        }),
+      "INCIDENT_MEMBER_NOT_ON_INCIDENT",
+    );
+    expect(onOther.message).toContain("res:d");
+    expect(onOther.message).toContain(targeted.id);
+    seedResolution("res:f", subject.id, { decision: "Later" });
+    const ungrouped = expectCode(
+      () =>
+        removeIncidentResolutions({
+          baseDir: dir,
+          incidentId: targeted.id,
+          resolutionIds: ["res:f"],
+        }),
+      "INCIDENT_MEMBER_NOT_ON_INCIDENT",
+    );
+    expect(ungrouped.message).toContain("res:f");
+    expect(getIncident(dir, targeted.id).resolutionIds).toEqual([
+      "res:a",
+      "res:b",
+      "res:c",
+    ]);
+    expect(getIncident(dir, other.id).resolutionIds).toEqual(["res:d", "res:e"]);
+  });
+
+  test("unknown inc: is INCIDENT_NOT_FOUND; unknown res: is RESOLUTION_NOT_FOUND", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    expectCode(
+      () =>
+        removeIncidentResolutions({
+          baseDir: dir,
+          incidentId: "inc:missing",
+          resolutionIds: ["res:c"],
+        }),
+      "INCIDENT_NOT_FOUND",
+    );
+    const missingRes = expectCode(
+      () =>
+        removeIncidentResolutions({
+          baseDir: dir,
+          incidentId: incident.id,
+          resolutionIds: ["res:missing"],
+        }),
+      "RESOLUTION_NOT_FOUND",
+    );
+    expect(missingRes.message).toContain("res:missing");
+    expect(getIncident(dir, incident.id).resolutionIds).toEqual([
+      "res:a",
+      "res:b",
+      "res:c",
+    ]);
+  });
+
+  test("named set that would leave fewer than two fails; Incident and members unchanged", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const error = expectCode(
+      () =>
+        removeIncidentResolutions({
+          baseDir: dir,
+          incidentId: incident.id,
+          resolutionIds: ["res:a", "res:b"],
+        }),
+      "INCIDENT_MEMBERS_REQUIRED",
+    );
+    expect(error.message).toMatch(/at least two/);
+    expect(getIncident(dir, incident.id).resolutionIds).toEqual([
+      "res:a",
+      "res:b",
+      "res:c",
+    ]);
+    expect(listResolutions(dir).map((r) => r.id).sort()).toEqual([
+      "res:a",
+      "res:b",
+      "res:c",
+    ]);
+  });
+
+  test("detached id may later append onto the same or another Incident", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id);
+    seedResolution("res:d", subject.id);
+    seedResolution("res:e", subject.id);
+    const first = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const second = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:d", "res:e"],
+      recordedAt: "2026-08-18T10:00:00.000Z",
+    });
+    removeIncidentResolutions({
+      baseDir: dir,
+      incidentId: first.id,
+      resolutionIds: ["res:c"],
+    });
+    const reappend = appendIncidentResolutions({
+      baseDir: dir,
+      incidentId: first.id,
+      resolutionIds: ["res:c"],
+    });
+    expect(reappend.record.resolutionIds).toEqual(["res:a", "res:b", "res:c"]);
+    removeIncidentResolutions({
+      baseDir: dir,
+      incidentId: first.id,
+      resolutionIds: ["res:c"],
+    });
+    const ontoOther = appendIncidentResolutions({
+      baseDir: dir,
+      incidentId: second.id,
+      resolutionIds: ["res:c"],
+    });
+    expect(ontoOther.record.resolutionIds).toEqual(["res:d", "res:e", "res:c"]);
+    expect(getIncident(dir, first.id).resolutionIds).toEqual(["res:a", "res:b"]);
+  });
+
+  test("062 append / 058 create unchanged when the remove flag is absent", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:d", subject.id);
+    const created = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "Create still works",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    expect(created.resolutionIds).toEqual(["res:a", "res:b"]);
+    const appended = appendIncidentResolutions({
+      baseDir: dir,
+      incidentId: created.id,
+      resolutionIds: ["res:d"],
+    });
+    expect(appended.record.resolutionIds).toEqual(["res:a", "res:b", "res:d"]);
+  });
+
+  test("incidents count decrements; --resolution of removed is known-empty; INCIDENT MEMORY observes remaining", () => {
+    const subject = seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const frozen = serializeInvestigationSnapshot(saved.record.snapshot);
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    seedResolution("res:c", subject.id, { decision: "Scale up" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b", "res:c"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    removeIncidentResolutions({
+      baseDir: dir,
+      incidentId: incident.id,
+      resolutionIds: ["res:c"],
+    });
+
+    expect(listIncidentsForResolution(dir, "res:c")).toEqual([]);
+    expect(listIncidentsForResolution(dir, "res:a").map((r) => r.id)).toEqual([
+      incident.id,
+    ]);
+    const listed = formatIncidentList(listIncidents(dir));
+    expect(listed).toContain(incident.id);
+    expect(listed).toContain("2");
+    expect(listed).not.toMatch(/res:[a-c]/);
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    const rendered = formatWithIncidentMemory(
+      live,
+      listIncidentsForSubject(dir, subject.id),
+      "subject",
+    );
+    expect(rendered).toContain("INCIDENT MEMORY");
+    expect(rendered).toContain("res:a");
+    expect(rendered).toContain("res:b");
+    expect(rendered).not.toContain("res:c");
+
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozen);
+    const compared = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+      }),
+    );
+    expect(compared).not.toContain("INCIDENT MEMORY");
+    expect(compared).not.toContain("res:c");
   });
 });

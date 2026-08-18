@@ -1770,6 +1770,31 @@ export class Store {
     this.appendIncidentMembers(incidentId, [resolutionId]);
   }
 
+  /**
+   * Drop named Resolution ids from an Incident's stored member array.
+   * Remaining members keep their relative order. Ids that are not
+   * currently members are ignored here; the app layer rejects that
+   * case before calling. The Incident row's other fields are untouched.
+   * This never DELETEs the Incident or any Resolution row.
+   */
+  removeIncidentMembers(incidentId: string, resolutionIds: string[]): void {
+    const db = this.getWritableDb();
+    const row = db
+      .query(`SELECT resolution_ids FROM incidents WHERE id = ?`)
+      .get(incidentId) as { resolution_ids: string } | null;
+    if (!row) {
+      throw new Error(`Incident not found: ${incidentId}`);
+    }
+    const drop = new Set(resolutionIds);
+    const members = parseIncidentMembers(row.resolution_ids).filter(
+      (id) => !drop.has(id),
+    );
+    db.query(`UPDATE incidents SET resolution_ids = ? WHERE id = ?`).run(
+      JSON.stringify(members),
+      incidentId,
+    );
+  }
+
   listIncidentSummaries(): IncidentRow[] {
     const db = this.getDb();
     if (!this.hasIncidentsTable(db)) return [];

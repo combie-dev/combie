@@ -51,6 +51,7 @@ import {
   formatIncidentAppendConfirmation,
   formatIncidentConfirmation,
   formatIncidentList,
+  formatIncidentRemoveConfirmation,
   formatWithIncidentMemory,
   getIncident,
   listIncidents,
@@ -59,6 +60,7 @@ import {
   listIncidentsForSubject,
   recordIncident,
   appendIncidentResolutions,
+  removeIncidentResolutions,
 } from "../app/incidents.ts";
 import {
   compareInvestigationToCurrent,
@@ -88,7 +90,7 @@ Commands:
   investigation <id>           Reopen a saved investigation snapshot (--compare: diff against current compose)
   resolution                   Record or show an explicit investigation resolution
   resolutions                  List retained resolution records
-  incident                     Record, show, or add members to an explicit incident grouping of resolutions
+  incident                     Record, show, add, or remove members of an explicit incident grouping of resolutions
   incidents                    List retained incident groupings
   mcp                          Start read-only MCP server over stdio
   agent status                 Show MCP integration status for claude, codex, cursor
@@ -133,6 +135,7 @@ Investigate options:
                                With "resolutions": list retained resolutions that attached that exact local id (membership only; one exact id)
   --resolution <resolution-id> With "incident": exact Resolution id to group at create (repeatable), or to append to incident <id>
                                With "incidents": list groupings that named that exact resolution id (membership only; one exact id)
+  --remove-resolution <resolution-id> With "incident <id>": exact current member Resolution id to detach (repeatable; remaining members must stay ≥2)
   --title <text>               Optional name for an incident grouping
 
 Resolution memory appears on investigate and investigation reopen
@@ -182,6 +185,7 @@ Examples:
   ${BINARY_NAME} resolution res:…
   ${BINARY_NAME} incident --resolution res:… --resolution res:… --title "API error spike"
   ${BINARY_NAME} incident inc:… --resolution res:…
+  ${BINARY_NAME} incident inc:… --remove-resolution res:…
   ${BINARY_NAME} incidents
   ${BINARY_NAME} incidents --resolution res:…
   ${BINARY_NAME} incidents --resource github:repository:1001
@@ -665,6 +669,12 @@ async function main(argv: string[]): Promise<number> {
           ...(repeated.resolution ?? []),
           ...(typeof flags.resolution === "string" ? [flags.resolution] : []),
         ];
+        const removeParts = [
+          ...(repeated["remove-resolution"] ?? []),
+          ...(typeof flags["remove-resolution"] === "string"
+            ? [flags["remove-resolution"]]
+            : []),
+        ];
         if (
           flags.resolution === true ||
           resolutionParts.some((id) => id.trim().length === 0)
@@ -674,12 +684,53 @@ async function main(argv: string[]): Promise<number> {
           );
           return 1;
         }
+        if (
+          flags["remove-resolution"] === true ||
+          removeParts.some((id) => id.trim().length === 0)
+        ) {
+          console.error(
+            `--remove-resolution requires a resolution id.\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+          );
+          return 1;
+        }
         const title = optionalFlagText(flags.title);
         if (title === "missing") {
           console.error(
             `--title requires text.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]`,
           );
           return 1;
+        }
+        if (resolutionParts.length > 0 && removeParts.length > 0) {
+          console.error(
+            `Use --resolution to append or --remove-resolution to detach; not both.\nUsage: ${BINARY_NAME} incident <incident-id> --resolution <resolution-id>\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+          );
+          return 1;
+        }
+        if (removeParts.length > 0) {
+          if (!positionals[0]) {
+            console.error(
+              `--remove-resolution requires an existing incident id.\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+            );
+            return 1;
+          }
+          if (title) {
+            console.error(
+              `--title is only for recording a new incident grouping.\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+            );
+            return 1;
+          }
+          const result = removeIncidentResolutions({
+            baseDir,
+            incidentId: positionals[0],
+            resolutionIds: removeParts,
+          });
+          console.log(
+            formatIncidentRemoveConfirmation(
+              result.record,
+              result.removedIds,
+            ),
+          );
+          return 0;
         }
         if (resolutionParts.length > 0) {
           if (positionals[0]) {

@@ -1759,7 +1759,7 @@ describe("CLI commands", () => {
     const help = await capture(() => main(["help"]));
     expect(help.code).toBe(0);
     expect(help.stdout).toContain(
-      "incident                     Record, show, or add members to an explicit incident grouping of resolutions",
+      "incident                     Record, show, add, or remove members of an explicit incident grouping of resolutions",
     );
     expect(help.stdout).toContain(
       'incident --resolution res:… --resolution res:… --title "API error spike"',
@@ -2916,6 +2916,209 @@ describe("CLI commands", () => {
     expect(help.stdout).toContain(
       "With \"incident\": exact Resolution id to group at create",
     );
+  });
+
+  test("incident <id> --remove-resolution detaches a current member (Sprint 065)", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "inc065",
+      kind: "project",
+      name: "inc-remove-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-inc065",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const resA = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Rollback",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resB = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Hold deploys",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resC = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Scale up",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--resolution",
+        resC,
+        "--title",
+        "API error spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(grouped.code).toBe(0);
+    const incId = grouped.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+
+    const removed = await capture(() =>
+      main(["incident", incId, "--remove-resolution", resC, "--dir", dir]),
+    );
+    expect(removed.code).toBe(0);
+    expect(removed.stdout).toContain(`Removed from incident ${incId}`);
+    expect(removed.stdout).toContain(resC);
+    expect(removed.stdout).not.toMatch(/^Recorded incident/);
+    expect(removed.stdout).not.toMatch(/^Updated incident/);
+
+    const shown = await capture(() => main(["incident", incId, "--dir", dir]));
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain(resA);
+    expect(shown.stdout).toContain(resB);
+    expect(shown.stdout).not.toContain(resC);
+
+    const resShow = await capture(() =>
+      main(["resolution", resC, "--dir", dir]),
+    );
+    expect(resShow.code).toBe(0);
+    expect(resShow.stdout).toContain(resC);
+    expect(resShow.stdout).not.toMatch(/INCIDENT|incident/i);
+
+    const listed = await capture(() => main(["incidents", "--dir", dir]));
+    expect(listed.stdout).toContain("2");
+    const byC = await capture(() =>
+      main(["incidents", "--resolution", resC, "--dir", dir]),
+    );
+    expect(byC.code).toBe(0);
+    expect(byC.stdout).toContain("No incidents recorded for resolution");
+    expect(byC.stdout).not.toContain(incId);
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(live.stdout).toContain("INCIDENT MEMORY");
+    const incidentMemory = live.stdout.slice(
+      live.stdout.indexOf("INCIDENT MEMORY"),
+    );
+    expect(incidentMemory).toContain(resA);
+    expect(incidentMemory).toContain(resB);
+    expect(incidentMemory).not.toContain(resC);
+
+    const reappend = await capture(() =>
+      main(["incident", incId, "--resolution", resC, "--dir", dir]),
+    );
+    expect(reappend.code).toBe(0);
+    expect(reappend.stdout).toContain(`Updated incident ${incId}`);
+
+    const wouldLeaveOne = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--remove-resolution",
+        resA,
+        "--remove-resolution",
+        resB,
+        "--remove-resolution",
+        resC,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(wouldLeaveOne.code).toBe(1);
+    expect(wouldLeaveOne.stderr).toMatch(/at least two/);
+    const stillThree = await capture(() =>
+      main(["incident", incId, "--dir", dir]),
+    );
+    expect(stillThree.stdout).toContain(resA);
+    expect(stillThree.stdout).toContain(resB);
+    expect(stillThree.stdout).toContain(resC);
+
+    const titled = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--remove-resolution",
+        resC,
+        "--title",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(titled.code).toBe(1);
+    expect(titled.stderr).toContain("--title");
+
+    const mixed = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--resolution",
+        resC,
+        "--remove-resolution",
+        resC,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixed.code).toBe(1);
+    expect(mixed.stderr).toMatch(/--resolution|--remove-resolution/);
+
+    const noPositional = await capture(() =>
+      main(["incident", "--remove-resolution", resC, "--dir", dir]),
+    );
+    expect(noPositional.code).toBe(1);
+    expect(noPositional.stderr).toMatch(/--remove-resolution|Usage:/);
+
+    const groupingSnapshots = await capture(() =>
+      main([
+        "incident",
+        "--investigation",
+        "inv:a",
+        "--investigation",
+        "inv:b",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(groupingSnapshots.code).toBe(1);
+    expect(groupingSnapshots.stderr).toContain("do not pass --investigation");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.stdout).toContain(
+      "incident inc:… --remove-resolution res:…",
+    );
+    expect(help.stdout).toContain("--remove-resolution");
   });
 
   test("investigate and investigation reopen show exact-id incident memory", async () => {

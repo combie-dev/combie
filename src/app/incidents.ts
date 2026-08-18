@@ -23,6 +23,17 @@ export interface AppendIncidentResult {
   appendedIds: string[];
 }
 
+export interface RemoveIncidentResolutionsOptions {
+  baseDir: string;
+  incidentId: string;
+  resolutionIds: string[];
+}
+
+export interface RemoveIncidentResult {
+  record: IncidentRecord;
+  removedIds: string[];
+}
+
 function trimField(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
@@ -148,6 +159,72 @@ export function appendIncidentResolutions(
       );
     }
     return { record, appendedIds };
+  } finally {
+    store.close();
+  }
+}
+
+export function removeIncidentResolutions(
+  options: RemoveIncidentResolutionsOptions,
+): RemoveIncidentResult {
+  const incidentId = options.incidentId.trim();
+  if (!incidentId) {
+    throw new CombieError(
+      "INCIDENT_ID_REQUIRED",
+      `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>\nList ids: ${BINARY_NAME} incidents`,
+    );
+  }
+  const namedIds = uniqueFirstSeen(options.resolutionIds);
+  if (namedIds.length === 0) {
+    throw new CombieError(
+      "INCIDENT_MEMBERS_UNCHANGED",
+      `Nothing was removed.\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+    );
+  }
+  const store = new Store(options.baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    store.init();
+    const incident = store.getIncidentRow(incidentId);
+    if (!incident) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incidentId}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    for (const id of namedIds) {
+      if (!store.getResolutionRow(id)) {
+        throw new CombieError(
+          "RESOLUTION_NOT_FOUND",
+          `Resolution not found: ${id}\nList recorded resolutions: ${BINARY_NAME} resolutions`,
+        );
+      }
+    }
+    for (const id of namedIds) {
+      if (!incident.resolutionIds.includes(id)) {
+        throw new CombieError(
+          "INCIDENT_MEMBER_NOT_ON_INCIDENT",
+          `Resolution ${id} is not a member of incident ${incident.id}.\nNothing was removed.\nShow: ${BINARY_NAME} incident ${incident.id}`,
+        );
+      }
+    }
+    const drop = new Set(namedIds);
+    const remaining = incident.resolutionIds.filter((id) => !drop.has(id));
+    if (remaining.length < 2) {
+      throw new CombieError(
+        "INCIDENT_MEMBERS_REQUIRED",
+        `An incident requires at least two distinct resolution ids.\nRemoving those members would leave fewer than two.\nNothing was removed.\nUsage: ${BINARY_NAME} incident <incident-id> --remove-resolution <resolution-id>`,
+      );
+    }
+    store.removeIncidentMembers(incident.id, namedIds);
+    const record = store.getIncidentRow(incident.id);
+    if (!record) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incident.id}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    return { record, removedIds: namedIds };
   } finally {
     store.close();
   }
@@ -310,6 +387,17 @@ export function formatIncidentAppendConfirmation(
   return (
     `Updated incident ${record.id}\n` +
     `${appendedIds.join("\n")}\n` +
+    `Show: ${BINARY_NAME} incident ${record.id}`
+  );
+}
+
+export function formatIncidentRemoveConfirmation(
+  record: IncidentRecord,
+  removedIds: string[],
+): string {
+  return (
+    `Removed from incident ${record.id}\n` +
+    `${removedIds.join("\n")}\n` +
     `Show: ${BINARY_NAME} incident ${record.id}`
   );
 }
