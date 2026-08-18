@@ -1772,6 +1772,271 @@ describe("CLI commands", () => {
     );
   });
 
+  test("incidents --resolution and --resource retrieve by exact membership", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const subjectA = createResource({
+      provider: "sentry",
+      providerResourceId: "inc060a",
+      kind: "project",
+      name: "inc060-a",
+      metadata: { organization_slug: "acme" },
+    });
+    const subjectB = createResource({
+      provider: "sentry",
+      providerResourceId: "inc060b",
+      kind: "project",
+      name: "inc060-b",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(subjectA, {
+      id: "obs-inc060a",
+      observedAt: "2026-08-18T00:00:00.000Z",
+    });
+    store.applyResource(subjectB, {
+      id: "obs-inc060b",
+      observedAt: "2026-08-18T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        subjectA.id,
+        "--decision",
+        "Rollback",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(first.code).toBe(0);
+    const resA = first.stdout.match(/res:[a-f0-9-]+/)![0];
+    const second = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        subjectB.id,
+        "--decision",
+        "Hold deploys",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(second.code).toBe(0);
+    const resB = second.stdout.match(/res:[a-f0-9-]+/)![0];
+
+    const third = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        subjectA.id,
+        "--decision",
+        "Scale up",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(third.code).toBe(0);
+    const resC = third.stdout.match(/res:[a-f0-9-]+/)![0];
+    const fourth = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        subjectB.id,
+        "--decision",
+        "Scale down",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(fourth.code).toBe(0);
+    const resD = fourth.stdout.match(/res:[a-f0-9-]+/)![0];
+
+    const cross = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--title",
+        "Cross subject spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(cross.code).toBe(0);
+    const crossInc = cross.stdout.match(/inc:[a-f0-9-]+/)![0];
+    const other = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resC,
+        "--resolution",
+        resD,
+        "--title",
+        "Other spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(other.code).toBe(0);
+    const otherInc = other.stdout.match(/inc:[a-f0-9-]+/)![0];
+
+    const byResolution = await capture(() =>
+      main(["incidents", "--resolution", resA, "--dir", dir]),
+    );
+    expect(byResolution.code).toBe(0);
+    expect(byResolution.stdout).toContain(crossInc);
+    expect(byResolution.stdout).not.toContain(otherInc);
+    expect(byResolution.stdout).toContain("Cross subject spike");
+    expect(byResolution.stdout).not.toContain(resA);
+    expect(byResolution.stdout).toContain("2");
+
+    const bySubjectA = await capture(() =>
+      main(["incidents", "--resource", subjectA.id, "--dir", dir]),
+    );
+    expect(bySubjectA.code).toBe(0);
+    expect(bySubjectA.stdout).toContain(crossInc);
+    expect(bySubjectA.stdout).toContain(otherInc);
+    expect(bySubjectA.stdout).not.toContain(resA);
+
+    const bySubjectB = await capture(() =>
+      main(["incidents", "--resource", subjectB.id, "--dir", dir]),
+    );
+    expect(bySubjectB.code).toBe(0);
+    expect(bySubjectB.stdout).toContain(crossInc);
+    expect(bySubjectB.stdout).toContain(otherInc);
+
+    const both = await capture(() =>
+      main([
+        "incidents",
+        "--resolution",
+        resA,
+        "--resource",
+        subjectB.id,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(both.code).toBe(0);
+    expect(both.stdout).toContain(crossInc);
+    expect(both.stdout).not.toContain(otherInc);
+
+    const substring = await capture(() =>
+      main([
+        "incidents",
+        "--resolution",
+        resA.slice(0, resA.length - 2),
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(substring.code).toBe(0);
+    expect(substring.stdout).not.toContain(crossInc);
+
+    const unknownRes = await capture(() =>
+      main(["incidents", "--resolution", "res:missing", "--dir", dir]),
+    );
+    expect(unknownRes.code).toBe(0);
+    expect(unknownRes.stdout).toContain(
+      "No incidents recorded for resolution res:missing.",
+    );
+    expect(unknownRes.stdout).not.toContain("No incidents recorded yet.");
+    expect(unknownRes.stdout).not.toContain("RESOLUTION_NOT_FOUND");
+
+    const unknownSubject = await capture(() =>
+      main([
+        "incidents",
+        "--resource",
+        "sentry:project:never-used",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(unknownSubject.code).toBe(0);
+    expect(unknownSubject.stdout).toContain(
+      "No incidents recorded for subject sentry:project:never-used.",
+    );
+    expect(unknownSubject.stdout).not.toContain("No incidents recorded yet.");
+    expect(unknownSubject.stdout).not.toContain("RESOURCE_NOT_FOUND");
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${subjectA.id}'`);
+    db.close();
+    const deleted = await capture(() =>
+      main(["incidents", "--resource", subjectA.id, "--dir", dir]),
+    );
+    expect(deleted.code).toBe(0);
+    expect(deleted.stdout).toContain(crossInc);
+
+    const repeated = await capture(() =>
+      main([
+        "incidents",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(repeated.code).toBe(1);
+    expect(repeated.stderr).toContain("takes one exact id");
+    expect(repeated.stdout).not.toContain("No incidents recorded");
+
+    const viaInvestigation = await capture(() =>
+      main([
+        "incidents",
+        "--investigation",
+        "inv:missing",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(viaInvestigation.code).toBe(1);
+    expect(viaInvestigation.stderr).toContain("--investigation");
+
+    const blankResolution = await capture(() =>
+      main(["incidents", "--resolution", "--dir", dir]),
+    );
+    expect(blankResolution.code).toBe(1);
+    expect(blankResolution.stderr).toContain(
+      "--resolution requires a resolution id",
+    );
+
+    const blankResource = await capture(() =>
+      main(["incidents", "--resource", "", "--dir", dir]),
+    );
+    expect(blankResource.code).toBe(1);
+    expect(blankResource.stderr).toContain("--resource requires a resource id");
+
+    const unfiltered = await capture(() => main(["incidents", "--dir", dir]));
+    expect(unfiltered.code).toBe(0);
+    expect(unfiltered.stdout).toContain(crossInc);
+    expect(unfiltered.stdout).toContain(otherInc);
+
+    const shown = await capture(() => main(["incident", crossInc, "--dir", dir]));
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain(resA);
+    expect(shown.stdout).toContain(resB);
+
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain(
+      'With "incidents": list groupings that named that exact resolution id (membership only; one exact id)',
+    );
+    expect(help.stdout).toContain(
+      'With "incidents": list groupings with a member Resolution on one subject',
+    );
+    expect(help.stdout).toContain("incidents --resolution res:…");
+    expect(help.stdout).toContain(
+      "incidents --resource github:repository:1001",
+    );
+  });
+
   test("investigate and investigation reopen show exact-id incident memory", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const store = new Store(dir);

@@ -13,7 +13,9 @@ import {
   formatWithIncidentMemory,
   getIncident,
   listIncidents,
+  listIncidentsFiltered,
   listIncidentsForInvestigation,
+  listIncidentsForResolution,
   listIncidentsForSubject,
   recordIncident,
 } from "../../src/app/incidents.ts";
@@ -726,5 +728,312 @@ describe("exact-id incident recall (Sprint 059)", () => {
         "subject",
       ),
     ).toBe(live);
+  });
+});
+
+describe("incident list retrieve (Sprint 060)", () => {
+  test("--resolution lists the grouping that named that exact id; omits others; at most one row", () => {
+    const subjectA = seedSubject("460");
+    const subjectB = seedSubject("461");
+    seedResolution("res:r1", subjectA.id);
+    seedResolution("res:r2", subjectB.id);
+    seedResolution("res:r3", subjectA.id);
+    seedResolution("res:r4", subjectB.id);
+    const targeted = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:r1", "res:r2"],
+      title: "Named r1",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const other = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:r3", "res:r4"],
+      title: "Not r1",
+      recordedAt: "2026-08-17T10:00:00.000Z",
+    });
+
+    const forR1 = listIncidentsForResolution(dir, "res:r1");
+    expect(forR1.map((row) => row.id)).toEqual([targeted.id]);
+    expect(forR1.map((row) => row.id)).not.toContain(other.id);
+    expect(forR1).toHaveLength(1);
+
+    const forR2 = listIncidentsForResolution(dir, "res:r2");
+    expect(forR2.map((row) => row.id)).toEqual([targeted.id]);
+    expect(forR2).toHaveLength(1);
+  });
+
+  test("--resolution is exact membership: substring or prefix does not match", () => {
+    const subject = seedSubject("462");
+    seedResolution("res:abc", subject.id);
+    seedResolution("res:abd", subject.id);
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:abc", "res:abd"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    expect(listIncidentsForResolution(dir, "res:ab")).toEqual([]);
+    expect(listIncidentsForResolution(dir, "res")).toEqual([]);
+    expect(listIncidentsForResolution(dir, "abc")).toEqual([]);
+    expect(listIncidentsForResolution(dir, "res:abc ")).toEqual([]);
+  });
+
+  test("unknown resolution id is known-empty, never RESOLUTION_NOT_FOUND", () => {
+    const subject = seedSubject("463");
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    expect(listIncidentsForResolution(dir, "res:missing")).toEqual([]);
+    const empty = formatIncidentList(
+      listIncidentsForResolution(dir, "res:missing"),
+      { resolutionId: "res:missing" },
+    );
+    expect(empty).toContain("No incidents recorded for resolution res:missing.");
+    expect(empty).not.toContain("No incidents recorded yet.");
+    expect(empty).not.toMatch(/RESOLUTION_NOT_FOUND/i);
+  });
+
+  test("--resource matches 059 subject membership; cross-subject grouping appears on either subject", () => {
+    const subjectA = seedSubject("464");
+    const subjectB = seedSubject("465");
+    const resA = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectA.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const resB = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectB.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const cross = recordIncident({
+      baseDir: dir,
+      resolutionIds: [resA.id, resB.id],
+      title: "Cross-subject",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: subjectA.id }).map(
+        (row) => row.id,
+      ),
+    ).toEqual([cross.id]);
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: subjectB.id }).map(
+        (row) => row.id,
+      ),
+    ).toEqual([cross.id]);
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: subjectA.id }).map(
+        (row) => row.id,
+      ),
+    ).toEqual(listIncidentsForSubject(dir, subjectA.id).map((row) => row.id));
+  });
+
+  test("unknown subject is known-empty, never RESOURCE_NOT_FOUND", () => {
+    const subject = seedSubject("466");
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: "sentry:project:never" }),
+    ).toEqual([]);
+    const empty = formatIncidentList(
+      listIncidentsFiltered(dir, {
+        subjectResourceId: "sentry:project:never",
+      }),
+      { subjectResourceId: "sentry:project:never" },
+    );
+    expect(empty).toContain(
+      "No incidents recorded for subject sentry:project:never.",
+    );
+    expect(empty).not.toContain("No incidents recorded yet.");
+    expect(empty).not.toMatch(/RESOURCE_NOT_FOUND/i);
+  });
+
+  test("subject Resource deleted: --resource still lists when member rows keep that subject id", () => {
+    const subject = seedSubject("467");
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const recorded = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
+    db.close();
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: subject.id }).map(
+        (row) => row.id,
+      ),
+    ).toEqual([recorded.id]);
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: subject.id }).map(
+        (row) => row.id,
+      ),
+    ).toEqual(listIncidentsForSubject(dir, subject.id).map((row) => row.id));
+  });
+
+  test("AND of --resolution and --resource: cross-resource grouping matches when another member has the subject", () => {
+    const subjectA = seedSubject("468");
+    const subjectB = seedSubject("469");
+    seedResolution("res:a1", subjectA.id);
+    seedResolution("res:b1", subjectB.id);
+    const cross = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a1", "res:b1"],
+      title: "Cross",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+
+    const andResult = listIncidentsFiltered(dir, {
+      resolutionId: "res:a1",
+      subjectResourceId: subjectB.id,
+    });
+    expect(andResult.map((row) => row.id)).toEqual([cross.id]);
+
+    const noMatch = listIncidentsFiltered(dir, {
+      resolutionId: "res:a1",
+      subjectResourceId: "sentry:project:never",
+    });
+    expect(noMatch).toEqual([]);
+  });
+
+  test("missing member Resolution rows: --resolution still matches stored id; --resource skips missing members", () => {
+    const subject = seedSubject("470");
+    seedResolution("res:keep", subject.id);
+    seedResolution("res:gone", subject.id);
+    const recorded = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:keep", "res:gone"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resolutions WHERE id = 'res:gone'`);
+    db.close();
+    expect(
+      listIncidentsForResolution(dir, "res:gone").map((row) => row.id),
+    ).toEqual([recorded.id]);
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: subject.id }).map(
+        (row) => row.id,
+      ),
+    ).toEqual([recorded.id]);
+  });
+
+  test("filtered lists keep recordedAt DESC, id DESC ordering", () => {
+    const subjectA = seedSubject("471");
+    const subjectB = seedSubject("472");
+    seedResolution("res:a1", subjectA.id);
+    seedResolution("res:b1", subjectB.id);
+    seedResolution("res:a2", subjectA.id);
+    seedResolution("res:b2", subjectB.id);
+    const older = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a1", "res:b1"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const later = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a2", "res:b2"],
+      recordedAt: "2026-08-17T10:00:00.000Z",
+    });
+    const byResolution = listIncidentsForResolution(dir, "res:a1");
+    expect(byResolution.map((row) => row.id)).toEqual([older.id]);
+    const bySubject = listIncidentsFiltered(dir, {
+      subjectResourceId: subjectB.id,
+    });
+    expect(bySubject.map((row) => row.id)).toEqual([later.id, older.id]);
+  });
+
+  test("list summaries stay 058-shaped: count column, never member essays", () => {
+    const subject = seedSubject("473");
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const recorded = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const output = formatIncidentList(
+      listIncidentsForResolution(dir, "res:a"),
+      { resolutionId: "res:a" },
+    );
+    expect(output).toContain("INCIDENT");
+    expect(output).toContain("TITLE");
+    expect(output).toContain("RESOLUTIONS");
+    expect(output).toContain("RECORDED AT");
+    expect(output).toContain(recorded.id);
+    expect(output).toContain("API error spike");
+    expect(output).toContain("2");
+    expect(output).not.toContain("res:b");
+    expect(output).not.toMatch(/res:a\s+res:b/);
+  });
+
+  test("unfiltered formatIncidentList and empty copy unchanged", () => {
+    expect(formatIncidentList([])).toMatch(/No incidents recorded/i);
+    expect(formatIncidentList([])).toContain("--resolution");
+    expect(formatIncidentList([], undefined)).toBe(
+      formatIncidentList([]),
+    );
+  });
+
+  test("known-empty copies are distinct per filter", () => {
+    const resolutionEmpty = formatIncidentList([], {
+      resolutionId: "res:none",
+    });
+    const subjectEmpty = formatIncidentList([], {
+      subjectResourceId: "sentry:project:none",
+    });
+    const bothEmpty = formatIncidentList([], {
+      resolutionId: "res:none",
+      subjectResourceId: "sentry:project:none",
+    });
+    expect(resolutionEmpty).toContain(
+      "No incidents recorded for resolution res:none.",
+    );
+    expect(subjectEmpty).toContain(
+      "No incidents recorded for subject sentry:project:none.",
+    );
+    expect(bothEmpty).toContain("res:none");
+    expect(bothEmpty).toContain("sentry:project:none");
+    expect(bothEmpty).not.toContain("No incidents recorded yet.");
+    expect(resolutionEmpty).not.toBe(subjectEmpty);
+    expect(bothEmpty).not.toBe(resolutionEmpty);
+    expect(bothEmpty).not.toBe(subjectEmpty);
+  });
+
+  test("pre-058 missing incidents table: filtered retrieve is known-empty, no crash", () => {
+    const subject = seedSubject("474");
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-17T09:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(`DROP TABLE incidents`);
+    db.close();
+    expect(listIncidentsForResolution(dir, "res:a")).toEqual([]);
+    expect(
+      listIncidentsFiltered(dir, { subjectResourceId: subject.id }),
+    ).toEqual([]);
+    const empty = formatIncidentList(
+      listIncidentsForResolution(dir, "res:a"),
+      { resolutionId: "res:a" },
+    );
+    expect(empty).toContain("No incidents recorded for resolution res:a.");
   });
 });

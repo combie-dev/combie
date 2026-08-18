@@ -53,6 +53,7 @@ import {
   formatWithIncidentMemory,
   getIncident,
   listIncidents,
+  listIncidentsFiltered,
   listIncidentsForInvestigation,
   listIncidentsForSubject,
   recordIncident,
@@ -117,6 +118,7 @@ Investigate options:
   --resource <resource-id>     With "investigations": list snapshots for one subject
                                With "resolutions": list resolutions for one subject
                                With "resolution": resource to record against (no saved investigation)
+                               With "incidents": list groupings with a member Resolution on one subject
   --investigation <id>         With "resolution": investigation to record against
                                With "resolutions": list resolutions for one investigation
   --decision <text>            Explicit decision (what you decided)
@@ -125,6 +127,7 @@ Investigate options:
   --evidence <id>              Attach an exact local evidence id (optional, repeatable; never inferred)
                                With "resolutions": list retained resolutions that attached that exact local id (membership only; one exact id)
   --resolution <resolution-id> With "incident": exact Resolution id to group (repeatable; never inferred)
+                               With "incidents": list groupings that named that exact resolution id (membership only; one exact id)
   --title <text>               Optional name for an incident grouping
 
 Resolution memory appears on investigate and investigation reopen
@@ -172,6 +175,8 @@ Examples:
   ${BINARY_NAME} resolution res:…
   ${BINARY_NAME} incident --resolution res:… --resolution res:… --title "API error spike"
   ${BINARY_NAME} incidents
+  ${BINARY_NAME} incidents --resolution res:…
+  ${BINARY_NAME} incidents --resource github:repository:1001
   ${BINARY_NAME} incident inc:…
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
@@ -671,17 +676,49 @@ async function main(argv: string[]): Promise<number> {
         return 0;
       }
       case "incidents": {
-        if (
-          flags.resolution !== undefined ||
-          flags.resource !== undefined ||
-          flags.investigation !== undefined
-        ) {
+        if (flags.investigation !== undefined) {
           console.error(
-            `incidents lists retained groupings; it does not filter by --resolution, --resource, or --investigation.\nUsage: ${BINARY_NAME} incidents`,
+            `incidents lists retained groupings; it does not filter by --investigation.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
           );
           return 1;
         }
-        console.log(formatIncidentList(listIncidents(baseDir)));
+        const resolution =
+          typeof flags.resolution === "string"
+            ? flags.resolution.trim()
+            : undefined;
+        if (flags.resolution !== undefined && !resolution) {
+          console.error(
+            `--resolution requires a resolution id.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
+          );
+          return 1;
+        }
+        if ((repeated.resolution ?? []).length > 0) {
+          console.error(
+            `--resolution takes one exact id on the incidents list.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
+          );
+          return 1;
+        }
+        const resource =
+          typeof flags.resource === "string" ? flags.resource.trim() : undefined;
+        if (flags.resource !== undefined && !resource) {
+          console.error(
+            `--resource requires a resource id.\nUsage: ${BINARY_NAME} incidents [--resolution <resolution-id>] [--resource <resource-id>]`,
+          );
+          return 1;
+        }
+        const filter =
+          resolution !== undefined || resource !== undefined
+            ? {
+                ...(resolution !== undefined ? { resolutionId: resolution } : {}),
+                ...(resource !== undefined
+                  ? { subjectResourceId: resource }
+                  : {}),
+              }
+            : undefined;
+        const records = filter
+          ? listIncidentsFiltered(baseDir, filter)
+          : listIncidents(baseDir);
+        console.log(formatIncidentList(records, filter));
         return 0;
       }
       case "mcp": {

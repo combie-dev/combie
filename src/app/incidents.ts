@@ -113,8 +113,29 @@ export function getIncident(baseDir: string, id: string): IncidentRecord {
   }
 }
 
-export function formatIncidentList(records: IncidentRecord[]): string {
+export function formatIncidentList(
+  records: IncidentRecord[],
+  filter?: ListIncidentsOptions,
+): string {
   if (records.length === 0) {
+    if (filter?.resolutionId !== undefined) {
+      if (filter?.subjectResourceId !== undefined) {
+        return (
+          `No incidents recorded for resolution ${filter.resolutionId} and subject ${filter.subjectResourceId}.\n` +
+          `This is known-empty for those exact ids — no retained grouping matches both.`
+        );
+      }
+      return (
+        `No incidents recorded for resolution ${filter.resolutionId}.\n` +
+        `This is known-empty for that exact resolution id — no retained grouping named it.`
+      );
+    }
+    if (filter?.subjectResourceId !== undefined) {
+      return (
+        `No incidents recorded for subject ${filter.subjectResourceId}.\n` +
+        `This is known-empty for that exact subject — no retained grouping has a member on it.`
+      );
+    }
     return (
       "No incidents recorded yet.\n" +
       `Group existing resolutions: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id>`
@@ -183,13 +204,15 @@ export function formatIncidentConfirmation(record: IncidentRecord): string {
 
 export type IncidentMemoryScope = "investigation" | "subject";
 
+interface IncidentMember {
+  subjectResourceId: string;
+  investigationId?: string;
+}
+
 function incidentMatches(
   incident: IncidentRecord,
-  resolutions: Map<string, { subjectResourceId: string; investigationId?: string }>,
-  memberMatches: (member: {
-    subjectResourceId: string;
-    investigationId?: string;
-  }) => boolean,
+  resolutions: Map<string, IncidentMember>,
+  memberMatches: (member: IncidentMember) => boolean,
 ): boolean {
   return incident.resolutionIds.some((id) => {
     const member = resolutions.get(id);
@@ -197,12 +220,12 @@ function incidentMatches(
   });
 }
 
-function listIncidentsMatching(
+function listIncidentsWhere(
   baseDir: string,
-  memberMatches: (member: {
-    subjectResourceId: string;
-    investigationId?: string;
-  }) => boolean,
+  predicate: (
+    incident: IncidentRecord,
+    resolutions: Map<string, IncidentMember>,
+  ) => boolean,
 ): IncidentRecord[] {
   const store = new Store(baseDir);
   try {
@@ -220,12 +243,19 @@ function listIncidentsMatching(
         },
       ]),
     );
-    return incidents.filter((incident) =>
-      incidentMatches(incident, resolutions, memberMatches),
-    );
+    return incidents.filter((incident) => predicate(incident, resolutions));
   } finally {
     store.close();
   }
+}
+
+function listIncidentsMatching(
+  baseDir: string,
+  memberMatches: (member: IncidentMember) => boolean,
+): IncidentRecord[] {
+  return listIncidentsWhere(baseDir, (incident, resolutions) =>
+    incidentMatches(incident, resolutions, memberMatches),
+  );
 }
 
 /** Read-time: Incidents whose named members include this exact subject. */
@@ -248,6 +278,52 @@ export function listIncidentsForInvestigation(
     baseDir,
     (member) => member.investigationId === investigationId,
   );
+}
+
+export interface ListIncidentsOptions {
+  /** Exact stored member id the human named when grouping. */
+  resolutionId?: string;
+  /** Exact subject Resource id of any member Resolution. */
+  subjectResourceId?: string;
+}
+
+/** Read-time: Incidents whose stored member ids include this exact resolution id. */
+export function listIncidentsForResolution(
+  baseDir: string,
+  resolutionId: string,
+): IncidentRecord[] {
+  return listIncidentsFiltered(baseDir, { resolutionId });
+}
+
+/**
+ * Read-time exact-id list filters; AND when both are present. The named
+ * resolution id matches the stored member id array whether or not its
+ * Resolution row still exists; the subject matches any member Resolution's
+ * subjectResourceId (059 rule).
+ */
+export function listIncidentsFiltered(
+  baseDir: string,
+  options: ListIncidentsOptions,
+): IncidentRecord[] {
+  const resolutionId = options.resolutionId;
+  const subjectResourceId = options.subjectResourceId;
+  return listIncidentsWhere(baseDir, (incident, resolutions) => {
+    if (
+      resolutionId !== undefined &&
+      !incident.resolutionIds.includes(resolutionId)
+    ) {
+      return false;
+    }
+    if (
+      subjectResourceId !== undefined &&
+      !incidentMatches(incident, resolutions, (member) => {
+        return member.subjectResourceId === subjectResourceId;
+      })
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function incidentMemoryIdentityLine(record: IncidentRecord): string {
