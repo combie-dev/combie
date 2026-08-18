@@ -33,6 +33,7 @@ import {
   formatInvestigationList,
   formatSaveConfirmation,
   formatSavedInvestigation,
+  formatWithInvestigationHistory,
   getSavedInvestigation,
   listInvestigations,
   saveInvestigation,
@@ -146,6 +147,8 @@ Investigate options:
   --clear-title                With "incident <id>": omit the stored title (members and recordedAt unchanged)
   --recorded-at <iso>          With "incident <id>": replace recordedAt (title and members unchanged)
 
+Investigation history appears on investigate and investigation reopen
+when snapshots exist.
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
 Incident memory appears on those same paths when groupings exist.
@@ -431,7 +434,12 @@ async function main(argv: string[]): Promise<number> {
           console.log(
             formatWithIncidentMemory(
               formatWithResolutionMemory(
-                saved.liveOutput,
+                formatWithInvestigationHistory(
+                  saved.liveOutput,
+                  listInvestigations(baseDir, {
+                    subjectResourceId: saved.record.subjectResourceId,
+                  }),
+                ),
                 listResolutions(baseDir, {
                   subjectResourceId: saved.record.subjectResourceId,
                 }),
@@ -455,7 +463,12 @@ async function main(argv: string[]): Promise<number> {
         console.log(
           formatWithIncidentMemory(
             formatWithResolutionMemory(
-              formatInvestigationContext(investigation),
+              formatWithInvestigationHistory(
+                formatInvestigationContext(investigation),
+                listInvestigations(baseDir, {
+                  subjectResourceId: investigation.subject.id,
+                }),
+              ),
               listResolutions(baseDir, {
                 subjectResourceId: investigation.subject.id,
               }),
@@ -503,7 +516,12 @@ async function main(argv: string[]): Promise<number> {
         console.log(
           formatWithIncidentMemory(
             formatWithResolutionMemory(
-              formatSavedInvestigation(saved),
+              formatWithInvestigationHistory(
+                formatSavedInvestigation(saved),
+                listInvestigations(baseDir, {
+                  subjectResourceId: saved.subjectResourceId,
+                }),
+              ),
               listResolutions(baseDir, { investigationId: saved.id }),
               "investigation",
             ),

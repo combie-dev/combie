@@ -207,3 +207,27 @@ export function formatSaveConfirmation(record: SavedInvestigation): string {
     `Reopen: ${BINARY_NAME} investigation ${record.id}`
   );
 }
+
+/** Read-time retained-composition pointers. Empty when there is nothing to show. */
+export function formatInvestigationHistorySection(
+  records: InvestigationRecord[],
+): string {
+  if (records.length === 0) return "";
+  const intro =
+    `INVESTIGATION HISTORY\n` +
+    `Retained compositions of this subject.\n` +
+    `They are not current provider truth. They are not an incident.`;
+  const rows = records.map((record) => `${record.id}  ${record.composedAt}`);
+  return (
+    `${intro}\n\n${rows.join("\n")}\n\n` +
+    `Show: ${BINARY_NAME} investigation ${records[0]!.id}`
+  );
+}
+
+export function formatWithInvestigationHistory(
+  body: string,
+  records: InvestigationRecord[],
+): string {
+  const section = formatInvestigationHistorySection(records);
+  return section === "" ? body : `${body}\n\n${section}`;
+}

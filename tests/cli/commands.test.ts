@@ -882,7 +882,8 @@ describe("CLI commands", () => {
     expect(reopened.stdout).toContain("RESOLUTION MEMORY");
     expect(reopened.stdout).toContain(resId);
     expect(reopened.stdout).toContain("Rollback 1.4.2");
-    expect(reopened.stdout).not.toMatch(/incident/i);
+    expect(reopened.stdout).not.toContain("INCIDENT MEMORY");
+    expect(reopened.stdout).not.toMatch(/\nINCIDENT\n/);
 
     const live = await capture(() =>
       main(["investigate", project.id, "--dir", dir]),
@@ -3777,6 +3778,187 @@ describe("CLI commands", () => {
     const help = await capture(() => main(["help"]));
     expect(help.stdout).toContain("incident inc:… --recorded-at");
     expect(help.stdout).toContain("--recorded-at");
+  });
+
+  test("investigate and investigation reopen show retained snapshot history (Sprint 069)", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "hist069",
+      kind: "project",
+      name: "hist-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "hist069repo",
+      kind: "repository",
+      name: "acme/hist",
+      metadata: {},
+    });
+    store.applyResource(project, {
+      id: "obs-hist069",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-hist069-other",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const emptyLive = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(emptyLive.code).toBe(0);
+    expect(emptyLive.stdout).toContain("SUBJECT");
+    expect(emptyLive.stdout).not.toContain("INVESTIGATION HISTORY");
+    expect(emptyLive.stdout).not.toContain(
+      `No investigation snapshots saved for subject ${project.id}`,
+    );
+
+    const firstSave = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    expect(firstSave.code).toBe(0);
+    expect(firstSave.stdout).toContain("INVESTIGATION HISTORY");
+    expect(firstSave.stdout).toContain("Saved investigation snapshot inv:");
+    const invA = firstSave.stdout.match(
+      /Saved investigation snapshot (inv:\S+)/,
+    )![1]!;
+    expect(firstSave.stdout).toContain(invA);
+    expect(firstSave.stdout).toContain("Retained compositions of this subject.");
+    expect(firstSave.stdout).toContain("They are not an incident.");
+    expect(firstSave.stdout.indexOf("INVESTIGATION HISTORY")).toBeLessThan(
+      firstSave.stdout.indexOf("Saved investigation snapshot"),
+    );
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(live.code).toBe(0);
+    expect(live.stdout).toContain("INVESTIGATION HISTORY");
+    expect(live.stdout).toContain(invA);
+    expect(live.stdout).not.toContain("INVESTIGATION SNAPSHOT");
+
+    const otherSave = await capture(() =>
+      main(["investigate", other.id, "--save", "--dir", dir]),
+    );
+    const otherInv = otherSave.stdout.match(
+      /Saved investigation snapshot (inv:\S+)/,
+    )![1]!;
+    expect(otherSave.stdout).toContain("INVESTIGATION HISTORY");
+    expect(otherSave.stdout).toContain(otherInv);
+    expect(otherSave.stdout).not.toContain(invA);
+
+    const secondSave = await capture(() =>
+      main(["investigate", project.id, "--save", "--dir", dir]),
+    );
+    const invB = secondSave.stdout.match(
+      /Saved investigation snapshot (inv:\S+)/,
+    )![1]!;
+    expect(secondSave.stdout).toContain("INVESTIGATION HISTORY");
+    expect(secondSave.stdout).toContain(invA);
+    expect(secondSave.stdout).toContain(invB);
+    expect(secondSave.stdout).not.toContain(otherInv);
+
+    const reopened = await capture(() =>
+      main(["investigation", invA, "--dir", dir]),
+    );
+    expect(reopened.code).toBe(0);
+    expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
+    expect(reopened.stdout).toContain("INVESTIGATION HISTORY");
+    expect(reopened.stdout).toContain(invA);
+    expect(reopened.stdout).toContain(invB);
+    expect(reopened.stdout).not.toContain(otherInv);
+    expect(reopened.stdout).toContain(
+      `Show: bun run combie investigation ${invB}`,
+    );
+
+    const listed = await capture(() =>
+      main(["investigations", "--resource", project.id, "--dir", dir]),
+    );
+    expect(listed.code).toBe(0);
+    expect(listed.stdout).toContain(invA);
+    expect(listed.stdout).toContain(invB);
+    expect(listed.stdout).toContain(project.id);
+    expect(listed.stdout).not.toContain("INVESTIGATION HISTORY");
+    expect(listed.stdout).not.toContain(
+      `No investigation snapshots saved for subject ${project.id}`,
+    );
+
+    const knownEmpty = await capture(() =>
+      main([
+        "investigations",
+        "--resource",
+        "sentry:project:none",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(knownEmpty.code).toBe(0);
+    expect(knownEmpty.stdout).toContain(
+      "No investigation snapshots saved for subject sentry:project:none",
+    );
+
+    const compared = await capture(() =>
+      main(["investigation", invA, "--compare", "--dir", dir]),
+    );
+    expect(compared.code).toBe(0);
+    expect(compared.stdout).toContain("INVESTIGATION COMPARE");
+    expect(compared.stdout).not.toContain("INVESTIGATION HISTORY");
+
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const rowA = storeAfter.getInvestigationRow(invA);
+    const rowB = storeAfter.getInvestigationRow(invB);
+    storeAfter.close();
+    expect(rowA?.snapshotJson).not.toContain("INVESTIGATION HISTORY");
+    expect(rowB?.snapshotJson).not.toContain("INVESTIGATION HISTORY");
+    expect(JSON.parse(rowA!.snapshotJson)).not.toHaveProperty(
+      "investigationHistory",
+    );
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${project.id}'`);
+    db.close();
+
+    const missingSubject = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(missingSubject.code).toBe(1);
+    expect(missingSubject.stderr).toContain("Resource not found");
+    expect(missingSubject.stdout).not.toContain("INVESTIGATION HISTORY");
+
+    const reopenAfterDelete = await capture(() =>
+      main(["investigation", invA, "--dir", dir]),
+    );
+    expect(reopenAfterDelete.code).toBe(0);
+    expect(reopenAfterDelete.stdout).toContain("INVESTIGATION HISTORY");
+    expect(reopenAfterDelete.stdout).toContain(invA);
+    expect(reopenAfterDelete.stdout).toContain(invB);
+
+    const leftover = await capture(() =>
+      main([
+        "incident",
+        "--investigation",
+        invA,
+        "--investigation",
+        invB,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(leftover.code).toBe(1);
+    expect(leftover.stderr).toContain("do not pass --investigation");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain(
+      "Investigation history appears on investigate and investigation reopen",
+    );
+    expect(help.stdout).toContain("when snapshots exist.");
   });
 
   test("investigate and investigation reopen show exact-id incident memory", async () => {

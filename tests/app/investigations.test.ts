@@ -9,8 +9,10 @@ import {
   getInvestigationContext,
 } from "../../src/app/investigate.ts";
 import {
+  formatInvestigationHistorySection,
   formatInvestigationList,
   formatSavedInvestigation,
+  formatWithInvestigationHistory,
   getSavedInvestigation,
   listInvestigations,
   parseInvestigationSnapshot,
@@ -303,5 +305,170 @@ describe("investigation snapshots", () => {
         resourceRef: "missing",
       }),
     )).toThrow(/Resource not found/);
+  });
+});
+
+describe("Sprint 069 investigation history", () => {
+  test("empty subject omits the section and does not reuse 050 known-empty copy", () => {
+    seedSubject();
+    const live = formatInvestigationContext(
+      getInvestigationContext({
+        baseDir: dir,
+        resourceRef: "sentry:project:450",
+      }),
+    );
+    expect(formatInvestigationHistorySection([])).toBe("");
+    expect(formatWithInvestigationHistory(live, [])).toBe(live);
+    expect(formatWithInvestigationHistory(live, [])).not.toContain(
+      "INVESTIGATION HISTORY",
+    );
+    expect(formatWithInvestigationHistory(live, [])).not.toContain(
+      "No investigation snapshots saved for subject sentry:project:450",
+    );
+    expect(
+      formatInvestigationList([], "sentry:project:450"),
+    ).toContain(
+      "No investigation snapshots saved for subject sentry:project:450",
+    );
+  });
+
+  test("live and reopen summaries are id plus composedAt for that subject only", () => {
+    seedSubject();
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.init();
+    store.applyResource(other, {
+      id: "obs-other",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const older = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+    const newer = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const otherSaved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "github:repository:1001",
+      composedAt: "2026-08-16T11:00:00.000Z",
+    });
+
+    const rows = listInvestigations(dir, {
+      subjectResourceId: "sentry:project:450",
+    });
+    expect(rows.map((r) => r.id)).toEqual([newer.record.id, older.record.id]);
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({
+        baseDir: dir,
+        resourceRef: "sentry:project:450",
+      }),
+    );
+    const rendered = formatWithInvestigationHistory(live, rows);
+    expect(rendered).toContain("INVESTIGATION HISTORY");
+    expect(rendered).toContain("Retained compositions of this subject.");
+    expect(rendered).toContain("They are not current provider truth.");
+    expect(rendered).toContain("They are not an incident.");
+    expect(rendered).toContain(`${newer.record.id}  2026-08-16T12:00:00.000Z`);
+    expect(rendered).toContain(`${older.record.id}  2026-08-16T10:00:00.000Z`);
+    expect(rendered.indexOf(newer.record.id)).toBeLessThan(
+      rendered.indexOf(older.record.id),
+    );
+    expect(rendered).not.toContain(otherSaved.record.id);
+    expect(rendered).not.toContain("github:repository:1001");
+    expect(rendered).toContain(
+      `Show: bun run combie investigation ${newer.record.id}`,
+    );
+    expect(rendered).not.toMatch(/you should/i);
+    expect(rendered.indexOf("SUBJECT")).toBeLessThan(
+      rendered.indexOf("INVESTIGATION HISTORY"),
+    );
+
+    const reopened = formatWithInvestigationHistory(
+      formatSavedInvestigation(getSavedInvestigation(dir, older.record.id)),
+      rows,
+    );
+    expect(reopened).toContain("INVESTIGATION SNAPSHOT");
+    expect(reopened).toContain("INVESTIGATION HISTORY");
+    expect(reopened).toContain(older.record.id);
+    expect(reopened).toContain(newer.record.id);
+    expect(reopened).not.toContain(otherSaved.record.id);
+  });
+
+  test("save liveOutput and snapshot JSON stay InvestigationContext-only", () => {
+    seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    expect(saved.liveOutput).not.toContain("INVESTIGATION HISTORY");
+    expect(JSON.stringify(saved.record.snapshot)).not.toContain(
+      "INVESTIGATION HISTORY",
+    );
+    expect(saved.record.snapshot).not.toHaveProperty("investigationHistory");
+
+    const store = new Store(dir);
+    store.init();
+    const row = store.getInvestigationRow(saved.record.id);
+    store.close();
+    expect(row?.snapshotJson).not.toContain("INVESTIGATION HISTORY");
+    expect(JSON.parse(row!.snapshotJson)).not.toHaveProperty(
+      "investigationHistory",
+    );
+
+    const wrapped = formatWithInvestigationHistory(
+      saved.liveOutput,
+      listInvestigations(dir, { subjectResourceId: saved.record.subjectResourceId }),
+    );
+    expect(wrapped).toContain("INVESTIGATION HISTORY");
+    expect(wrapped).toContain(saved.record.id);
+    const after = new Store(dir);
+    after.init();
+    expect(after.getInvestigationRow(saved.record.id)?.snapshotJson).toBe(
+      row?.snapshotJson,
+    );
+    after.close();
+  });
+
+  test("subject Resource deletion keeps reopen history and live compose fails", () => {
+    seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = 'sentry:project:450'`);
+    db.close();
+
+    expect(() =>
+      getInvestigationContext({
+        baseDir: dir,
+        resourceRef: "sentry:project:450",
+      }),
+    ).toThrow(/Resource not found/);
+
+    const reopened = formatWithInvestigationHistory(
+      formatSavedInvestigation(getSavedInvestigation(dir, saved.record.id)),
+      listInvestigations(dir, {
+        subjectResourceId: saved.record.subjectResourceId,
+      }),
+    );
+    expect(reopened).toContain("INVESTIGATION HISTORY");
+    expect(reopened).toContain(saved.record.id);
+    expect(reopened).toContain("2026-08-16T12:00:00.000Z");
   });
 });
