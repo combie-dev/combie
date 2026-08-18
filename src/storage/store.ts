@@ -253,7 +253,7 @@ CREATE INDEX IF NOT EXISTS investigations_composed_at_id_idx
 
 CREATE TABLE IF NOT EXISTS resolutions (
   id TEXT PRIMARY KEY,
-  investigation_id TEXT NOT NULL,
+  investigation_id TEXT,
   subject_resource_id TEXT NOT NULL,
   recorded_at TEXT NOT NULL,
   decision TEXT,
@@ -313,6 +313,9 @@ export class Store {
     this.ensureNullableTextColumn(db, "sentry_releases", "git_commit_sha");
     // Sprint 054: pre-054 resolutions lack evidence_ids (nullable JSON array).
     this.ensureNullableTextColumn(db, "resolutions", "evidence_ids");
+    // Sprint 057: pre-057 investigation_id is NOT NULL. Rebuild so Resource-
+    // anchored rows can omit it. Existing rows keep their investigation ids.
+    this.ensureResolutionsInvestigationIdNullable(db);
   }
 
   /**
@@ -381,6 +384,60 @@ export class Store {
     if (rows.some((row) => row.name === column)) return false;
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
     return true;
+  }
+
+  /**
+   * Sprint 057: drop NOT NULL on resolutions.investigation_id.
+   * CREATE TABLE IF NOT EXISTS cannot change an existing column.
+   * Copies rows unchanged — never invents an investigation id.
+   */
+  private ensureResolutionsInvestigationIdNullable(db: Database): void {
+    const columns = db
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string; notnull: number }>;
+    if (columns.length === 0) return;
+    const investigation = columns.find((column) => column.name === "investigation_id");
+    if (!investigation || investigation.notnull === 0) return;
+    const hasEvidence = columns.some((column) => column.name === "evidence_ids");
+    db.exec(`
+      CREATE TABLE resolutions_057 (
+        id TEXT PRIMARY KEY,
+        investigation_id TEXT,
+        subject_resource_id TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        decision TEXT,
+        action TEXT,
+        outcome TEXT,
+        evidence_ids TEXT
+      );
+    `);
+    if (hasEvidence) {
+      db.exec(
+        `INSERT INTO resolutions_057 (
+           id, investigation_id, subject_resource_id, recorded_at,
+           decision, action, outcome, evidence_ids
+         )
+         SELECT id, investigation_id, subject_resource_id, recorded_at,
+                decision, action, outcome, evidence_ids
+         FROM resolutions`,
+      );
+    } else {
+      db.exec(
+        `INSERT INTO resolutions_057 (
+           id, investigation_id, subject_resource_id, recorded_at,
+           decision, action, outcome, evidence_ids
+         )
+         SELECT id, investigation_id, subject_resource_id, recorded_at,
+                decision, action, outcome, NULL
+         FROM resolutions`,
+      );
+    }
+    db.exec(`DROP TABLE resolutions`);
+    db.exec(`ALTER TABLE resolutions_057 RENAME TO resolutions`);
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS resolutions_recorded_at_id_idx
+       ON resolutions(recorded_at DESC, id DESC)`,
+    );
   }
 
   /** Baseline only Resources that existed before Change detection was enabled. */
@@ -1518,7 +1575,7 @@ export class Store {
 
   insertResolution(row: {
     id: string;
-    investigationId: string;
+    investigationId?: string;
     subjectResourceId: string;
     recordedAt: string;
     decision?: string;
@@ -1535,7 +1592,7 @@ export class Store {
       )
       .run(
         row.id,
-        row.investigationId,
+        row.investigationId ?? null,
         row.subjectResourceId,
         row.recordedAt,
         row.decision ?? null,
@@ -1631,7 +1688,7 @@ export class Store {
 
 type ResolutionSqlRow = {
   id: string;
-  investigation_id: string;
+  investigation_id: string | null;
   subject_resource_id: string;
   recorded_at: string;
   decision: string | null;
@@ -1642,7 +1699,7 @@ type ResolutionSqlRow = {
 
 type ResolutionRow = {
   id: string;
-  investigationId: string;
+  investigationId?: string;
   subjectResourceId: string;
   recordedAt: string;
   decision?: string;
@@ -1680,7 +1737,7 @@ function mapResolutionRow(
     : undefined;
   return {
     id: row.id,
-    investigationId: row.investigation_id,
+    ...(row.investigation_id ? { investigationId: row.investigation_id } : {}),
     subjectResourceId: row.subject_resource_id,
     recordedAt: row.recorded_at,
     ...(row.decision ? { decision: row.decision } : {}),

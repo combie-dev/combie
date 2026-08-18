@@ -581,6 +581,38 @@ describe("snapshot-to-current compare", () => {
     expect(withEvidence).not.toContain("RESOLUTION");
   });
 
+  test("compare ignores resource-anchored resolution records", () => {
+    const subjectResourceId = seedSentryProject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subjectResourceId,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const withoutResolution = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T13:00:00.000Z",
+      }),
+    );
+    recordResolution({
+      baseDir: dir,
+      subjectResourceId,
+      decision: "Resource-anchored rollback",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    const withResolution = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        comparedAt: "2026-08-16T13:00:00.000Z",
+      }),
+    );
+    expect(withResolution).toBe(withoutResolution);
+    expect(withResolution).not.toContain("Resource-anchored rollback");
+    expect(withResolution).not.toContain("RESOLUTION");
+  });
+
   test("missing ids and uninitialized state fail without inventing a compare", () => {
     expect(() =>
       compareInvestigationToCurrent({ baseDir: dir, investigationId: "" }),

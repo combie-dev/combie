@@ -1476,6 +1476,131 @@ describe("CLI commands", () => {
     expect(listed.stdout).not.toContain("Resource not found");
   });
 
+  test("resolution --resource records without a saved investigation", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "res057",
+      kind: "project",
+      name: "res-anchored",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-res057",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const recorded = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        project.id,
+        "--decision",
+        "Rollback",
+        "--action",
+        "Reverted deploy",
+        "--outcome",
+        "Errors dropped",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(recorded.code).toBe(0);
+    expect(recorded.stdout).toContain("Recorded resolution res:");
+    expect(recorded.stdout).toContain(`subject ${project.id}`);
+    expect(recorded.stdout).not.toContain("investigation ");
+    expect(recorded.stdout).not.toMatch(/incident/i);
+    const resMatch = recorded.stdout.match(/Recorded resolution (res:\S+)/);
+    expect(resMatch).not.toBeNull();
+    const resId = resMatch![1]!;
+
+    const shown = await capture(() => main(["resolution", resId, "--dir", dir]));
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain("SUBJECT:");
+    expect(shown.stdout).not.toContain("INVESTIGATION:");
+
+    const listed = await capture(() =>
+      main(["resolutions", "--resource", project.id, "--dir", dir]),
+    );
+    expect(listed.code).toBe(0);
+    expect(listed.stdout).toContain(resId);
+    expect(listed.stdout).toContain("-");
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    expect(live.code).toBe(0);
+    expect(live.stdout).toContain("RESOLUTION MEMORY");
+    expect(live.stdout).toContain(resId);
+    expect(live.stdout).toContain("Rollback");
+    const memoryLine = live.stdout
+      .split("\n")
+      .find((line) => line.startsWith(resId));
+    expect(memoryLine).toBeDefined();
+    expect(memoryLine).not.toContain("inv:");
+
+    const both = await capture(() =>
+      main([
+        "resolution",
+        "--investigation",
+        "inv:x",
+        "--resource",
+        project.id,
+        "--decision",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(both.code).toBe(1);
+    expect(both.stderr).toContain("--investigation");
+    expect(both.stderr).toContain("--resource");
+
+    const missing = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        "--decision",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain("--resource requires a resource id");
+
+    const unknown = await capture(() =>
+      main([
+        "resolution",
+        "--resource",
+        "sentry:project:missing",
+        "--decision",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("Resource not found");
+  });
+
+  test("help lists resource-anchored resolution record", async () => {
+    const help = await capture(() => main(["help"]));
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain(
+      'With "resolution": resource to record against (no saved investigation)',
+    );
+    expect(help.stdout).toContain(
+      'resolution --resource vercel:project:prj_abc --decision "Rollback"',
+    );
+    expect(help.stdout).toContain(
+      'resolution --investigation inv:… --decision "Rollback" --action "Reverted deploy" --outcome "Errors dropped"',
+    );
+  });
+
   test("help lists the resolutions --evidence list line and example", async () => {
     const help = await capture(() => main(["help"]));
     expect(help.code).toBe(0);

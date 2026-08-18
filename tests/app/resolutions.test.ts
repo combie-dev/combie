@@ -1270,3 +1270,268 @@ describe("exact evidence id retrieval (Sprint 055)", () => {
     expect(list).toContain("RECORDED AT");
   });
 });
+
+describe("resource-anchored resolution (Sprint 057)", () => {
+  test("records against an exact Resource without a saved Investigation", () => {
+    const subject = seedSubject();
+    const store = new Store(dir);
+    store.init();
+    const invCount = store.listInvestigationSummaries().length;
+    store.close();
+
+    const recorded = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback 1.4.2",
+      action: "Reverted deployment",
+      outcome: "Errors returned to baseline",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+
+    expect(recorded.id.startsWith("res:")).toBe(true);
+    expect(recorded.investigationId).toBeUndefined();
+    expect(recorded.subjectResourceId).toBe(subject.id);
+    expect(recorded.decision).toBe("Rollback 1.4.2");
+    expect(recorded.action).toBe("Reverted deployment");
+    expect(recorded.outcome).toBe("Errors returned to baseline");
+
+    const after = new Store(dir);
+    after.init();
+    expect(after.listInvestigationSummaries()).toHaveLength(invCount);
+    after.close();
+
+    expect(listResolutions(dir, { subjectResourceId: subject.id }).map((r) => r.id)).toEqual(
+      [recorded.id],
+    );
+    expect(listResolutions(dir, { investigationId: "inv:any" })).toEqual([]);
+    const listed = formatResolutionList(listResolutions(dir));
+    expect(listed).toContain(recorded.id);
+    expect(listed).toContain("-");
+    expect(listed).not.toContain("inv:none");
+    expect(listed).not.toMatch(/inv:[a-f0-9-]+/);
+  });
+
+  test("051 investigation path still copies investigationId", () => {
+    const subject = seedSubject();
+    const saved = saveSnapshot(subject.id);
+    const recorded = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Keep the Investigation path",
+    });
+    expect(recorded.investigationId).toBe(saved.record.id);
+    expect(recorded.subjectResourceId).toBe(subject.id);
+  });
+
+  test("still requires at least one of decision, action, or outcome", () => {
+    const subject = seedSubject();
+    expect(() =>
+      recordResolution({
+        baseDir: dir,
+        subjectResourceId: subject.id,
+      }),
+    ).toThrow(/At least one of --decision, --action, or --outcome/);
+  });
+
+  test("both anchors on one record fail without inserting", () => {
+    const subject = seedSubject();
+    const saved = saveSnapshot(subject.id);
+    expect(() =>
+      recordResolution({
+        baseDir: dir,
+        investigationId: saved.record.id,
+        subjectResourceId: subject.id,
+        decision: "Both",
+      }),
+    ).toThrow(/--investigation.*--resource|--resource.*--investigation/);
+    expect(listResolutions(dir)).toEqual([]);
+  });
+
+  test("unknown Resource fails as RESOURCE_NOT_FOUND without inserting", () => {
+    expect(() =>
+      recordResolution({
+        baseDir: dir,
+        subjectResourceId: "sentry:project:missing",
+        decision: "Rollback",
+      }),
+    ).toThrow(/Resource not found/);
+    expect(listResolutions(dir)).toEqual([]);
+  });
+
+  test("attaches --evidence validated against live investigate of that Resource", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    const recorded = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      evidenceIds: ["dpl_abc"],
+    });
+    expect(recorded.investigationId).toBeUndefined();
+    expect(recorded.evidenceIds).toEqual(["dpl_abc"]);
+    expect(listResolutions(dir, { evidenceId: "dpl_abc" }).map((r) => r.id)).toEqual(
+      [recorded.id],
+    );
+  });
+
+  test("unknown evidence id fails the whole record", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_abc"]);
+    expect(() =>
+      recordResolution({
+        baseDir: dir,
+        subjectResourceId: subject.id,
+        decision: "Rollback",
+        evidenceIds: ["dpl_xyz"],
+      }),
+    ).toThrow(/Evidence id not found/);
+    expect(listResolutions(dir)).toEqual([]);
+  });
+
+  test("omitted evidence never attaches newest activity", () => {
+    const subject = seedVercelSubject();
+    seedVercelEvidence(["dpl_newest"]);
+    const recorded = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Watch",
+    });
+    expect(recorded.evidenceIds).toBeUndefined();
+    expect(formatResolution(recorded)).not.toContain("EVIDENCE");
+    expect(formatResolution(recorded)).not.toContain("dpl_newest");
+  });
+
+  test("show omits INVESTIGATION line and confirmation omits investigation line", () => {
+    const subject = seedSubject();
+    const recorded = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+    });
+    const shown = formatResolution(recorded);
+    expect(shown).toContain("RESOLUTION");
+    expect(shown).toContain(`SUBJECT: ${subject.id}`);
+    expect(shown).not.toContain("INVESTIGATION:");
+    expect(shown).not.toMatch(/incident/i);
+    const confirm = formatRecordConfirmation(recorded);
+    expect(confirm).toContain(`Recorded resolution ${recorded.id}`);
+    expect(confirm).toContain(`subject ${subject.id}`);
+    expect(confirm).not.toContain("investigation ");
+  });
+
+  test("live investigate memory includes the row without an inv: token; reopen does not", () => {
+    const subject = seedSubject();
+    const saved = saveSnapshot(subject.id);
+    const anchored = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Investigation-anchored",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const resourceOnly = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Resource-anchored",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+
+    const subjectSection = formatResolutionMemorySection(
+      listResolutions(dir, { subjectResourceId: subject.id }),
+      "subject",
+    );
+    expect(subjectSection).toContain(resourceOnly.id);
+    expect(subjectSection).toContain(anchored.id);
+    const resourceLine = subjectSection
+      .split("\n")
+      .find((line) => line.startsWith(resourceOnly.id));
+    expect(resourceLine).toBeDefined();
+    expect(resourceLine).not.toContain("inv:");
+    expect(resourceLine).toContain(resourceOnly.recordedAt);
+
+    const invSection = formatResolutionMemorySection(
+      listResolutions(dir, { investigationId: saved.record.id }),
+      "investigation",
+    );
+    expect(invSection).toContain(anchored.id);
+    expect(invSection).not.toContain(resourceOnly.id);
+
+    const frozenJson = serializeInvestigationSnapshot(saved.record.snapshot);
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozenJson);
+  });
+
+  test("subject Resource deletion still lists the row", () => {
+    const subject = seedSubject();
+    const recorded = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
+    db.close();
+    const listed = listResolutions(dir, { subjectResourceId: subject.id });
+    expect(listed.map((r) => r.id)).toEqual([recorded.id]);
+    expect(() =>
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    ).toThrow(/Resource not found/);
+  });
+
+  test("pre-057 NOT NULL investigation_id upgrades on init and keeps 051 rows", () => {
+    const subject = seedSubject();
+    const saved = saveSnapshot(subject.id);
+    const prior = recordResolution({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      decision: "Keep me",
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DROP TABLE resolutions`);
+    db.exec(`
+      CREATE TABLE resolutions (
+        id TEXT PRIMARY KEY,
+        investigation_id TEXT NOT NULL,
+        subject_resource_id TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        decision TEXT,
+        action TEXT,
+        outcome TEXT,
+        evidence_ids TEXT
+      )
+    `);
+    db.query(
+      `INSERT INTO resolutions (
+         id, investigation_id, subject_resource_id, recorded_at, decision
+       ) VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      prior.id,
+      prior.investigationId!,
+      prior.subjectResourceId,
+      prior.recordedAt,
+      prior.decision!,
+    );
+    db.close();
+
+    const recorded = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Resource-anchored after upgrade",
+    });
+    expect(recorded.investigationId).toBeUndefined();
+    expect(getResolution(dir, prior.id).investigationId).toBe(
+      saved.record.id,
+    );
+    expect(getResolution(dir, prior.id).decision).toBe("Keep me");
+    const probe = new Database(dbPath(dir));
+    const info = probe
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string; notnull: number }>;
+    probe.close();
+    const investigationCol = info.find((c) => c.name === "investigation_id");
+    expect(investigationCol?.notnull).toBe(0);
+  });
+});

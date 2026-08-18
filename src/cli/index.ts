@@ -103,6 +103,7 @@ Investigate options:
   --compare                    With "investigation <id>": compare snapshot to current compose
   --resource <resource-id>     With "investigations": list snapshots for one subject
                                With "resolutions": list resolutions for one subject
+                               With "resolution": resource to record against (no saved investigation)
   --investigation <id>         With "resolution": investigation to record against
                                With "resolutions": list resolutions for one investigation
   --decision <text>            Explicit decision (what you decided)
@@ -148,6 +149,7 @@ Examples:
   ${BINARY_NAME} investigation inv:…
   ${BINARY_NAME} investigation inv:… --compare
   ${BINARY_NAME} resolution --investigation inv:… --decision "Rollback" --action "Reverted deploy" --outcome "Errors dropped"
+  ${BINARY_NAME} resolution --resource vercel:project:prj_abc --decision "Rollback"
   ${BINARY_NAME} resolutions --investigation inv:…
   ${BINARY_NAME} resolutions --resource github:repository:1001
   ${BINARY_NAME} resolutions --evidence dpl_abc
@@ -456,6 +458,13 @@ async function main(argv: string[]): Promise<number> {
           );
           return 1;
         }
+        const resourceFlag = optionalFlagId(flags.resource);
+        if (resourceFlag === "missing") {
+          console.error(
+            `--resource requires a resource id.\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+          );
+          return 1;
+        }
         const decision = optionalFlagText(flags.decision);
         const action = optionalFlagText(flags.action);
         const outcome = optionalFlagText(flags.outcome);
@@ -467,7 +476,7 @@ async function main(argv: string[]): Promise<number> {
                 ? "action"
                 : "outcome";
           console.error(
-            `--${flag} requires text.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+            `--${flag} requires text.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
           );
           return 1;
         }
@@ -477,20 +486,27 @@ async function main(argv: string[]): Promise<number> {
         ];
         if (flags.evidence === true || evidenceParts.some((id) => id.trim().length === 0)) {
           console.error(
-            `--evidence requires an evidence id.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+            `--evidence requires an evidence id.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
           );
           return 1;
         }
-        if (investigationFlag) {
+        if (investigationFlag && resourceFlag) {
+          console.error(
+            `Use exactly one of --investigation or --resource.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+          );
+          return 1;
+        }
+        if (investigationFlag || resourceFlag) {
           if (positionals[0]) {
             console.error(
-              `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nShow: ${BINARY_NAME} resolution <resolution-id>`,
+              `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nShow: ${BINARY_NAME} resolution <resolution-id>`,
             );
             return 1;
           }
           const recorded = recordResolution({
             baseDir,
-            investigationId: investigationFlag,
+            ...(investigationFlag ? { investigationId: investigationFlag } : {}),
+            ...(resourceFlag ? { subjectResourceId: resourceFlag } : {}),
             ...(decision ? { decision } : {}),
             ...(action ? { action } : {}),
             ...(outcome ? { outcome } : {}),
@@ -502,13 +518,13 @@ async function main(argv: string[]): Promise<number> {
         const resolutionId = positionals[0];
         if (!resolutionId) {
           console.error(
-            `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nShow: ${BINARY_NAME} resolution <resolution-id>\nList ids: ${BINARY_NAME} resolutions`,
+            `Usage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nShow: ${BINARY_NAME} resolution <resolution-id>\nList ids: ${BINARY_NAME} resolutions`,
           );
           return 1;
         }
         if (decision || action || outcome || evidenceParts.length > 0) {
           console.error(
-            `Recording a resolution requires --investigation.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+            `Recording a resolution requires --investigation or --resource.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
           );
           return 1;
         }

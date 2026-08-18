@@ -39,9 +39,11 @@ function toResolutionMemoryRow(
 ): Record<string, unknown> {
   const row: Record<string, unknown> = {
     id: record.id,
-    investigationId: record.investigationId,
     recordedAt: record.recordedAt,
   };
+  if (record.investigationId !== undefined) {
+    row.investigationId = record.investigationId;
+  }
   if (record.decision !== undefined) row.decision = record.decision;
   if (record.action !== undefined) row.action = record.action;
   if (record.outcome !== undefined) row.outcome = record.outcome;

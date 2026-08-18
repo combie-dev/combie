@@ -12,7 +12,9 @@ import { BINARY_NAME } from "../cli/constants.ts";
 
 export interface RecordResolutionOptions {
   baseDir: string;
-  investigationId: string;
+  investigationId?: string;
+  /** Sprint 057: write identity when no Investigation is named. */
+  subjectResourceId?: string;
   decision?: string;
   action?: string;
   outcome?: string;
@@ -80,11 +82,18 @@ function validateEvidenceIds(
 export function recordResolution(
   options: RecordResolutionOptions,
 ): ResolutionRecord {
-  const investigationId = options.investigationId.trim();
-  if (!investigationId) {
+  const investigationId = trimField(options.investigationId);
+  const subjectResourceId = trimField(options.subjectResourceId);
+  if (investigationId && subjectResourceId) {
     throw new CombieError(
-      "INVESTIGATION_ID_REQUIRED",
-      `Investigation id is required.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+      "RESOLUTION_ANCHOR_CONFLICT",
+      `Use exactly one of --investigation or --resource.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
+    );
+  }
+  if (!investigationId && !subjectResourceId) {
+    throw new CombieError(
+      "RESOLUTION_ANCHOR_REQUIRED",
+      `Recording a resolution requires --investigation or --resource.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
     );
   }
   const decision = trimField(options.decision);
@@ -93,7 +102,7 @@ export function recordResolution(
   if (!decision && !action && !outcome) {
     throw new CombieError(
       "RESOLUTION_FIELDS_REQUIRED",
-      `At least one of --decision, --action, or --outcome is required.\nA content-free resolved flag is not a resolution.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>]`,
+      `At least one of --decision, --action, or --outcome is required.\nA content-free resolved flag is not a resolution.\nUsage: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]\nUsage: ${BINARY_NAME} resolution --resource <resource-id> --decision <text> [--action <text>] [--outcome <text>] [--evidence <id>]`,
     );
   }
 
@@ -101,12 +110,27 @@ export function recordResolution(
   try {
     if (!store.isInitialized()) throw notInitialized();
     store.init();
-    const investigation = store.getInvestigationRow(investigationId);
-    if (!investigation) {
-      throw new CombieError(
-        "INVESTIGATION_NOT_FOUND",
-        `Investigation not found: ${investigationId}\nList saved investigations: ${BINARY_NAME} investigations`,
-      );
+    let subjectId: string;
+    let recordInvestigationId: string | undefined;
+    if (investigationId) {
+      const investigation = store.getInvestigationRow(investigationId);
+      if (!investigation) {
+        throw new CombieError(
+          "INVESTIGATION_NOT_FOUND",
+          `Investigation not found: ${investigationId}\nList saved investigations: ${BINARY_NAME} investigations`,
+        );
+      }
+      subjectId = investigation.subjectResourceId;
+      recordInvestigationId = investigation.id;
+    } else {
+      const resource = store.getResource(subjectResourceId!);
+      if (!resource) {
+        throw new CombieError(
+          "RESOURCE_NOT_FOUND",
+          `Resource not found: ${subjectResourceId}\nUse a stable resource id (provider:kind:providerResourceId).\nList known resources: ${BINARY_NAME} resources`,
+        );
+      }
+      subjectId = resource.id;
     }
     const evidenceIds =
       options.evidenceIds !== undefined
@@ -119,16 +143,14 @@ export function recordResolution(
           ]
         : undefined;
     if (evidenceIds !== undefined && evidenceIds.length > 0) {
-      validateEvidenceIds(
-        options.baseDir,
-        investigation.subjectResourceId,
-        evidenceIds,
-      );
+      validateEvidenceIds(options.baseDir, subjectId, evidenceIds);
     }
     const record: ResolutionRecord = {
       id: resolutionId(randomUUID()),
-      investigationId: investigation.id,
-      subjectResourceId: investigation.subjectResourceId,
+      ...(recordInvestigationId
+        ? { investigationId: recordInvestigationId }
+        : {}),
+      subjectResourceId: subjectId,
       recordedAt: options.recordedAt ?? new Date().toISOString(),
       ...(decision ? { decision } : {}),
       ...(action ? { action } : {}),
@@ -217,18 +239,21 @@ export function formatResolutionList(
     if (filter?.subjectResourceId !== undefined) {
       return (
         `No resolutions recorded for subject ${filter.subjectResourceId}.\n` +
-        `Record one against a saved investigation of that subject.`
+        `Record one: ${BINARY_NAME} resolution --resource ${filter.subjectResourceId} --decision <text>`
       );
     }
     return (
       "No resolutions recorded yet.\n" +
-      `Record one: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text>`
+      `Record one: ${BINARY_NAME} resolution --investigation <investigation-id> --decision <text>\n` +
+      `Or: ${BINARY_NAME} resolution --resource <resource-id> --decision <text>`
     );
   }
+  const investigationLabel = (record: ResolutionRecord) =>
+    record.investigationId ?? "-";
   const col1 = Math.max("ID".length, ...records.map((r) => r.id.length));
   const col2 = Math.max(
     "INVESTIGATION".length,
-    ...records.map((r) => r.investigationId.length),
+    ...records.map((r) => investigationLabel(r).length),
   );
   const col3 = Math.max(
     "SUBJECT".length,
@@ -247,7 +272,7 @@ export function formatResolutionList(
       (r) =>
         r.id.padEnd(col1) +
         "  " +
-        r.investigationId.padEnd(col2) +
+        investigationLabel(r).padEnd(col2) +
         "  " +
         r.subjectResourceId.padEnd(col3) +
         "  " +
@@ -261,7 +286,9 @@ export function formatResolution(record: ResolutionRecord): string {
   const lines = [
     "RESOLUTION",
     `ID: ${record.id}`,
-    `INVESTIGATION: ${record.investigationId}`,
+    ...(record.investigationId
+      ? [`INVESTIGATION: ${record.investigationId}`]
+      : []),
     `SUBJECT: ${record.subjectResourceId}`,
     `Recorded by Combie at ${record.recordedAt}`,
     "This is retained organizational response. It is not current provider truth.",
@@ -288,6 +315,9 @@ function memoryIdentityLine(
   scope: ResolutionMemoryScope,
 ): string {
   if (scope === "investigation") {
+    return `${record.id}  ${record.recordedAt}`;
+  }
+  if (!record.investigationId) {
     return `${record.id}  ${record.recordedAt}`;
   }
   return `${record.id}  ${record.investigationId}  ${record.recordedAt}`;
@@ -348,7 +378,7 @@ export function formatWithResolutionMemory(
 export function formatRecordConfirmation(record: ResolutionRecord): string {
   return (
     `Recorded resolution ${record.id}\n` +
-    `investigation ${record.investigationId}\n` +
+    (record.investigationId ? `investigation ${record.investigationId}\n` : "") +
     `subject ${record.subjectResourceId}\n` +
     `recorded at ${record.recordedAt} as organizational response.\n` +
     `Show: ${BINARY_NAME} resolution ${record.id}`

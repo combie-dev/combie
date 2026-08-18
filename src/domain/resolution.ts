@@ -1,7 +1,8 @@
 /**
  * Smallest durable Resolution primitive (Sprint 051).
  *
- * Explicit organizational response hung on a saved Investigation.
+ * Explicit organizational response hung on a saved Investigation or,
+ * from Sprint 057, on an exact Resource with no Investigation snapshot.
  * Decision, action, and outcome are distinguishable fields — not
  * separate types, not an Incident, not Investigation lifecycle.
  *
@@ -9,10 +10,13 @@
  * human named at record time as what they say supported this response.
  * Optional, append-only, never inferred from provider activity, never
  * proof of causality.
+ *
+ * investigationId is omitted when the human recorded against a Resource
+ * without naming a saved Investigation. Never a sentinel or empty string.
  */
 export interface ResolutionRecord {
   id: string;
-  investigationId: string;
+  investigationId?: string;
   subjectResourceId: string;
   /** Combie observation time of the record (ISO). */
   recordedAt: string;
