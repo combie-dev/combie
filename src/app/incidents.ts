@@ -230,6 +230,60 @@ export function removeIncidentResolutions(
   }
 }
 
+export interface RetitleIncidentOptions {
+  baseDir: string;
+  incidentId: string;
+  title: string;
+}
+
+export function retitleIncident(
+  options: RetitleIncidentOptions,
+): IncidentRecord {
+  const incidentId = options.incidentId.trim();
+  if (!incidentId) {
+    throw new CombieError(
+      "INCIDENT_ID_REQUIRED",
+      `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --title <text>\nList ids: ${BINARY_NAME} incidents`,
+    );
+  }
+  const title = trimField(options.title);
+  if (!title) {
+    throw new CombieError(
+      "INCIDENT_TITLE_UNCHANGED",
+      `--title requires text.\nUsage: ${BINARY_NAME} incident <incident-id> --title <text>`,
+    );
+  }
+  const store = new Store(options.baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    store.init();
+    const incident = store.getIncidentRow(incidentId);
+    if (!incident) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incidentId}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    if (incident.title === title) {
+      throw new CombieError(
+        "INCIDENT_TITLE_UNCHANGED",
+        `Incident ${incident.id} already has that title.\nNothing was renamed.\nShow: ${BINARY_NAME} incident ${incident.id}`,
+      );
+    }
+    store.updateIncidentTitle(incident.id, title);
+    const record = store.getIncidentRow(incident.id);
+    if (!record) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incident.id}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    return record;
+  } finally {
+    store.close();
+  }
+}
+
 export function listIncidents(baseDir: string): IncidentRecord[] {
   const store = new Store(baseDir);
   try {
@@ -398,6 +452,16 @@ export function formatIncidentRemoveConfirmation(
   return (
     `Removed from incident ${record.id}\n` +
     `${removedIds.join("\n")}\n` +
+    `Show: ${BINARY_NAME} incident ${record.id}`
+  );
+}
+
+export function formatIncidentRetitleConfirmation(
+  record: IncidentRecord,
+): string {
+  return (
+    `Renamed incident ${record.id}\n` +
+    `${record.title}\n` +
     `Show: ${BINARY_NAME} incident ${record.id}`
   );
 }

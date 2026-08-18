@@ -1795,6 +1795,24 @@ export class Store {
     );
   }
 
+  /**
+   * Replace an Incident's title. recorded_at and resolution_ids are
+   * untouched. This never DELETEs the Incident or any Resolution row.
+   */
+  updateIncidentTitle(incidentId: string, title: string): void {
+    const db = this.getWritableDb();
+    const row = db
+      .query(`SELECT id FROM incidents WHERE id = ?`)
+      .get(incidentId) as { id: string } | null;
+    if (!row) {
+      throw new Error(`Incident not found: ${incidentId}`);
+    }
+    db.query(`UPDATE incidents SET title = ? WHERE id = ?`).run(
+      title,
+      incidentId,
+    );
+  }
+
   listIncidentSummaries(): IncidentRow[] {
     const db = this.getDb();
     if (!this.hasIncidentsTable(db)) return [];

@@ -52,6 +52,7 @@ import {
   formatIncidentConfirmation,
   formatIncidentList,
   formatIncidentRemoveConfirmation,
+  formatIncidentRetitleConfirmation,
   formatWithIncidentMemory,
   getIncident,
   listIncidents,
@@ -61,6 +62,7 @@ import {
   recordIncident,
   appendIncidentResolutions,
   removeIncidentResolutions,
+  retitleIncident,
 } from "../app/incidents.ts";
 import {
   compareInvestigationToCurrent,
@@ -136,7 +138,7 @@ Investigate options:
   --resolution <resolution-id> With "incident": exact Resolution id to group at create (repeatable), or to append to incident <id>
                                With "incidents": list groupings that named that exact resolution id (membership only; one exact id)
   --remove-resolution <resolution-id> With "incident <id>": exact current member Resolution id to detach (repeatable; remaining members must stay ≥2)
-  --title <text>               Optional name for an incident grouping
+  --title <text>               Optional name for an incident grouping at create, or to retitle incident <id>
 
 Resolution memory appears on investigate and investigation reopen
 when records exist, including the recorded text.
@@ -186,6 +188,7 @@ Examples:
   ${BINARY_NAME} incident --resolution res:… --resolution res:… --title "API error spike"
   ${BINARY_NAME} incident inc:… --resolution res:…
   ${BINARY_NAME} incident inc:… --remove-resolution res:…
+  ${BINARY_NAME} incident inc:… --title "Better name"
   ${BINARY_NAME} incidents
   ${BINARY_NAME} incidents --resolution res:…
   ${BINARY_NAME} incidents --resource github:repository:1001
@@ -696,7 +699,13 @@ async function main(argv: string[]): Promise<number> {
         const title = optionalFlagText(flags.title);
         if (title === "missing") {
           console.error(
-            `--title requires text.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]`,
+            `--title requires text.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nUsage: ${BINARY_NAME} incident <incident-id> --title <text>`,
+          );
+          return 1;
+        }
+        if ((repeated.title ?? []).length > 0) {
+          console.error(
+            `--title takes one exact title on retitle.\nUsage: ${BINARY_NAME} incident <incident-id> --title <text>`,
           );
           return 1;
         }
@@ -769,10 +778,13 @@ async function main(argv: string[]): Promise<number> {
           return 1;
         }
         if (title) {
-          console.error(
-            `Recording an incident requires --resolution ids.\nUsage: ${BINARY_NAME} incident --resolution <resolution-id> --resolution <resolution-id> [--title <text>]\nShow: ${BINARY_NAME} incident <incident-id>`,
-          );
-          return 1;
+          const renamed = retitleIncident({
+            baseDir,
+            incidentId: incidentShowId,
+            title,
+          });
+          console.log(formatIncidentRetitleConfirmation(renamed));
+          return 0;
         }
         const incident = getIncident(baseDir, incidentShowId);
         console.log(formatIncident(incident));

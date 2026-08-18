@@ -15,6 +15,7 @@ import {
   formatIncidentAppendConfirmation,
   formatIncidentConfirmation,
   formatIncidentRemoveConfirmation,
+  formatIncidentRetitleConfirmation,
   formatIncidentList,
   formatIncidentMemorySection,
   formatWithIncidentMemory,
@@ -26,6 +27,7 @@ import {
   listIncidentsForSubject,
   recordIncident,
   removeIncidentResolutions,
+  retitleIncident,
 } from "../../src/app/incidents.ts";
 import {
   formatInvestigationContext,
@@ -2411,5 +2413,196 @@ describe("remove existing members after Incident record (Sprint 065)", () => {
     );
     expect(compared).not.toContain("INCIDENT MEMORY");
     expect(compared).not.toContain("res:c");
+  });
+});
+
+describe("retitle an existing Incident (Sprint 066)", () => {
+  test("replaces the stored title; members and recordedAt unchanged", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id, { decision: "Rollback" });
+    seedResolution("res:b", subject.id, { decision: "Hold deploys" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+
+    const renamed = retitleIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      title: "Better name",
+    });
+    expect(renamed.id).toBe(incident.id);
+    expect(renamed.title).toBe("Better name");
+    expect(renamed.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(renamed.resolutionIds).toEqual(["res:a", "res:b"]);
+
+    const stored = getIncident(dir, incident.id);
+    expect(stored.title).toBe("Better name");
+    expect(stored.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(stored.resolutionIds).toEqual(["res:a", "res:b"]);
+
+    const probe = new Database(dbPath(dir));
+    const columns = probe
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string }>;
+    probe.close();
+    expect(columns.map((c) => c.name)).not.toContain("incident_id");
+    expect(stored.resolutionIds.some((id) => id.startsWith("inv:"))).toBe(
+      false,
+    );
+  });
+
+  test("grouping that omitted title at create can gain a first title", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    expect(incident.title).toBeUndefined();
+    const renamed = retitleIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      title: "Named later",
+    });
+    expect(renamed.title).toBe("Named later");
+    expect(formatIncident(renamed)).toContain("Named later");
+    expect(getIncident(dir, incident.id).recordedAt).toBe(
+      "2026-08-18T09:00:00.000Z",
+    );
+  });
+
+  test("confirmation names the inc: and the new title; distinct from create/append/remove", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const renamed = retitleIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      title: "Better name",
+    });
+    const confirm = formatIncidentRetitleConfirmation(renamed);
+    expect(confirm).toContain(`Renamed incident ${incident.id}`);
+    expect(confirm).toContain("Better name");
+    expect(confirm).not.toContain("API error spike");
+    expect(confirm).not.toMatch(/^Recorded incident/);
+    expect(confirm).not.toMatch(/^Updated incident/);
+    expect(confirm).not.toMatch(/^Removed from incident/);
+    const shown = formatIncident(renamed);
+    expect(shown).toContain("TITLE");
+    expect(shown).toContain("Better name");
+    expect(shown).not.toContain("API error spike");
+  });
+
+  test("same text as stored title is INCIDENT_TITLE_UNCHANGED; nothing written", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const error = expectCode(
+      () =>
+        retitleIncident({
+          baseDir: dir,
+          incidentId: incident.id,
+          title: "  API error spike  ",
+        }),
+      "INCIDENT_TITLE_UNCHANGED",
+    );
+    expect(error.message).toContain(incident.id);
+    expect(getIncident(dir, incident.id).title).toBe("API error spike");
+  });
+
+  test("unknown inc: is INCIDENT_NOT_FOUND", () => {
+    expectCode(
+      () =>
+        retitleIncident({
+          baseDir: dir,
+          incidentId: "inc:missing",
+          title: "Better name",
+        }),
+      "INCIDENT_NOT_FOUND",
+    );
+  });
+
+  test("058 create with title unchanged when positional is absent", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const created = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "Create still works",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    expect(created.title).toBe("Create still works");
+    expect(created.resolutionIds).toEqual(["res:a", "res:b"]);
+  });
+
+  test("incidents list TITLE column and INCIDENT MEMORY observe the new title", () => {
+    const subject = seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const frozen = serializeInvestigationSnapshot(saved.record.snapshot);
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    retitleIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      title: "Better name",
+    });
+
+    const listed = formatIncidentList(listIncidents(dir));
+    expect(listed).toContain("Better name");
+    expect(listed).not.toContain("API error spike");
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    const rendered = formatWithIncidentMemory(
+      live,
+      listIncidentsForSubject(dir, subject.id),
+      "subject",
+    );
+    expect(rendered).toContain("INCIDENT MEMORY");
+    expect(rendered).toContain("Better name");
+    expect(rendered).not.toContain("API error spike");
+
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozen);
+    const compared = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+      }),
+    );
+    expect(compared).not.toContain("INCIDENT MEMORY");
+    expect(compared).not.toContain("Better name");
   });
 });
