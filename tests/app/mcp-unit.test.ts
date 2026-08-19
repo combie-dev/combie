@@ -93,6 +93,37 @@ describe("mcp unit tests", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("listProviders exposes lastAttemptAt when set", () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-3b-"));
+    initCombie(dir);
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    store.upsertProvider({
+      id: "vercel",
+      name: "Vercel",
+      status: "connected",
+      config: { accountId: "team_1" },
+    });
+    store.close();
+
+    const { listProviders } = require("../../src/app/list") as typeof import("../../src/app/list");
+    const result = listProviders(dir);
+    const github = result.providers.find((p) => p.id === "github");
+    const vercel = result.providers.find((p) => p.id === "vercel");
+    expect(github!.lastAttemptAt).toBe("2026-08-19T09:00:00.000Z");
+    expect(vercel!.lastAttemptAt).toBeNull();
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("getInvestigationContext via app layer returns expected data", () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-4-"));
     initCombie(dir);

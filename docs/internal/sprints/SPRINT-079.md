@@ -1,6 +1,6 @@
 # SPRINT-079 — Resource CURRENT Observation Clocks
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-078 (complete)
 > **Authorized by:** `docs/internal/ARCHITECTURE.md` Source Authority
 > Contract and `docs/internal/ROADMAP.md` Next Work Sequence
@@ -567,20 +567,20 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 079 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: failed sync records last attempt; CURRENT shows
+- [x] Sprint 079 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: failed sync records last attempt; CURRENT shows
       observation clocks; Missing Context when attempt > success;
       Resources not deleted; MCP observes clocks on existing tools
-- [ ] if earned: no `--json`; no fifth tool; no 078 leftover thaw;
+- [x] if earned: no `--json`; no fifth tool; no 078 leftover thaw;
       no generic Observation type
-- [ ] if not earned: rejection documented; do not invent CURRENT
+- [x] if not earned: rejection documented; do not invent CURRENT
       authority
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline and CLI
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline and CLI
       help unless Phase 2 found a lie
 
 ---
@@ -591,3 +591,137 @@ git diff --check
 > Resource CURRENT must learn the same distinction. Combie must not
 > present a stored Resource as quieter, newer truth than the
 > provider that owns it.**
+
+---
+
+# Completion Notes (2026-08-19)
+
+## Phase 1 — Repository Understanding
+
+HEAD `d440f4d` (Canon authorization). Pins:
+
+1. Failed sync currently leaves `last_sync_at` unchanged?
+   **Yes.** `Store.setLastSync` runs only at the end of `syncOne`.
+   `syncProviders` catch now stamps `last_attempt_at` without
+   touching success or Resources.
+2. `Resource.updatedAt` unused on CURRENT today? **Was yes.**
+   CURRENT on `investigate` / `context` / `history` now prints
+   `observed by Combie at: ${updatedAt}`.
+3. Evidence families already have attempt vs success? **Yes.**
+   Meaning reused; those refresh tables untouched.
+4. CLI `--json` exists? **No.** Help still omits it.
+5. `inv:` as Incident members / fifth tool? **No.**
+   `incident --investigation` still usage.
+6. CURRENT clock copy pinned:
+   `observed by Combie at` / `last successful provider sync` /
+   `last provider sync attempt`. Missing Context kind pinned:
+   `unknown_provider_sync_authority`. Equal clocks still show
+   both provider lines; omit a line only when that timestamp is
+   null. `providers` LAST ATTEMPT column shows `—` when attempt
+   equals success or is null.
+7. MCP observe-only of the new fields; no fifth tool. **Yes.**
+   `list_providers.lastAttemptAt` omitted when null.
+   `investigate_resource` subject observes
+   `lastSuccessfulProviderSyncAt` /
+   `lastProviderSyncAttemptAt` when present.
+8. No Resource deletion; no generic Observation type. **Yes.**
+
+## Phase 2 — Architecture Pressure
+
+1. Persistence necessary? **Yes** — nullable
+   `providers.last_attempt_at` plus `setLastAttempt`. Success
+   clock unchanged.
+2. Second source of truth? **No.** CURRENT cites provider clocks
+   + `Resource.updatedAt`. No parallel Resource freshness row.
+3. Inferred deletion / existence? **No.**
+4. Evidence-refresh leak? **No.**
+5. CLI `--json` / artifact / skill leak? **No.**
+6. 078 leftover leak? **No.**
+7. MCP tool / write needed? **No.** Existing tools observe.
+8. Compare / snapshot change? **No fifth section.** Live
+   `unknown_provider_sync_authority` can appear as MISSING
+   CONTEXT CURRENT ONLY. Snapshot JSON strips
+   `providerSyncClocks` so 048 schema stays unchanged.
+   AUTHORITY CLOCKS remains evidence-family refresh clocks.
+9. Canon? AGENTS.md operational baseline + CLI help. ARCHITECTURE
+   / ROADMAP already recorded this sequence in `d440f4d`.
+   `docs/public/MCP.md` unchanged (high-level tool table; does
+   not enumerate `lastSyncAt` fields).
+
+No STOP conflict.
+
+## Implemented
+
+- Additive nullable `providers.last_attempt_at`.
+  `setLastAttempt` does not change `last_sync_at`. Safe backfill:
+  `last_attempt_at = last_sync_at` only where attempt is NULL and
+  success is present.
+- `syncOne` success writes both clocks to the same ISO.
+  `syncProviders` catch stamps attempt only when the provider
+  row exists (missing row is not a sync try).
+- CURRENT on `investigate` / `context` / `history` shows
+  Combie observation time and both provider clocks.
+- Missing Context `unknown_provider_sync_authority` on the
+  subject only when attempt > success. Equal / null clocks do
+  not emit it.
+- `providers` table: LAST SYNC remains last success; LAST
+  ATTEMPT is visible when it differs.
+- MCP `list_providers` / `investigate_resource` subject observe
+  the clocks; four tools; read-only.
+- `serializeInvestigationSnapshot` strips `providerSyncClocks`.
+- `Store.close()` checkpoints WAL so `combie.db` hashes include
+  committed rows (MCP digest tests were hashing the 4 KiB WAL
+  header).
+
+## Deviations
+
+None that change the claim. Phase 1 pinned showing both provider
+clock lines when equal (not collapsing CURRENT). The providers
+table still shows `—` for LAST ATTEMPT when equal — that is the
+sprint's "attempt visible when different" pin for `providers`,
+not CURRENT.
+
+## Validation
+
+```text
+baseline:          d440f4d docs(canon): record source-authority
+                   invariants and open Sprint 079
+                   HEAD tests: Sprint 078 suite (1132 pass /
+                   78 files / 5893 expect in SPRINT-078 notes).
+                   Isolated HEAD worktree without node_modules
+                   could not load MCP modules (4 import errors);
+                   not a product regression.
+bun test:          1160 pass across 79 files (6001 expect()
+                   calls)
+bun run typecheck: clean
+git diff --check:  clean
+live (isolated):   not performed (no live-provider dogfood this
+                   slice; clocks are local sync metadata)
+founder .combie:   combie.db mtime/size/hash unchanged
+```
+
+## Learnings
+
+- `last_sync_at` was already last success. The missing clock was
+  last attempt, not a per-Resource membership set.
+- CURRENT can cite `Resource.updatedAt` without treating it as
+  provider-native event time. The new Missing Context kind is
+  the unknown-inventory claim; clocks alone are not deletion
+  authority.
+- WAL mode left committed rows in `combie.db-wal`. Hashing only
+  `combie.db` made MCP "bytes unchanged" tests hash the same
+  4 KiB header (`a209ba85…`) until a later connection
+  checkpointed. `close()` now `PRAGMA wal_checkpoint(TRUNCATE)`.
+- Snapshot JSON must not retain live provider clocks. Reopen
+  still shows `observed by Combie at` from the retained
+  Resource.updatedAt; provider attempt/success stay live-only.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, SKILL, and `docs/public/MCP.md`
+unchanged during implementation. AGENTS.md baseline becomes
+Sprints 001–079 complete. CLI help records LAST SYNC vs LAST
+ATTEMPT. Grouping Investigation snapshots as Incident members
+remains unearned. Fifth-tool snapshot reopen /
+`list_investigations` remains unearned. CLI `--json` remains
+sequence item 2.

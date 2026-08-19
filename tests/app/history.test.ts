@@ -153,6 +153,74 @@ describe("Resource history", () => {
     ).toBe(true);
   });
 
+  test("CURRENT shows observation and provider clocks when the provider has them", () => {
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+    });
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "915052094",
+      kind: "repository",
+      name: "combie",
+      metadata: {},
+      createdAt: "2026-08-18T08:00:00.000Z",
+      updatedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.close();
+
+    const output = formatResourceHistory(
+      getResourceHistory({ baseDir: dir, resourceRef: resource.id }),
+    );
+    expect(output).toContain("observed by Combie at: 2026-08-18T08:00:00.000Z");
+    expect(output).toContain(
+      "last successful provider sync: 2026-08-18T10:00:00.000Z",
+    );
+    expect(output).toContain(
+      "last provider sync attempt: 2026-08-19T09:00:00.000Z",
+    );
+  });
+
+  test("CURRENT omits null provider clock lines", () => {
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "915052094",
+      kind: "repository",
+      name: "combie",
+      metadata: {},
+      createdAt: "2026-08-18T08:00:00.000Z",
+      updatedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.close();
+
+    const output = formatResourceHistory(
+      getResourceHistory({ baseDir: dir, resourceRef: resource.id }),
+    );
+    expect(output).toContain("observed by Combie at: 2026-08-18T08:00:00.000Z");
+    expect(output).not.toContain("last successful provider sync");
+    expect(output).not.toContain("last provider sync attempt");
+  });
+
   test("rejects blank, unknown, and uninitialized exact references", () => {
     expect(() => getResourceHistory({ baseDir: dir, resourceRef: "   " })).toThrow(
       CombieError,

@@ -829,6 +829,63 @@ describe("composeMissingContext", () => {
     composeMissingContext(ctx);
     expect(ctx).toEqual(snapshot);
   });
+
+  test("unknown_provider_sync_authority is emitted only when the last attempt is after the last success", () => {
+    const items = composeMissingContext(
+      context({
+        providerSyncClocks: {
+          lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z",
+          lastAttemptAt: "2026-08-19T09:00:00.000Z",
+        },
+      }),
+    );
+    expect(kinds(items)).toContain("unknown_provider_sync_authority");
+    const item = items.find(
+      (entry) => entry.kind === "unknown_provider_sync_authority",
+    );
+    expect(item).toMatchObject({
+      scope: {
+        resourceId: "cloudflare:worker:worker-1",
+        role: "subject",
+        relationships: [],
+      },
+      provider: "cloudflare",
+      lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+    });
+    expect(formatMissingContextItem(item!)).toContain(
+      "Provider sync is currently unknown for cloudflare:worker:worker-1",
+    );
+    expect(formatMissingContextItem(item!)).toContain(
+      "must not be treated as current provider inventory",
+    );
+  });
+
+  test("equal clocks do not emit the provider-sync kind", () => {
+    const items = composeMissingContext(
+      context({
+        providerSyncClocks: {
+          lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z",
+          lastAttemptAt: "2026-08-18T10:00:00.000Z",
+        },
+      }),
+    );
+    expect(kinds(items)).not.toContain("unknown_provider_sync_authority");
+  });
+
+  test("attempt null or success null do not emit the provider-sync kind", () => {
+    for (const providerSyncClocks of [
+      { lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z", lastAttemptAt: null },
+      { lastSuccessfulSyncAt: null, lastAttemptAt: "2026-08-19T09:00:00.000Z" },
+      { lastSuccessfulSyncAt: null, lastAttemptAt: null },
+    ]) {
+      const items = composeMissingContext(context({ providerSyncClocks }));
+      expect(kinds(items)).not.toContain("unknown_provider_sync_authority");
+    }
+    expect(
+      kinds(composeMissingContext(context())),
+    ).not.toContain("unknown_provider_sync_authority");
+  });
 });
 
 describe("missing context CLI formatting", () => {

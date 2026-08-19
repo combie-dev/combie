@@ -4,6 +4,10 @@ import type { Resource } from "../domain/resource.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { BINARY_NAME } from "../cli/constants.ts";
+import {
+  formatCurrentClockLines,
+  type ProviderSyncClocks,
+} from "./provider-sync-clocks.ts";
 import { getResourceHistoryForResource } from "./history.ts";
 import {
   getRelatedContextForResource,
@@ -15,6 +19,7 @@ export interface ResourceContext {
   resource: Resource;
   related: RelatedNeighbor[];
   changes: Change[];
+  providerSyncClocks: ProviderSyncClocks;
 }
 
 export interface GetResourceContextOptions {
@@ -56,6 +61,7 @@ export function getResourceContext(
       resource,
       related: related.related,
       changes: history.changes,
+      providerSyncClocks: history.providerSyncClocks,
     };
   } finally {
     store.close();
@@ -151,7 +157,8 @@ export function formatResourceContext(context: ResourceContext): string {
     `CURRENT\n` +
     `provider  ${resource.provider}\n` +
     `kind      ${resource.kind}\n` +
-    `name      ${formatValue(resource.name)}`;
+    `name      ${formatValue(resource.name)}\n` +
+    formatCurrentClockLines(resource, context.providerSyncClocks);
 
   const related =
     context.related.length === 0

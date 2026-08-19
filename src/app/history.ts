@@ -3,10 +3,16 @@ import type { Resource } from "../domain/resource.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { BINARY_NAME } from "../cli/constants.ts";
+import {
+  clocksFromProvider,
+  formatCurrentClockLines,
+  type ProviderSyncClocks,
+} from "./provider-sync-clocks.ts";
 
 export interface ResourceHistory {
   resource: Resource;
   changes: Change[];
+  providerSyncClocks: ProviderSyncClocks;
 }
 
 export interface GetResourceHistoryOptions {
@@ -23,6 +29,7 @@ export function getResourceHistoryForResource(
   return {
     resource,
     changes: store.listChangesForResource(resource.id),
+    providerSyncClocks: clocksFromProvider(store.getProvider(resource.provider)),
   };
 }
 
@@ -96,7 +103,8 @@ export function formatResourceHistory(history: ResourceHistory): string {
     `${providerLabel(resource.provider)} ${resource.kind}: ${resourceDisplayName(resource)}\n` +
     `${resource.id}\n\n` +
     `CURRENT\n` +
-    `name  ${formatValue(resource.name)}\n\n` +
+    `name  ${formatValue(resource.name)}\n` +
+    `${formatCurrentClockLines(resource, history.providerSyncClocks)}\n\n` +
     `HISTORY`;
 
   if (history.changes.length === 0) {

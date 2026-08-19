@@ -39,6 +39,8 @@ export interface ProviderRecord {
   name: string;
   status: string;
   lastSyncAt: string | null;
+  /** Combie time of the latest sync try (success or failure). Distinct from lastSyncAt. */
+  lastAttemptAt: string | null;
   config: Record<string, unknown>;
 }
 
@@ -53,6 +55,7 @@ CREATE TABLE IF NOT EXISTS providers (
   name TEXT NOT NULL,
   status TEXT NOT NULL,
   last_sync_at TEXT,
+  last_attempt_at TEXT,
   config_json TEXT NOT NULL DEFAULT '{}'
 );
 
@@ -326,6 +329,8 @@ export class Store {
     this.ensureNullableTextColumn(db, "resolutions", "evidence_ids");
     // Sprint 077: pre-077 incidents lack occurred_at (nullable ISO).
     this.ensureNullableTextColumn(db, "incidents", "occurred_at");
+    // Sprint 079: pre-079 providers lack last_attempt_at.
+    this.ensureProviderLastAttemptAtColumn(db);
     // Sprint 057: pre-057 investigation_id is NOT NULL. Rebuild so Resource-
     // anchored rows can omit it. Existing rows keep their investigation ids.
     this.ensureResolutionsInvestigationIdNullable(db);
@@ -368,6 +373,26 @@ export class Store {
            AND last_success_observed_at IS NULL`,
       );
     }
+  }
+
+  /**
+   * Additive upgrade: pre-079 providers lack last_attempt_at.
+   * Safe backfill only from last_sync_at — that success was an attempt.
+   * Never invent a failed attempt.
+   */
+  private ensureProviderLastAttemptAtColumn(db: Database): void {
+    const added = this.ensureNullableTextColumn(
+      db,
+      "providers",
+      "last_attempt_at",
+    );
+    if (!added) return;
+    db.exec(
+      `UPDATE providers
+       SET last_attempt_at = last_sync_at
+       WHERE last_attempt_at IS NULL
+         AND last_sync_at IS NOT NULL`,
+    );
   }
 
   private ensureNullableIntegerColumn(
@@ -531,26 +556,36 @@ export class Store {
     name: string;
     status: string;
     lastSyncAt?: string | null;
+    lastAttemptAt?: string | null;
     config?: Record<string, unknown>;
   }): void {
     const db = this.getWritableDb();
     const configJson = JSON.stringify(provider.config ?? {});
     const lastSyncAt = provider.lastSyncAt ?? null;
+    const lastAttemptAt = provider.lastAttemptAt ?? null;
     db.query(
-      `INSERT INTO providers (id, name, status, last_sync_at, config_json)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO providers (id, name, status, last_sync_at, last_attempt_at, config_json)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          status = excluded.status,
          last_sync_at = COALESCE(excluded.last_sync_at, providers.last_sync_at),
+         last_attempt_at = COALESCE(excluded.last_attempt_at, providers.last_attempt_at),
          config_json = excluded.config_json`,
-    ).run(provider.id, provider.name, provider.status, lastSyncAt, configJson);
+    ).run(
+      provider.id,
+      provider.name,
+      provider.status,
+      lastSyncAt,
+      lastAttemptAt,
+      configJson,
+    );
   }
 
   getProvider(id: string): ProviderRecord | null {
     const row = this.getDb()
       .query(
-        `SELECT id, name, status, last_sync_at, config_json FROM providers WHERE id = ?`,
+        `SELECT id, name, status, last_sync_at, last_attempt_at, config_json FROM providers WHERE id = ?`,
       )
       .get(id) as
       | {
@@ -558,6 +593,7 @@ export class Store {
           name: string;
           status: string;
           last_sync_at: string | null;
+          last_attempt_at: string | null;
           config_json: string;
         }
       | null;
@@ -567,13 +603,14 @@ export class Store {
   listProviders(): ProviderRecord[] {
     const rows = this.getDb()
       .query(
-        `SELECT id, name, status, last_sync_at, config_json FROM providers ORDER BY id`,
+        `SELECT id, name, status, last_sync_at, last_attempt_at, config_json FROM providers ORDER BY id`,
       )
       .all() as Array<{
       id: string;
       name: string;
       status: string;
       last_sync_at: string | null;
+      last_attempt_at: string | null;
       config_json: string;
     }>;
     return rows.map(mapProvider);
@@ -765,6 +802,19 @@ export class Store {
     const db = this.getWritableDb();
     const result = db
       .query(`UPDATE providers SET last_sync_at = ? WHERE id = ?`)
+      .run(at, providerId);
+    if (result.changes === 0) {
+      throw new Error(
+        `Provider '${providerId}' not found. Connect the provider before syncing.`,
+      );
+    }
+  }
+
+  /** Stamp the latest sync try. Does not change last_sync_at. */
+  setLastAttempt(providerId: string, at: string): void {
+    const db = this.getWritableDb();
+    const result = db
+      .query(`UPDATE providers SET last_attempt_at = ? WHERE id = ?`)
       .run(at, providerId);
     if (result.changes === 0) {
       throw new Error(
@@ -1924,6 +1974,16 @@ export class Store {
 
   close(): void {
     if (this.db) {
+      if (!this.dbReadOnly) {
+        // Persist WAL into the main file so copies/hashes of combie.db
+        // include committed rows. Read-only MCP opens must not appear to
+        // "write" merely by checkpointing leftover WAL.
+        try {
+          this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        } catch {
+          // Best-effort; still close the connection.
+        }
+      }
       this.db.close();
       this.db = null;
       this.dbReadOnly = false;
@@ -2043,6 +2103,7 @@ function mapProvider(row: {
   name: string;
   status: string;
   last_sync_at: string | null;
+  last_attempt_at: string | null;
   config_json: string;
 }): ProviderRecord {
   let config: Record<string, unknown> = {};
@@ -2056,6 +2117,7 @@ function mapProvider(row: {
     name: row.name,
     status: row.status,
     lastSyncAt: row.last_sync_at,
+    lastAttemptAt: row.last_attempt_at,
     config,
   };
 }

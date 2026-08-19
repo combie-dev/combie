@@ -30,6 +30,11 @@ import {
   type ReleaseEvidenceAuthority,
   type SentryReleaseEvidence,
 } from "../providers/sentry/release.ts";
+import {
+  clocksFromProvider,
+  formatCurrentClockLines,
+  type ProviderSyncClocks,
+} from "./provider-sync-clocks.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { getResourceHistoryForResource } from "./history.ts";
@@ -112,6 +117,11 @@ export interface InvestigationContext {
   subjectReleases: ReleaseEvidenceAuthority;
   /** Issue-aggregate evidence for the subject (Sentry projects only). */
   subjectIssues: IssueEvidenceAuthority;
+  /**
+   * Live provider discovery clocks for the subject's provider.
+   * Stripped from 048 snapshots (not current provider truth on reopen).
+   */
+  providerSyncClocks?: ProviderSyncClocks;
 }
 
 export interface GetInvestigationContextOptions {
@@ -289,6 +299,7 @@ export function getInvestigationContextForResource(
     subjectOperations: loadNeonOperationAuthority(store, subject),
     subjectReleases: loadReleaseAuthority(store, subject),
     subjectIssues: loadIssueAuthority(store, subject),
+    providerSyncClocks: clocksFromProvider(store.getProvider(subject.provider)),
   };
 }
 
@@ -1466,7 +1477,14 @@ export function formatInvestigationContext(
     `CURRENT\n` +
     `provider  ${subject.provider}\n` +
     `kind      ${subject.kind}\n` +
-    `name      ${formatValue(subject.name)}`;
+    `name      ${formatValue(subject.name)}\n` +
+    formatCurrentClockLines(
+      subject,
+      context.providerSyncClocks ?? {
+        lastSuccessfulSyncAt: null,
+        lastAttemptAt: null,
+      },
+    );
 
   const subjectChanges =
     `SUBJECT CHANGES\n\n${formatChangesBlock(context.subjectChanges)}`;

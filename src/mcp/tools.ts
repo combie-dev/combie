@@ -326,6 +326,18 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             metadata: ctx.subject.metadata,
             createdAt: ctx.subject.createdAt,
             updatedAt: ctx.subject.updatedAt,
+            ...(ctx.providerSyncClocks?.lastSuccessfulSyncAt != null
+              ? {
+                  lastSuccessfulProviderSyncAt:
+                    ctx.providerSyncClocks.lastSuccessfulSyncAt,
+                }
+              : {}),
+            ...(ctx.providerSyncClocks?.lastAttemptAt != null
+              ? {
+                  lastProviderSyncAttemptAt:
+                    ctx.providerSyncClocks.lastAttemptAt,
+                }
+              : {}),
           };
 
           const subjectChanges = ctx.subjectChanges.map((c) => ({
@@ -516,6 +528,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           name: p.name,
           status: p.status,
           lastSyncAt: p.lastSyncAt,
+          ...(p.lastAttemptAt != null ? { lastAttemptAt: p.lastAttemptAt } : {}),
           accountId: p.config?.accountId ?? null,
           accountName: p.config?.accountName ?? null,
         }));

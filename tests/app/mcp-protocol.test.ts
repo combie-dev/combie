@@ -606,6 +606,7 @@ describe("MCP stdio contract (Sprint 056)", () => {
       `{"not": "json"`,
       recorded.id,
     );
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
     db.close();
 
     const digest = () =>
@@ -638,7 +639,9 @@ describe("MCP stdio contract (Sprint 056)", () => {
 
     const db2 = new Database(dbPath(dir));
     db2.exec(`ALTER TABLE resolutions DROP COLUMN evidence_ids`);
+    db2.exec("PRAGMA wal_checkpoint(TRUNCATE);");
     db2.close();
+    const afterAlter = digest();
 
     const second = spawnClient(dir);
     try {
@@ -655,7 +658,7 @@ describe("MCP stdio contract (Sprint 056)", () => {
     } finally {
       await second.client.close();
     }
-    expect(digest()).toBe(before);
+    expect(digest()).toBe(afterAlter);
   }, 15_000);
 });
 
@@ -3484,6 +3487,7 @@ describe("MCP stdio contract (Sprint 075)", () => {
     const db = new Database(dbPath(dir));
     db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
     db.exec(`DELETE FROM resources WHERE id = '${other.id}'`);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
     db.close();
 
     const digest = () =>
@@ -3729,6 +3733,7 @@ describe("MCP stdio contract (Sprint 075)", () => {
     const db = new Database(dbPath(dir));
     db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
     db.exec(`DELETE FROM resources WHERE id = '${other.id}'`);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
     db.close();
 
     const digest = () =>
@@ -4072,6 +4077,7 @@ describe("MCP stdio contract (Sprint 076)", () => {
 
     const db = new Database(dbPath(dir));
     db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
     db.close();
 
     const digest = () =>
@@ -4470,6 +4476,247 @@ describe("MCP stdio contract (Sprint 076)", () => {
         (otherContent.investigationHistory as Array<Record<string, unknown>>)
           .map((row) => row.id),
       ).toEqual([otherSaved.record.id]);
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 079)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("list_providers omits lastAttemptAt when null and observes it after a failed attempt", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-079-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    store.upsertProvider({
+      id: "vercel",
+      name: "Vercel",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+      config: { accountId: "team_1" },
+    });
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-079", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "list_providers",
+        arguments: {},
+      });
+      expect(result.isError).not.toBe(true);
+      const providers = (result.structuredContent as {
+        providers?: Array<Record<string, unknown>>;
+      })?.providers;
+      expect(providers).toBeDefined();
+      const github = providers!.find((p) => p.id === "github");
+      const vercel = providers!.find((p) => p.id === "vercel");
+      expect(github?.lastSyncAt).toBe("2026-08-18T10:00:00.000Z");
+      expect(github).not.toHaveProperty("lastAttemptAt");
+      expect(vercel?.lastAttemptAt).toBe("2026-08-19T09:00:00.000Z");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("investigate_resource subject observes the CURRENT provider sync clocks", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-079b-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    store.upsertResource(
+      createResource({
+        provider: "github",
+        providerResourceId: "123",
+        kind: "repository",
+        name: "example/repo",
+        metadata: { fullName: "example/repo" },
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-079b", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: "github:repository:123" },
+      });
+      expect(result.isError).not.toBe(true);
+      const subject = (result.structuredContent as {
+        subject?: Record<string, unknown>;
+      })?.subject;
+      expect(subject).toBeDefined();
+      expect(subject?.lastSuccessfulProviderSyncAt).toBe(
+        "2026-08-18T10:00:00.000Z",
+      );
+      expect(subject?.lastProviderSyncAttemptAt).toBe(
+        "2026-08-19T09:00:00.000Z",
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("investigate_resource subject omits sync clock properties when the provider has none", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-079c-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      config: { accountId: "12345" },
+    });
+    store.upsertResource(
+      createResource({
+        provider: "github",
+        providerResourceId: "124",
+        kind: "repository",
+        name: "example/repo2",
+        metadata: { fullName: "example/repo2" },
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-079c", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: "github:repository:124" },
+      });
+      expect(result.isError).not.toBe(true);
+      const subject = (result.structuredContent as {
+        subject?: Record<string, unknown>;
+      })?.subject;
+      expect(subject).toBeDefined();
+      expect(subject).not.toHaveProperty("lastSuccessfulProviderSyncAt");
+      expect(subject).not.toHaveProperty("lastProviderSyncAttemptAt");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("four tools and read-only: database bytes unchanged across a Sprint 079 call", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-079d-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    store.upsertResource(
+      createResource({
+        provider: "github",
+        providerResourceId: "123",
+        kind: "repository",
+        name: "example/repo",
+        metadata: { fullName: "example/repo" },
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-079d", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const providers = await client.callTool({
+        name: "list_providers",
+        arguments: {},
+      });
+      expect(providers.isError).not.toBe(true);
+      const investigate = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: "github:repository:123" },
+      });
+      expect(investigate.isError).not.toBe(true);
+      expect(
+        (investigate.structuredContent as {
+          subject?: Record<string, unknown>;
+        })?.subject?.lastProviderSyncAttemptAt,
+      ).toBe("2026-08-19T09:00:00.000Z");
     } finally {
       await client.close();
     }

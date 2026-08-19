@@ -10,6 +10,7 @@ import {
   formatInvestigationCompare,
   type CompareAuthorityClocksSection,
   type CompareKnownFactsSection,
+  type CompareMissingContextSection,
   type CompareRelationshipsSection,
   type CompareRelatedResourcesSection,
   type CompareSubjectSection,
@@ -172,6 +173,61 @@ describe("snapshot-to-current compare", () => {
         ),
       ).toBe(true);
     }
+  });
+
+  test("provider-sync clocks do not add a compare section or rewrite snapshot JSON (Sprint 079)", () => {
+    const subjectResourceId = seedSentryProject();
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "sentry",
+      name: "Sentry",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-18T10:00:00.000Z",
+    });
+    store.close();
+
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subjectResourceId,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    expect(saved.record.snapshot.providerSyncClocks).toBeDefined();
+    expect(JSON.stringify(getSavedInvestigation(dir, saved.record.id).snapshot)).not.toContain(
+      "providerSyncClocks",
+    );
+
+    const later = new Store(dir);
+    later.init();
+    later.setLastAttempt("sentry", "2026-08-19T09:00:00.000Z");
+    later.close();
+
+    const compare = compareInvestigationToCurrent({
+      baseDir: dir,
+      investigationId: saved.record.id,
+      comparedAt: "2026-08-16T13:00:00.000Z",
+    });
+    expect(compare.sections.map((s) => s.name)).toEqual([
+      "SUBJECT",
+      "RELATIONSHIPS",
+      "RELATED RESOURCES",
+      "KNOWN FACTS",
+      "MISSING CONTEXT",
+      "SHARED COMMIT CONTEXT",
+      "SHARED COMMIT CORRESPONDENCE",
+      "AUTHORITY CLOCKS",
+    ]);
+    const missing = section(compare, "MISSING CONTEXT") as CompareMissingContextSection;
+    expect(
+      missing.items.some(
+        (item) =>
+          item.kind === "unknown_provider_sync_authority" &&
+          item.status === "current_only",
+      ),
+    ).toBe(true);
+    const clocks = section(compare, "AUTHORITY CLOCKS") as CompareAuthorityClocksSection;
+    expect(clocks.items).toEqual([]);
   });
 
   test("subject rename reports SUBJECT name CHANGED and nothing else", () => {

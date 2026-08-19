@@ -137,6 +137,81 @@ describe("Store", () => {
     expect(store.getProvider("cloudflare")!.lastSyncAt).toBe(at);
   });
 
+  test("close checkpoints WAL so combie.db contains committed rows", () => {
+    const { store, dir } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    store.close();
+
+    const bytes = readFileSync(dbPath(dir));
+    expect(bytes.byteLength).toBeGreaterThan(4096);
+    const frozen = new Database(dbPath(dir), { readonly: true });
+    const row = frozen
+      .query(`SELECT id FROM providers WHERE id = 'github'`)
+      .get() as { id: string } | null;
+    frozen.close();
+    expect(row?.id).toBe("github");
+  });
+
+  test("setLastAttempt stamps the latest try without touching lastSyncAt", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+
+    store.setLastSync("github", "2026-08-18T10:00:00.000Z");
+    store.setLastAttempt("github", "2026-08-19T09:00:00.000Z");
+    expect(store.getProvider("github")!.lastAttemptAt).toBe(
+      "2026-08-19T09:00:00.000Z",
+    );
+    expect(store.getProvider("github")!.lastSyncAt).toBe(
+      "2026-08-18T10:00:00.000Z",
+    );
+
+    store.setLastSync("github", "2026-08-19T10:00:00.000Z");
+    expect(store.getProvider("github")!.lastAttemptAt).toBe(
+      "2026-08-19T09:00:00.000Z",
+    );
+  });
+
+  test("pre-079 providers rows backfill last_attempt_at from last_sync_at on init", () => {
+    const dir = tempDir();
+    dirs.push(dir);
+    const path = dbPath(dir);
+    const legacy = new Database(path, { create: true });
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        last_sync_at TEXT,
+        config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      INSERT INTO providers (id, name, status, last_sync_at)
+      VALUES ('github', 'GitHub', 'connected', '2026-08-18T10:00:00.000Z');
+      INSERT INTO providers (id, name, status, last_sync_at)
+      VALUES ('neon', 'Neon', 'connected', NULL);
+    `);
+    legacy.close();
+
+    const store = new Store(dir);
+    stores.push(store);
+    store.init();
+    expect(store.getProvider("github")!.lastAttemptAt).toBe(
+      "2026-08-18T10:00:00.000Z",
+    );
+    expect(store.getProvider("neon")!.lastAttemptAt).toBeNull();
+  });
+
   test("upsertResource does not duplicate on repeated sync", () => {
     const { store } = openStore();
     store.init();

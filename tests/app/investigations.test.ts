@@ -117,6 +117,46 @@ describe("investigation snapshots", () => {
     expect(rendered).toContain(saved.liveOutput);
   });
 
+  test("snapshot JSON does not persist live provider sync clocks (Sprint 079)", () => {
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "sentry",
+      name: "Sentry",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+    });
+    store.close();
+    seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const json = serializeInvestigationSnapshot(saved.record.snapshot);
+    expect(json).not.toContain("providerSyncClocks");
+    expect(json).not.toContain("lastAttemptAt");
+    expect(json).not.toContain("lastSuccessfulSyncAt");
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({
+        baseDir: dir,
+        resourceRef: "sentry:project:450",
+      }),
+    );
+    expect(live).toContain(
+      "last provider sync attempt: 2026-08-19T09:00:00.000Z",
+    );
+
+    const reopened = getSavedInvestigation(dir, saved.record.id);
+    expect(reopened.snapshot.providerSyncClocks).toBeUndefined();
+    const reopenedOut = formatInvestigationContext(reopened.snapshot);
+    expect(reopenedOut).toContain("observed by Combie at:");
+    expect(reopenedOut).not.toContain("last successful provider sync");
+    expect(reopenedOut).not.toContain("last provider sync attempt");
+  });
+
   test("reopen is unchanged after later store mutation", () => {
     seedSubject();
     const saved = saveInvestigation({

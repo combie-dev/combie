@@ -206,18 +206,25 @@ export function formatProvidersTable(providers: ProviderRecord[], now = Date.now
       "—",
     status: p.status === "connected" ? "Connected" : p.status,
     lastSync: formatRelativeTime(p.lastSyncAt, now),
+    lastAttempt:
+      p.lastAttemptAt != null && p.lastAttemptAt !== p.lastSyncAt
+        ? formatRelativeTime(p.lastAttemptAt, now)
+        : "—",
   }));
   const col1 = Math.max("PROVIDER".length, ...rows.map((r) => r.provider.length));
   const col2 = Math.max("ACCOUNT".length, ...rows.map((r) => r.account.length));
   const col3 = Math.max("STATUS".length, ...rows.map((r) => r.status.length));
+  const col4 = Math.max("LAST SYNC".length, ...rows.map((r) => r.lastSync.length));
   const header =
     "PROVIDER".padEnd(col1) + "  " + "ACCOUNT".padEnd(col2) + "  " +
-    "STATUS".padEnd(col3) + "  " + "LAST SYNC";
+    "STATUS".padEnd(col3) + "  " + "LAST SYNC".padEnd(col4) + "  " +
+    "LAST ATTEMPT";
   const body = rows
     .map(
       (r) =>
         r.provider.padEnd(col1) + "  " + r.account.padEnd(col2) + "  " +
-        r.status.padEnd(col3) + "  " + r.lastSync,
+        r.status.padEnd(col3) + "  " + r.lastSync.padEnd(col4) + "  " +
+        r.lastAttempt,
     )
     .join("\n");
   return `${header}\n${body}`;

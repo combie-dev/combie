@@ -90,6 +90,8 @@ Commands:
   connect <provider>           Connect a provider (cloudflare, github, vercel, sentry, neon, planetscale)
   sync [provider]              Discover and store resources
   providers                    List configured providers
+                               LAST SYNC is last successful sync; LAST ATTEMPT
+                               is shown when a later try failed
   resources                    List discovered resources
   relationships                List known cross-provider relationships
   changes                      List observed Resource changes

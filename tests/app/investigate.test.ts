@@ -232,6 +232,74 @@ describe("Investigation context composition", () => {
     expect(output).toContain("No changes recorded in this context yet.");
   });
 
+  test("CURRENT shows observation and provider clocks; Missing Context only when attempt is later", () => {
+    const store = openStore(dir);
+    store.upsertProvider({
+      id: "sentry",
+      name: "Sentry",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+    });
+    const solo = createResource({
+      provider: "sentry",
+      providerResourceId: "clocks",
+      kind: "project",
+      name: "clocked",
+      metadata: {},
+      createdAt: "2026-08-18T08:00:00.000Z",
+      updatedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.applyResource(solo, {
+      id: "clock-baseline",
+      observedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.close();
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: solo.id,
+    });
+    expect(ctx.providerSyncClocks).toEqual({
+      lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+    });
+    const output = formatInvestigationContext(ctx);
+    expect(output).toContain("observed by Combie at: 2026-08-18T08:00:00.000Z");
+    expect(output).toContain(
+      "last successful provider sync: 2026-08-18T10:00:00.000Z",
+    );
+    expect(output).toContain(
+      "last provider sync attempt: 2026-08-19T09:00:00.000Z",
+    );
+    expect(output).toContain("unknown");
+    expect(output).toContain(
+      "must not be treated as current provider inventory",
+    );
+
+    const equal = openStore(dir);
+    equal.upsertProvider({
+      id: "sentry",
+      name: "Sentry",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-18T10:00:00.000Z",
+    });
+    equal.close();
+    const equalOutput = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: solo.id }),
+    );
+    expect(equalOutput).toContain(
+      "last successful provider sync: 2026-08-18T10:00:00.000Z",
+    );
+    expect(equalOutput).toContain(
+      "last provider sync attempt: 2026-08-18T10:00:00.000Z",
+    );
+    expect(equalOutput).not.toContain(
+      "must not be treated as current provider inventory",
+    );
+  });
+
   test("subject changes only without relationships", () => {
     const store = openStore(dir);
     const resource = createResource({

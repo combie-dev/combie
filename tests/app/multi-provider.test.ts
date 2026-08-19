@@ -20,6 +20,7 @@ import { getRelatedContext } from "../../src/app/related.ts";
 import { formatRelatedContext } from "../../src/app/related.ts";
 import { CredentialsStore } from "../../src/storage/credentials.ts";
 import { Store } from "../../src/storage/store.ts";
+import type { ProviderRecord } from "../../src/storage/store.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { credentialsPath } from "../../src/storage/paths.ts";
 
@@ -1369,6 +1370,98 @@ describe("multi-provider connection", () => {
         .sort(),
     ).toEqual(unrelatedBefore);
     expect(after.filter((resource) => resource.provider === "neon")).toHaveLength(2);
+  });
+
+  test("failed sync stamps lastAttemptAt and leaves lastSyncAt and Resources unchanged", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "neon", token: "neon" });
+    const initialSync = await syncProviders({ baseDir: dir });
+    expect(initialSync.ok).toBe(true);
+
+    const before = new Store(dir);
+    before.isInitialized();
+    const lastSyncAt = before.getProvider("neon")!.lastSyncAt;
+    const neonIdsBefore = before
+      .listResources({ provider: "neon" })
+      .map((resource) => resource.id)
+      .sort();
+    before.close();
+
+    globalThis.fetch = mockMultiProviderFetch({ neonFail: true });
+    new CredentialsStore(dir).setCredential("neon", "bad-neon-token");
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(false);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    const neon = store.getProvider("neon")!;
+    expect(neon.lastAttemptAt).toBeTruthy();
+    expect(neon.lastAttemptAt! > lastSyncAt!).toBe(true);
+    expect(neon.lastSyncAt).toBe(lastSyncAt);
+    expect(
+      store
+        .listResources({ provider: "neon" })
+        .map((resource) => resource.id)
+        .sort(),
+    ).toEqual(neonIdsBefore);
+    store.close();
+  });
+
+  test("sync of an unknown provider does not invent lastAttemptAt or throw from the attempt stamp", async () => {
+    initCombie(dir);
+    const sync = await syncProviders({ baseDir: dir, providerId: "github" });
+    expect(sync.ok).toBe(false);
+    expect(sync.results[0]?.ok).toBe(false);
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.getProvider("github")).toBeNull();
+    expect(store.listProviders()).toEqual([]);
+    store.close();
+  });
+
+  test("successful sync sets both clocks to the same ISO", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "github", token: "gh" });
+    const sync = await syncProviders({ baseDir: dir });
+    expect(sync.ok).toBe(true);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    const github = store.getProvider("github")!;
+    expect(github.lastAttemptAt).toBeTruthy();
+    expect(github.lastAttemptAt).toBe(github.lastSyncAt);
+    store.close();
+  });
+
+  test("formatProvidersTable shows the attempt clock only when it differs from last success", () => {
+    const now = Date.parse("2026-08-19T12:00:00.000Z");
+    const providers: ProviderRecord[] = [
+      {
+        id: "github",
+        name: "GitHub",
+        status: "connected",
+        lastSyncAt: "2026-08-19T10:00:00.000Z",
+        lastAttemptAt: "2026-08-19T10:00:00.000Z",
+        config: {},
+      },
+      {
+        id: "neon",
+        name: "Neon",
+        status: "connected",
+        lastSyncAt: "2026-08-19T10:00:00.000Z",
+        lastAttemptAt: "2026-08-19T11:00:00.000Z",
+        config: {},
+      },
+    ];
+    const table = formatProvidersTable(providers, now);
+    expect(table).toContain("LAST ATTEMPT");
+    const githubRow = table
+      .split("\n")
+      .find((line) => line.startsWith("GitHub"))!;
+    expect(githubRow.trimEnd().endsWith("—")).toBe(true);
+    const neonRow = table.split("\n").find((line) => line.startsWith("Neon"))!;
+    expect(neonRow.trimEnd().endsWith("—")).toBe(false);
+    expect(neonRow).toContain("1 hour ago");
   });
 
   test("connect PlanetScale via --use-env and sync six providers together", async () => {

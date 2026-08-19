@@ -147,6 +147,36 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("investigate");
   });
 
+  test("help keeps LAST SYNC meaning and lists the attempt clock", async () => {
+    const result = await capture(() => main(["help"]));
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("LAST SYNC is last successful sync");
+    expect(result.stdout).toContain("LAST ATTEMPT");
+  });
+
+  test("--json stays absent from help", async () => {
+    const result = await capture(() => main(["help"]));
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain("--json");
+  });
+
+  test("incident --investigation stays usage (Sprint 078 leftover frozen)", async () => {
+    const result = await capture(() =>
+      main([
+        "incident",
+        "--investigation",
+        "inv:a",
+        "--investigation",
+        "inv:b",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("do not pass --investigation");
+    expect(result.stdout).not.toContain("Recorded incident");
+  });
+
   test("connect planetscale without auth option fails with guidance", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const result = await capture(() =>

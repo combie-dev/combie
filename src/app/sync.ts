@@ -249,6 +249,7 @@ async function syncOne(
   }
 
   store.setLastSync(providerId, now);
+  store.setLastAttempt(providerId, now);
 
   const counts = countByKind(discovered.resources);
   const lines = (Object.keys(counts) as ResourceKind[])
@@ -320,6 +321,11 @@ export async function syncProviders(options: SyncOptions): Promise<SyncResult> {
       try {
         results.push(await syncOne(store, options.baseDir, id));
       } catch (err) {
+        // Stamp only when the provider row exists. A missing row is not a
+        // sync try — setLastAttempt would throw and hide the original error.
+        if (store.getProvider(id)) {
+          store.setLastAttempt(id, new Date().toISOString());
+        }
         const provider = getProvider(id);
         const name = provider?.name ?? id;
         const errorMessage =

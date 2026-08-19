@@ -9,6 +9,7 @@ import {
   parseCodeMappings,
 } from "../providers/sentry/code-mapping.ts";
 import type { InvestigationContext } from "./investigate.ts";
+import { providerSyncIsUnknown } from "./provider-sync-clocks.ts";
 import {
   composeSharedCommitContext,
   composeSharedCommitCorrespondences,
@@ -130,6 +131,17 @@ export type MissingContextItem =
       missingRelationshipKind: "source_for" | "code_mapped_to";
       /** True when the other family exists in one-hop scope but lacks a group for this SHA. */
       otherKindInScope: boolean;
+    }
+  | {
+      kind: "unknown_provider_sync_authority";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [];
+      };
+      provider: string;
+      lastSuccessfulSyncAt: string;
+      lastAttemptAt: string;
     };
 
 interface MutableRelatedSource {
@@ -195,13 +207,14 @@ function familyOrder(family: ProviderActivityFamily): number {
 function compareItems(left: MissingContextItem, right: MissingContextItem): number {
   const category = (item: MissingContextItem): number => {
     if (item.kind === "never_successfully_refreshed") return 0;
-    if (item.kind === "unknown_current_authority") return 1;
-    if (item.kind === "code_mapping_refresh_unknown") return 2;
-    if (item.kind === "no_deterministic_release_issue_linkage") return 3;
-    if (item.kind === "code_mapped_to_without_shared_commit") return 4;
-    if (item.kind === "shared_commit_correspondence_missing") return 5;
-    if (item.kind === "code_mapping_unmatched_repository") return 6;
-    return 7; // no_known_relationships last among implemented categories
+    if (item.kind === "unknown_provider_sync_authority") return 1;
+    if (item.kind === "unknown_current_authority") return 2;
+    if (item.kind === "code_mapping_refresh_unknown") return 3;
+    if (item.kind === "no_deterministic_release_issue_linkage") return 4;
+    if (item.kind === "code_mapped_to_without_shared_commit") return 5;
+    if (item.kind === "shared_commit_correspondence_missing") return 6;
+    if (item.kind === "code_mapping_unmatched_repository") return 7;
+    return 8; // no_known_relationships last among implemented categories
   };
   const byCategory = category(left) - category(right);
   if (byCategory !== 0) return byCategory;
@@ -218,7 +231,9 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
     left.kind === "code_mapped_to_without_shared_commit" ||
     right.kind === "code_mapped_to_without_shared_commit" ||
     left.kind === "shared_commit_correspondence_missing" ||
-    right.kind === "shared_commit_correspondence_missing"
+    right.kind === "shared_commit_correspondence_missing" ||
+    left.kind === "unknown_provider_sync_authority" ||
+    right.kind === "unknown_provider_sync_authority"
   ) {
     return compareAscending(left.scope.resourceId, right.scope.resourceId);
   }
@@ -237,6 +252,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapping_unmatched_repository" }
           | { kind: "code_mapped_to_without_shared_commit" }
           | { kind: "shared_commit_correspondence_missing" }
+          | { kind: "unknown_provider_sync_authority" }
         >
       ).family,
     ) -
@@ -250,6 +266,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapping_unmatched_repository" }
           | { kind: "code_mapped_to_without_shared_commit" }
           | { kind: "shared_commit_correspondence_missing" }
+          | { kind: "unknown_provider_sync_authority" }
         >
       ).family,
     );
@@ -539,6 +556,23 @@ export function composeMissingContext(
   pushReleaseGap(items, context.subjectReleases, subjectScopeRef);
   pushIssueGap(items, context.subjectIssues, subjectScopeRef);
 
+  if (
+    context.providerSyncClocks &&
+    providerSyncIsUnknown(context.providerSyncClocks)
+  ) {
+    items.push({
+      kind: "unknown_provider_sync_authority",
+      scope: {
+        resourceId: context.subject.id,
+        role: "subject",
+        relationships: [],
+      },
+      provider: context.subject.provider,
+      lastSuccessfulSyncAt: context.providerSyncClocks.lastSuccessfulSyncAt!,
+      lastAttemptAt: context.providerSyncClocks.lastAttemptAt!,
+    });
+  }
+
   const relatedById = new Map<string, MutableRelatedSource>();
   for (const neighbor of context.related) {
     if (!neighbor.resource || neighbor.resource.id === context.subject.id) {
@@ -743,6 +777,16 @@ export function formatMissingContextItem(item: MissingContextItem): string {
     return (
       `No one-hop Relationships are currently known to Combie for ` +
       `${item.scope.resourceId}.`
+    );
+  }
+
+  if (item.kind === "unknown_provider_sync_authority") {
+    return (
+      `Provider sync is currently unknown for ${item.scope.resourceId}; ` +
+      `last successful sync at ${item.lastSuccessfulSyncAt}; ` +
+      `last attempt at ${item.lastAttemptAt}; ` +
+      `the retained Resource snapshot must not be treated as current ` +
+      `provider inventory.`
     );
   }
 
