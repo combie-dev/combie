@@ -212,6 +212,44 @@ describe("Store", () => {
     expect(store.getProvider("neon")!.lastAttemptAt).toBeNull();
   });
 
+  test("pre-079 providers reads without init treat missing last_attempt_at as null", () => {
+    const dir = tempDir();
+    dirs.push(dir);
+    const path = dbPath(dir);
+    const legacy = new Database(path, { create: true });
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        last_sync_at TEXT,
+        config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      INSERT INTO providers (id, name, status, last_sync_at)
+      VALUES ('github', 'GitHub', 'connected', '2026-08-18T10:00:00.000Z');
+    `);
+    legacy.close();
+
+    const store = new Store(dir);
+    stores.push(store);
+    expect(store.isInitialized()).toBe(true);
+    const github = store.getProvider("github");
+    expect(github?.lastSyncAt).toBe("2026-08-18T10:00:00.000Z");
+    expect(github?.lastAttemptAt).toBeNull();
+    expect(store.listProviders().map((p) => p.id)).toEqual(["github"]);
+
+    const probe = new Database(path, { readonly: true });
+    const columns = probe
+      .query(`PRAGMA table_info(providers)`)
+      .all() as Array<{ name: string }>;
+    probe.close();
+    expect(columns.some((column) => column.name === "last_attempt_at")).toBe(
+      false,
+    );
+  });
+
   test("upsertResource does not duplicate on repeated sync", () => {
     const { store } = openStore();
     store.init();

@@ -672,6 +672,9 @@ No STOP conflict.
 - `Store.close()` checkpoints WAL so `combie.db` hashes include
   committed rows (MCP digest tests were hashing the 4 KiB WAL
   header).
+- Read-path `getProvider` / `listProviders` treat a missing
+  `last_attempt_at` column as null. Pre-079 DBs are migrated
+  only on writable `init()`; MCP/CLI reads do not ALTER.
 
 ## Deviations
 
@@ -715,6 +718,10 @@ founder .combie:   combie.db mtime/size/hash unchanged
 - Snapshot JSON must not retain live provider clocks. Reopen
   still shows `observed by Combie at` from the retained
   Resource.updatedAt; provider attempt/success stay live-only.
+- `listProviders` / `investigate` open the store read-only and
+  never `init()`. A new providers column must SELECT as NULL
+  when missing, or a pre-079 DB crashes on the first read
+  before `sync`. Do not ALTER on MCP reads.
 
 ## Canon Changes
 

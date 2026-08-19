@@ -584,9 +584,7 @@ export class Store {
 
   getProvider(id: string): ProviderRecord | null {
     const row = this.getDb()
-      .query(
-        `SELECT id, name, status, last_sync_at, last_attempt_at, config_json FROM providers WHERE id = ?`,
-      )
+      .query(`${this.providersSelectSql()} WHERE id = ?`)
       .get(id) as
       | {
           id: string;
@@ -602,9 +600,7 @@ export class Store {
 
   listProviders(): ProviderRecord[] {
     const rows = this.getDb()
-      .query(
-        `SELECT id, name, status, last_sync_at, last_attempt_at, config_json FROM providers ORDER BY id`,
-      )
+      .query(`${this.providersSelectSql()} ORDER BY id`)
       .all() as Array<{
       id: string;
       name: string;
@@ -614,6 +610,24 @@ export class Store {
       config_json: string;
     }>;
     return rows.map(mapProvider);
+  }
+
+  /**
+   * Read path must not require last_attempt_at. Pre-079 DBs are migrated
+   * only on writable init(); MCP/CLI reads treat a missing column as null.
+   */
+  private providersSelectSql(): string {
+    const attempt = this.hasColumn("providers", "last_attempt_at")
+      ? "last_attempt_at"
+      : "NULL AS last_attempt_at";
+    return `SELECT id, name, status, last_sync_at, ${attempt}, config_json FROM providers`;
+  }
+
+  private hasColumn(table: string, column: string): boolean {
+    const rows = this.getDb()
+      .query(`PRAGMA table_info(${table})`)
+      .all() as Array<{ name: string }>;
+    return rows.some((row) => row.name === column);
   }
 
   /**
