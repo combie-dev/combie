@@ -225,6 +225,13 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "and it does not replace subject-scoped incident memory. " +
         "Omit investigationId to skip snapshot, compare, investigation-scoped resolution memory, " +
         "and investigation-scoped incident memory. " +
+        "When investigationId is set and the subject Resource is missing from the local store, " +
+        "the tool still returns the retained snapshot, the snapshot-versus-current comparison " +
+        "with currentStatus subject_missing, investigation history for that subject, " +
+        "investigation-scoped resolution memory, and investigation-scoped incident memory, " +
+        "omitting live compose keys; that is retained composition, not current provider truth, " +
+        "and not a recommendation. " +
+        "Omitted investigationId with a missing Resource still returns RESOURCE_NOT_FOUND. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -239,68 +246,6 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     },
     async ({ resourceId, investigationId }) => {
       try {
-        const { getInvestigationContext } = await import("../app/investigate.ts");
-        const ctx = getInvestigationContext({ baseDir, resourceRef: resourceId });
-
-        const subject = {
-          id: ctx.subject.id,
-          provider: ctx.subject.provider,
-          kind: ctx.subject.kind,
-          providerResourceId: ctx.subject.providerResourceId,
-          name: ctx.subject.name,
-          metadata: ctx.subject.metadata,
-          createdAt: ctx.subject.createdAt,
-          updatedAt: ctx.subject.updatedAt,
-        };
-
-        const subjectChanges = ctx.subjectChanges.map((c) => ({
-          id: c.id,
-          kind: c.kind,
-          observedAt: c.observedAt,
-          fields: c.fields,
-        }));
-
-        const sharedCommitGroups = composeSharedCommitContext(ctx);
-
-        const resolutionRows = listResolutions(baseDir, {
-          subjectResourceId: ctx.subject.id,
-        });
-        const incidentRows = listIncidentsForSubject(baseDir, ctx.subject.id);
-        const investigationRows = listInvestigations(baseDir, {
-          subjectResourceId: ctx.subject.id,
-        });
-
-        const related = ctx.related.map((n) => ({
-          direction: n.direction,
-          relationship: {
-            id: n.relationship.id,
-            kind: n.relationship.kind,
-            sourceResourceId: n.relationship.sourceResourceId,
-            targetResourceId: n.relationship.targetResourceId,
-            evidence: n.relationship.evidence,
-          },
-          resource: n.resource
-            ? {
-                id: n.resource.id,
-                provider: n.resource.provider,
-                kind: n.resource.kind,
-                providerResourceId: n.resource.providerResourceId,
-                name: n.resource.name,
-              }
-            : null,
-          changes: n.changes.map((c) => ({
-            id: c.id,
-            kind: c.kind,
-            observedAt: c.observedAt,
-            fields: c.fields,
-          })),
-          deployments: n.deployments,
-          workflowRuns: n.workflowRuns,
-          operations: n.operations,
-          releases: n.releases,
-          issues: n.issues,
-        }));
-
         let investigationCompare: ReturnType<
           typeof compareInvestigationToCurrent
         > | undefined;
@@ -341,62 +286,185 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             )
           : [];
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Investigation context for ${subject.name}. ` +
-                `${subjectChanges.length} change(s), ${related.length} related resource(s).`,
+        try {
+          const { getInvestigationContext } = await import("../app/investigate.ts");
+          const ctx = getInvestigationContext({ baseDir, resourceRef: resourceId });
+
+          const subject = {
+            id: ctx.subject.id,
+            provider: ctx.subject.provider,
+            kind: ctx.subject.kind,
+            providerResourceId: ctx.subject.providerResourceId,
+            name: ctx.subject.name,
+            metadata: ctx.subject.metadata,
+            createdAt: ctx.subject.createdAt,
+            updatedAt: ctx.subject.updatedAt,
+          };
+
+          const subjectChanges = ctx.subjectChanges.map((c) => ({
+            id: c.id,
+            kind: c.kind,
+            observedAt: c.observedAt,
+            fields: c.fields,
+          }));
+
+          const sharedCommitGroups = composeSharedCommitContext(ctx);
+
+          const resolutionRows = listResolutions(baseDir, {
+            subjectResourceId: ctx.subject.id,
+          });
+          const incidentRows = listIncidentsForSubject(baseDir, ctx.subject.id);
+          const investigationRows = listInvestigations(baseDir, {
+            subjectResourceId: ctx.subject.id,
+          });
+
+          const related = ctx.related.map((n) => ({
+            direction: n.direction,
+            relationship: {
+              id: n.relationship.id,
+              kind: n.relationship.kind,
+              sourceResourceId: n.relationship.sourceResourceId,
+              targetResourceId: n.relationship.targetResourceId,
+              evidence: n.relationship.evidence,
             },
-          ],
-          structuredContent: safeJson({
-            subject,
-            subjectChanges,
-            subjectDeployments: ctx.subjectDeployments,
-            subjectWorkflowRuns: ctx.subjectWorkflowRuns,
-            subjectOperations: ctx.subjectOperations,
-            subjectReleases: ctx.subjectReleases,
-            subjectIssues: ctx.subjectIssues,
-            related,
-            knownFacts: composeInvestigationFacts(ctx),
-            missingContext: composeMissingContext(ctx),
-            providerActivity: composeProviderActivityChronology(ctx),
-            timeline: composeInvestigationTimeline(ctx),
-            sharedCommitContext: sharedCommitGroups,
-            sharedCommitCorrespondences: composeSharedCommitCorrespondences(
-              sharedCommitGroups,
-            ),
-            ...(resolutionRows.length > 0
-              ? { resolutionMemory: toResolutionMemory(resolutionRows) }
-              : {}),
-            ...(incidentRows.length > 0
-              ? { incidentMemory: toIncidentMemory(incidentRows) }
-              : {}),
-            ...(investigationRows.length > 0
-              ? { investigationHistory: toInvestigationHistory(investigationRows) }
-              : {}),
-            ...(investigationCompare
-              ? { investigationCompare }
-              : {}),
-            ...(investigationSnapshot
-              ? { investigationSnapshot }
-              : {}),
-            ...(investigationResolutionRows.length > 0
+            resource: n.resource
               ? {
-                  investigationResolutionMemory: toResolutionMemory(
-                    investigationResolutionRows,
-                  ),
+                  id: n.resource.id,
+                  provider: n.resource.provider,
+                  kind: n.resource.kind,
+                  providerResourceId: n.resource.providerResourceId,
+                  name: n.resource.name,
                 }
-              : {}),
-            ...(investigationIncidentRows.length > 0
-              ? {
-                  investigationIncidentMemory: toIncidentMemory(
-                    investigationIncidentRows,
-                  ),
-                }
-              : {}),
-          }) as Record<string, unknown>,
-        };
+              : null,
+            changes: n.changes.map((c) => ({
+              id: c.id,
+              kind: c.kind,
+              observedAt: c.observedAt,
+              fields: c.fields,
+            })),
+            deployments: n.deployments,
+            workflowRuns: n.workflowRuns,
+            operations: n.operations,
+            releases: n.releases,
+            issues: n.issues,
+          }));
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Investigation context for ${subject.name}. ` +
+                  `${subjectChanges.length} change(s), ${related.length} related resource(s).`,
+              },
+            ],
+            structuredContent: safeJson({
+              subject,
+              subjectChanges,
+              subjectDeployments: ctx.subjectDeployments,
+              subjectWorkflowRuns: ctx.subjectWorkflowRuns,
+              subjectOperations: ctx.subjectOperations,
+              subjectReleases: ctx.subjectReleases,
+              subjectIssues: ctx.subjectIssues,
+              related,
+              knownFacts: composeInvestigationFacts(ctx),
+              missingContext: composeMissingContext(ctx),
+              providerActivity: composeProviderActivityChronology(ctx),
+              timeline: composeInvestigationTimeline(ctx),
+              sharedCommitContext: sharedCommitGroups,
+              sharedCommitCorrespondences: composeSharedCommitCorrespondences(
+                sharedCommitGroups,
+              ),
+              ...(resolutionRows.length > 0
+                ? { resolutionMemory: toResolutionMemory(resolutionRows) }
+                : {}),
+              ...(incidentRows.length > 0
+                ? { incidentMemory: toIncidentMemory(incidentRows) }
+                : {}),
+              ...(investigationRows.length > 0
+                ? { investigationHistory: toInvestigationHistory(investigationRows) }
+                : {}),
+              ...(investigationCompare
+                ? { investigationCompare }
+                : {}),
+              ...(investigationSnapshot
+                ? { investigationSnapshot }
+                : {}),
+              ...(investigationResolutionRows.length > 0
+                ? {
+                    investigationResolutionMemory: toResolutionMemory(
+                      investigationResolutionRows,
+                    ),
+                  }
+                : {}),
+              ...(investigationIncidentRows.length > 0
+                ? {
+                    investigationIncidentMemory: toIncidentMemory(
+                      investigationIncidentRows,
+                    ),
+                  }
+                : {}),
+            }) as Record<string, unknown>,
+          };
+        } catch (err) {
+          /**
+           * Sprint 075: a named aligned investigationId keeps the named-id
+           * sidecars when the subject Resource is gone from the local store;
+           * live compose keys stay omitted. Retained composition, not current
+           * provider truth, not an incident, not a recommendation.
+           */
+          if (
+            err instanceof CombieError &&
+            err.code === "RESOURCE_NOT_FOUND" &&
+            investigationSnapshot !== undefined
+          ) {
+            const investigationRows = listInvestigations(baseDir, {
+              subjectResourceId: investigationSnapshot.subjectResourceId,
+            });
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `Investigation context for ${resourceId} is unavailable: ` +
+                    `the subject Resource is not in the local store. ` +
+                    `Retained snapshot ${investigationSnapshot.id} (composed at ` +
+                    `${investigationSnapshot.composedAt}) with comparison ` +
+                    `currentStatus subject_missing.`,
+                },
+              ],
+              structuredContent: safeJson({
+                ...(investigationCompare
+                  ? { investigationCompare }
+                  : {}),
+                ...(investigationSnapshot
+                  ? { investigationSnapshot }
+                  : {}),
+                ...(investigationRows.length > 0
+                  ? {
+                      investigationHistory: toInvestigationHistory(
+                        investigationRows,
+                      ),
+                    }
+                  : {}),
+                ...(investigationResolutionRows.length > 0
+                  ? {
+                      investigationResolutionMemory: toResolutionMemory(
+                        investigationResolutionRows,
+                      ),
+                    }
+                  : {}),
+                ...(investigationIncidentRows.length > 0
+                  ? {
+                      investigationIncidentMemory: toIncidentMemory(
+                        investigationIncidentRows,
+                      ),
+                    }
+                  : {}),
+              }) as Record<string, unknown>,
+            };
+          }
+          throw err;
+        }
       } catch (err) {
         const message = err instanceof CombieError ? err.message : String(err);
         return toolError(message);
