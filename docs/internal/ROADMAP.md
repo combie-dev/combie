@@ -320,6 +320,10 @@ Combie must distinguish:
 
 These clocks and meanings must not be silently collapsed.
 
+Shipped for provider-native evidence families (Vercel deployments, GitHub workflow runs, Neon operations, Sentry releases and issues, Sentry code-mapping refresh): latest-attempt vs last-success observation time, known-empty vs unknown, retained stale rows, dual chronologies.
+
+Remaining v0.3 surface: Resource CURRENT and provider last-attempt clocks. A stored Resource can still be read as current provider truth because `history` / `context` / `investigate` CURRENT do not expose Combie observation time or failed-sync attempt time. That remaining contract is the next implementation sequence after Sprint 078 — not more Incident mutations.
+
 ## Example Timeline
 
 ```text
@@ -405,6 +409,8 @@ investigate_resource
 ```
 
 Connect, sync, credential management, and infrastructure writes should remain outside the initial MCP boundary.
+
+The CLI remains the primary composable primitive. MCP already returns structured JSON from those four tools over the same application core. CLI reads still render human tables only. Structured `--json` on MCP-parity CLI reads is later in the post-078 sequence; do not add `--limit`, `--since`, `--offline`, or `--refresh` flags merely to complete a composition checklist. Refresh is `sync`. Reads are already offline.
 
 ## BYO Models
 
@@ -678,6 +684,8 @@ Useful primitives include:
 
 These should remain trustworthy foundations rather than being replaced by a generic reasoning engine.
 
+Large evidence sets should not be pushed wholesale through an agent context window. Artifact-backed investigation (compact summary, bounded preview, location of the complete local artifact, record count, schema version, content hash, follow-up retrieval) is later in the post-078 sequence. Reuse the Sprint 048 `investigations.snapshot_json` row. Do not invent a generic artifact framework, ContextPack, or fifth MCP tool.
+
 ## Telemetry
 
 Combie may query systems such as:
@@ -770,6 +778,8 @@ Rollback deployment
 Outcome:
 Error rate returned to baseline in four minutes
 ```
+
+Decision, Action, and Outcome records should capture information that cannot reliably be reconstructed from the authoritative systems alone. Resource observation and Relationship evidence are not operational memory. A retained Investigation snapshot is frozen composition, not an Incident.
 
 ## Product Value
 
@@ -1377,6 +1387,53 @@ Build the smallest next capability justified by repeated real-world friction.
 
 ---
 
+# Next Work Sequence (post-Sprint 078)
+
+Sprints 001–078 shipped the local multi-provider foundation, deterministic Investigation (v0.6 closed), and the smallest v0.7 capture slices (Resolution, Incident grouping, recall, named clocks).
+
+Sprint 078 leftovers are **not a sequence** and remain frozen until separately earned:
+
+- grouping Investigation snapshots as Incident members (`inv:` as members; Investigation ≠ Incident)
+- fifth MCP tool / `list_investigations` / `get_investigation`
+- Investigation lifecycle
+- `--occurred-at` on Incident create
+- inferred Action from provider activity
+- Recommendation, Learning, similarity
+
+The Source Authority Contract is unfinished on Resource CURRENT and provider last-attempt clocks. Later CLI composition, artifact-backed investigation, and a composition-oriented agent skill all depend on consumers being able to tell observation from provider truth.
+
+Minimum correctly ordered work:
+
+```text
+1. Source authority and freshness
+   smallest: Resource CURRENT observation clocks + provider last-attempt vs last-success
+   not: generic Observation type, Relationship verification clocks, populated-membership id sets
+
+2. Shell-native CLI contract
+   smallest: `--json` on MCP-parity read commands over existing composers
+   not: `--limit` / time filters / `--output` / `--offline` / `--refresh` as synonyms
+   not: a fifth MCP tool
+
+3. Artifact-backed investigation
+   smallest: treat existing `investigations.snapshot_json` as the complete local artifact
+            (handle, hash/counts/location); thin MCP named-id dumps later
+   not: a generic artifact framework, ContextPack, or fifth snapshot tool
+
+4. Composition-oriented agent skill
+   `skills/combie/SKILL.md` teaching the six-step investigate → freshness →
+   scoped sync → local filter → deeper evidence → cite loop
+   not: a large collection of narrow tools
+   not: describing unshipped behavior in `skills/build-combie/SKILL.md`
+
+5. Operational-memory behavior only when evidence authorizes it
+   078 leftovers stay frozen
+   content boundary is an invariant, not a validator sprint
+```
+
+Do not skip ahead. Do not reopen completed sprints.
+
+---
+
 # Sequencing Rules
 
 Before starting a major roadmap layer, ask:
@@ -1461,8 +1518,3 @@ Or, more compactly:
 Combie's long-term advantage is not that it can call every engineering API.
 
 It is that it can turn fragmented engineering systems into durable, provenance-backed, task-relevant context for humans and AI agents — and eventually use that understanding to help teams act safely.
-
-```
-
-This is the version I'd now treat as the **new canonical roadmap**, replacing the earlier roadmap rather than creating a second competing roadmap. 
-```

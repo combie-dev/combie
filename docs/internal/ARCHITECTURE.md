@@ -34,6 +34,16 @@ The first architectural rule is:
 
 > **Provider-specific systems should feed Combie Core, but they should not define Combie Core.**
 
+The product thesis that this architecture must preserve:
+
+> **Combie is not another memory system that competes with the engineering stack. Combie is the context layer that reads authoritative systems, preserves timestamped evidence, connects exact relationships, and gives humans and agents compact, composable ways to investigate them.**
+
+Canonical source-authority invariant:
+
+> **No synchronized Combie record becomes more authoritative than its originating system.**
+
+Named Core engines in the diagram below are directional capabilities. They are not permission to implement unused engines, generic query/graph/memory/artifact frameworks, or a redundant `InvestigationEngine` merely to match an architectural noun. Shipped Investigation coordination is `getInvestigationContext` and its projections.
+
 ---
 
 # System Overview
@@ -103,6 +113,10 @@ Later:
 - web application
 - additional agent protocols
 
+The CLI is Combie’s primary composable interface for humans and agents.
+
+MCP is a small interoperability and discovery layer over the same deterministic application core. It must not grow MCP-only domain behavior.
+
 The interface layer should contain minimal domain logic.
 
 It translates user or agent requests into Combie Core operations.
@@ -169,9 +183,9 @@ Memory should distinguish between:
 
 ### Investigation Engine
 
-Coordinates investigation workflows.
+Directional. Do not introduce this abstraction while `getInvestigationContext` and its projections already coordinate deterministic one-hop investigation.
 
-An investigation may:
+A later investigation workflow may:
 
 1. identify affected resources,
 2. traverse the Engineering Graph,
@@ -180,6 +194,8 @@ An investigation may:
 5. retrieve similar historical incidents,
 6. construct hypotheses,
 7. produce evidence-backed findings.
+
+Shipped Investigation persistence is a retained composition snapshot (`investigate --save`, `inv:` ids, `composedAt`). That snapshot is not current provider truth and is not operational memory.
 
 ### Recommendation Engine
 
@@ -326,7 +342,9 @@ Changes are critical for timeline reconstruction.
 
 An Investigation is a first-class durable object.
 
-It may contain:
+Shipped Investigation is a retained composition snapshot of one already-composed `investigate` result (`inv:` ids, `composedAt`). It is not current provider truth, not an Incident, and not operational memory. It has no persisted open/closed/completed lifecycle.
+
+A later investigation object may grow toward:
 
 ```yaml
 subject: production-api
@@ -350,7 +368,9 @@ recommendation:
 status: completed
 ```
 
-Investigations persist beyond the lifetime of the underlying telemetry.
+Those hypotheses, recommendation, and status fields are directional. Do not implement them in the active Sprint unless the Roadmap and Sprint explicitly authorize them.
+
+Investigations persist beyond the lifetime of the underlying telemetry. Large evidence should be referenced or left in the local store rather than pushed wholesale through an agent context window.
 
 ---
 
@@ -387,17 +407,16 @@ Actions should have explicit lifecycle states and audit metadata.
 
 ## Outcome
 
-An Outcome records what happened after an action or decision.
+An Outcome records what happened after an action or decision — information that cannot reliably be reconstructed from the authoritative systems alone.
 
 Examples:
 
-- error rate recovered
-- rollback failed
-- latency unchanged
-- service healthy
-- incident reopened
+- error rate recovered after rollback of release `def456`
+- rollback failed; Sentry continued to report the same issue
+- latency unchanged after cache invalidation
+- incident reopened because the same authentication failures returned
 
-Outcomes are the core feedback signal for learning.
+Do not store reconstructable current provider state as an Outcome. “Production is currently healthy” belongs in a fresh provider observation, not operational memory.
 
 ---
 
@@ -416,6 +435,8 @@ Examples:
 - log sample
 
 Evidence may be stored directly when small or referenced externally when large.
+
+Historical evidence must remain distinguishable from current observed state. Combie must never silently combine the two.
 
 The rule is:
 
@@ -633,7 +654,38 @@ Combie can then configure supported agent integration formats such as MCP.
 
 # Memory Architecture
 
-Operational memory should have multiple layers.
+Keep these three categories distinct:
+
+```text
+Resource observation
+  what an authoritative provider reported at a particular time
+
+Relationship evidence
+  why Combie believes resources are connected
+
+Operational record
+  what was investigated, decided, changed, and learned
+```
+
+Only the third category is operational memory.
+
+Combie must not store reconstructable current provider state as operational memory.
+
+A retained Investigation snapshot is **not** operational memory. It is frozen composed observation at `composedAt`.
+
+Shipped operational records are Resolution (`decision` / `action` / `outcome` fields, optional human-attached evidence ids) and Incident (exclusive grouping of existing `res:` ids). Investigation ≠ Incident ≠ Resolution.
+
+Good operational record:
+
+> Rollback chosen because Sentry showed authentication failures beginning with commit `abc123`; deployment recovered after release `def456`.
+
+Bad operational record:
+
+> Production is currently healthy.
+
+The second statement should be obtained from the authoritative system.
+
+Layered storage:
 
 ```text
 External Evidence
@@ -643,7 +695,7 @@ Normalized Signals
 Observations / Events / Changes / Alerts
               ↓
 Operational Memory
-Investigations / Decisions / Actions / Outcomes
+Decisions / Actions / Outcomes / Incidents
               ↓
 Learned Experience
 Patterns / Precedents / Preferences / Success history
@@ -762,6 +814,65 @@ Both deployment modes should preserve the same Engineering Model.
 
 # Architectural Boundaries
 
+### Source Authority Contract
+
+Provider systems, repositories, declared infrastructure, telemetry systems, and human decisions remain authoritative for the facts they own. Combie stores timestamped observations and evidence, not replacement truth.
+
+Every relevant Combie fact should make it possible to determine:
+
+- its originating source
+- when the source reported or changed it
+- when Combie observed it
+- whether it is current, stale, historical, or unknown
+- whether it can be refreshed
+- what evidence supports it
+
+No synchronized Combie record becomes more authoritative than its originating system. Historical evidence must remain distinguishable from current observed state.
+
+Shipped provider-native evidence families (Vercel deployments, GitHub workflow runs, Neon operations, Sentry releases and issues, Sentry code-mapping refresh) already separate latest-attempt observation time, last-success observation time, known-empty, unknown, and retained stale rows. Resource CURRENT, Relationship currency, and provider last-attempt clocks are the remaining contract surface. Do not invent a generic Observation or Evidence domain type to close that gap.
+
+### Shell-Native Command Contract
+
+The CLI is Combie’s primary composable agent primitive. MCP remains a small interoperability and discovery layer over the same deterministic application core.
+
+Machine composition may eventually include structured JSON, bounded results, justified filtering, explicit refresh versus offline behavior, stdout for results, stderr for diagnostics, stable exit codes, and no prompts in machine-readable mode.
+
+Do not add flags merely to satisfy that list. Refresh is already the `sync` command; reads are already offline. The frozen four-tool MCP contract remains:
+
+- `list_resources`
+- `list_providers`
+- `get_related_context`
+- `investigate_resource`
+
+Do not introduce MCP-only domain behavior. Do not add a fifth tool unless a later sprint explicitly authorizes it.
+
+### Artifact-Backed Investigation
+
+Large evidence sets should not be pushed wholesale through an agent’s context window.
+
+Investigations should eventually be capable of returning a compact summary, a bounded preview, the location of the complete local artifact, record count, schema version, content hash, and safe follow-up retrieval instructions. Complete evidence remains locally inspectable through deterministic tools such as the Combie CLI, `jq`, and `rg`.
+
+Reuse existing primitives. The Sprint 048 `investigations.snapshot_json` row in local `combie.db` is already the complete retained composition. Do not invent a generic artifact framework, ContextPack, or fifth MCP snapshot tool to satisfy this boundary.
+
+### Composition-Oriented Agent Skill
+
+A later user-facing Combie skill (`skills/combie/SKILL.md`, not the Engineering Constitution) should teach workflow and composition:
+
+1. Run a compact investigation.
+2. Inspect freshness and missing context.
+3. Refresh only the necessary authoritative providers.
+4. Filter structured results locally.
+5. Retrieve deeper evidence only when necessary.
+6. Cite the evidence used in a conclusion.
+
+It must not become a large collection of narrow tools. Do not describe unshipped behavior in `skills/build-combie/SKILL.md`.
+
+### Operational-Memory Boundary
+
+Resource observation and Relationship evidence are not operational memory.
+
+Operational records must capture information that cannot reliably be reconstructed from the authoritative systems alone. Do not infer Action from provider activity. Do not group Investigation snapshots as Incident members. Members stay `res:` ids.
+
 ### MCP Is an Interface, Not the Core
 
 Combie should support MCP without modeling the system around MCP concepts.
@@ -792,4 +903,4 @@ Relationships, investigations, recommendations, and outcomes should retain evide
 
 # Architectural Principle
 
-> **Combie owns durable engineering understanding. Providers own their capabilities. Models supply reasoning. Humans retain authority.**
+> **Combie owns durable engineering understanding as timestamped observation. Providers remain authoritative for the facts they own. Models supply reasoning. Humans retain authority.**
