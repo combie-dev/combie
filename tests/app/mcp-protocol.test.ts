@@ -10,11 +10,13 @@ import { saveInvestigation } from "../../src/app/investigations.ts";
 import { recordResolution } from "../../src/app/resolutions.ts";
 import {
   appendIncidentResolutions,
+  clearIncidentOccurredAt,
   clearIncidentTitle,
   recordIncident,
   removeIncidentResolutions,
   restampIncident,
   retitleIncident,
+  setIncidentOccurredAt,
 } from "../../src/app/incidents.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
@@ -1676,6 +1678,337 @@ describe("MCP stdio contract (Sprint 068)", () => {
         {
           id: incident.id,
           recordedAt: "2026-08-17T20:00:00.000Z",
+          title: "API error spike",
+          resolutionIds: [first.id, second.id],
+        },
+      ]);
+      expect(content.incidentMemory?.[0]).not.toHaveProperty("occurredAt");
+      expect(content).not.toHaveProperty("incidents");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 077)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource observes occurredAt when set and omits it when absent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-077-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      title: "API error spike",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+
+    const beforeOmit = digest();
+    const clientOmit = new Client({
+      name: "combie-test-077-omit",
+      version: "1.0.0",
+    });
+    const transportOmit = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await clientOmit.connect(transportOmit);
+      const result = await clientOmit.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+      };
+      expect(content.incidentMemory).toEqual([
+        {
+          id: incident.id,
+          recordedAt: "2026-08-16T14:00:00.000Z",
+          title: "API error spike",
+          resolutionIds: [first.id, second.id],
+        },
+      ]);
+      expect(content.incidentMemory?.[0]).not.toHaveProperty("occurredAt");
+    } finally {
+      await clientOmit.close();
+    }
+    expect(digest()).toBe(beforeOmit);
+
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+
+    const beforePresent = digest();
+    const client = new Client({ name: "combie-test-077", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      expect(
+        listed.tools.every((tool) => tool.name !== "list_investigations"),
+      ).toBe(true);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+      };
+      expect(content.incidentMemory).toEqual([
+        {
+          id: incident.id,
+          recordedAt: "2026-08-16T14:00:00.000Z",
+          title: "API error spike",
+          resolutionIds: [first.id, second.id],
+          occurredAt: "2026-08-17T14:00:00.000Z",
+        },
+      ]);
+      expect(content).not.toHaveProperty("incidents");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(beforePresent);
+  }, 15_000);
+
+  test("four tools remain after occurredAt is set; digest unchanged during the MCP call", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-077b-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      title: "API error spike",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-077b", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      expect(
+        listed.tools.every(
+          (tool) =>
+            tool.name !== "list_investigations" &&
+            tool.name !== "get_investigation",
+        ),
+      ).toBe(true);
+      for (const tool of listed.tools) {
+        expect(tool.annotations).toMatchObject({
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        });
+      }
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+      };
+      expect(content.incidentMemory?.[0]?.occurredAt).toBe(
+        "2026-08-17T14:00:00.000Z",
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 078)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource omits occurredAt after clear with no schema change", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-078-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const first = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const second = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Hold deploys",
+      recordedAt: "2026-08-16T13:01:00.000Z",
+    });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: [first.id, second.id],
+      title: "API error spike",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    clearIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-078", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        incidentMemory?: Array<Record<string, unknown>>;
+      };
+      expect(content.incidentMemory).toEqual([
+        {
+          id: incident.id,
+          recordedAt: "2026-08-16T14:00:00.000Z",
           title: "API error spike",
           resolutionIds: [first.id, second.id],
         },

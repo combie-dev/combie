@@ -190,6 +190,20 @@ requires `resourceId`; not a fifth tool, not
 `list_investigations`, not grouping snapshots as members, not
 MCP writes, not lifecycle, not `occurredAt`, not the
 Investigation Engine).
+Sprint 077 shipped
+the optional-Incident-`occurredAt` slice (ROADMAP v0.7;
+`incident <inc> --occurred-at`; named ISO; recordedAt / title /
+members unchanged; omitted when absent; not `--occurred-at` on
+create, not `--clear-occurred-at`, not grouping snapshots as
+members, not a fifth tool, not MCP writes, not lifecycle, not
+inferred time, not the Investigation Engine).
+Sprint 078 shipped
+the optional-Incident-occurredAt-clear slice (ROADMAP v0.7;
+`incident <inc> --clear-occurred-at`; omit stored occurredAt;
+recordedAt / title / members unchanged; not `--occurred-at` on
+create, not blank `--occurred-at` as clear, not grouping
+snapshots as members, not a fifth tool, not MCP writes, not
+lifecycle, not inferred time, not the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -211,7 +225,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–076 complete
+## Current baseline: Sprints 001–078 complete
 
 Multi-provider connection loop:
 
@@ -490,6 +504,18 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `incident_id`; not grouping snapshots as members, not a fifth
   tool, not `list_investigations`, not snapshot JSON as the live
   body, not MCP writes, not lifecycle, not `occurredAt`).
+- **Sprint 077 shipped:** Optional Incident `occurredAt`
+  (`incident <inc> --occurred-at`; ROADMAP v0.7; named ISO;
+  recordedAt / title / members unchanged; omitted when absent; no
+  `incident_id`; not grouping snapshots as members, not a fifth
+  tool, not `--occurred-at` on create, not `--clear-occurred-at`,
+  not MCP writes, not lifecycle, not inferred time).
+- **Sprint 078 shipped:** Clear an existing Incident occurredAt
+  (`incident <inc> --clear-occurred-at`; ROADMAP v0.7; omit stored
+  occurredAt; recordedAt / title / members unchanged; no
+  `incident_id`; not grouping snapshots as members, not a fifth
+  tool, not `--occurred-at` on create, not blank `--occurred-at`
+  as clear, not MCP writes, not lifecycle, not inferred time).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -734,8 +760,43 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   076 shipped that slice. Sprint 076 leftover is not a sequence;
   grouping Investigation snapshots as Incident members remains
   unearned. Fifth-tool snapshot reopen /
-  `list_investigations` remains unearned. `occurredAt` remains
-  unearned.
+  `list_investigations` remains unearned. Investigation lifecycle
+  remains unearned. `occurredAt` remained unearned until this
+  Sprint: leftover[0] stays frozen (Investigation ≠ Incident;
+  members stay `res:`); leftover[1] fifth-tool /
+  `list_investigations` / `get_investigation` stays frozen (076
+  already took named-id-only observe; unfiltered list still has
+  no four-tool home); lifecycle stays frozen (process claim). On
+  2026-08-19 a founder override started Sprint 077 as the
+  smallest occurredAt slice (`incident <inc> --occurred-at`;
+  optional occurrence time distinct from recordedAt; named ISO;
+  recordedAt / title / members unchanged). It does not authorize
+  Recommendation, Learning, similarity, Investigation lifecycle,
+  MCP writes, a fifth tool, grouping snapshots as members,
+  `--occurred-at` on create, `--clear-occurred-at`, inferred
+  time, or `incident_id`. Sprint 077 shipped that slice. Sprint
+  077 leftover is not a sequence; grouping Investigation
+  snapshots as Incident members remains unearned. Fifth-tool
+  snapshot reopen / `list_investigations` remains unearned.
+  Investigation lifecycle remains unearned. `--occurred-at` on
+  create remains unearned. `--clear-occurred-at` remained
+  unearned until this Sprint: leftover[0] stays frozen
+  (Investigation ≠ Incident; members stay `res:`); leftover[1]
+  fifth-tool / `list_investigations` / `get_investigation` stays
+  frozen; lifecycle stays frozen; `--occurred-at` on create stays
+  frozen (077 / 068 create still omits). On 2026-08-19 a founder
+  override started Sprint 078 as the smallest occurredAt-clear
+  slice (`incident <inc> --clear-occurred-at`; omit stored
+  occurredAt; recordedAt / title / members unchanged). It does
+  not authorize Recommendation, Learning, similarity,
+  Investigation lifecycle, MCP writes, a fifth tool, grouping
+  snapshots as members, `--occurred-at` on create, blank
+  `--occurred-at` as clear, inferred time, or `incident_id`.
+  Sprint 078 shipped that slice. Sprint 078 leftover is not a
+  sequence; grouping Investigation snapshots as Incident members
+  remains unearned. Fifth-tool snapshot reopen /
+  `list_investigations` remains unearned. Investigation lifecycle
+  remains unearned. `--occurred-at` on create remains unearned.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -32,6 +32,10 @@ import {
   clearIncidentTitle,
   restampIncident,
   formatIncidentRestampConfirmation,
+  setIncidentOccurredAt,
+  formatIncidentOccurredAtConfirmation,
+  clearIncidentOccurredAt,
+  formatIncidentClearOccurredAtConfirmation,
 } from "../../src/app/incidents.ts";
 import {
   formatInvestigationContext,
@@ -2833,9 +2837,6 @@ describe("rewrite an existing Incident recordedAt (Sprint 068)", () => {
     const columns = probe
       .query(`PRAGMA table_info(resolutions)`)
       .all() as Array<{ name: string }>;
-    const incidentCols = probe
-      .query(`PRAGMA table_info(incidents)`)
-      .all() as Array<{ name: string }>;
     const row = probe
       .query(
         `SELECT recorded_at, title, resolution_ids FROM incidents WHERE id = ?`,
@@ -2850,7 +2851,6 @@ describe("rewrite an existing Incident recordedAt (Sprint 068)", () => {
       .all() as Array<{ id: string; recorded_at: string }>;
     probe.close();
     expect(columns.map((c) => c.name)).not.toContain("incident_id");
-    expect(incidentCols.map((c) => c.name)).not.toContain("occurred_at");
     expect(row.recorded_at).toBe("2026-08-17T20:00:00.000Z");
     expect(row.title).toBe("API error spike");
     expect(JSON.parse(row.resolution_ids)).toEqual(["res:a", "res:b"]);
@@ -3032,5 +3032,606 @@ describe("rewrite an existing Incident recordedAt (Sprint 068)", () => {
     );
     expect(compared).not.toContain("INCIDENT MEMORY");
     expect(compared).not.toContain("2026-08-17T20:00:00.000Z");
+  });
+});
+
+describe("set an existing Incident occurredAt (Sprint 077)", () => {
+  test("sets stored occurredAt; recordedAt, title and members unchanged", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id, { decision: "Rollback" });
+    seedResolution("res:b", subject.id, { decision: "Hold deploys" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const before = formatIncident(getIncident(dir, incident.id));
+    expect(before).not.toContain("Occurred at");
+
+    const updated = setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    expect(updated.id).toBe(incident.id);
+    expect(updated.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(updated.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(updated.title).toBe("API error spike");
+    expect(updated.resolutionIds).toEqual(["res:a", "res:b"]);
+
+    const stored = getIncident(dir, incident.id);
+    expect(stored.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(stored.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(stored.title).toBe("API error spike");
+    expect(stored.resolutionIds).toEqual(["res:a", "res:b"]);
+    expect(formatIncident(stored)).toContain(
+      "Occurred at 2026-08-17T14:00:00.000Z",
+    );
+    expect(formatIncident(stored)).toContain(
+      "Recorded by Combie at 2026-08-18T09:00:00.000Z",
+    );
+
+    const probe = new Database(dbPath(dir));
+    const columns = probe
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string }>;
+    const incidentCols = probe
+      .query(`PRAGMA table_info(incidents)`)
+      .all() as Array<{ name: string }>;
+    const row = probe
+      .query(
+        `SELECT recorded_at, occurred_at, title, resolution_ids FROM incidents WHERE id = ?`,
+      )
+      .get(incident.id) as {
+        recorded_at: string;
+        occurred_at: string | null;
+        title: string | null;
+        resolution_ids: string;
+      };
+    const resolutions = probe
+      .query(`SELECT id, recorded_at FROM resolutions ORDER BY id`)
+      .all() as Array<{ id: string; recorded_at: string }>;
+    probe.close();
+    expect(incidentCols.map((c) => c.name)).toContain("occurred_at");
+    expect(columns.map((c) => c.name)).not.toContain("incident_id");
+    expect(row.recorded_at).toBe("2026-08-18T09:00:00.000Z");
+    expect(row.occurred_at).toBe("2026-08-17T14:00:00.000Z");
+    expect(row.title).toBe("API error spike");
+    expect(JSON.parse(row.resolution_ids)).toEqual(["res:a", "res:b"]);
+    expect(resolutions).toHaveLength(2);
+    expect(stored.resolutionIds.some((id) => id.startsWith("inv:"))).toBe(
+      false,
+    );
+  });
+
+  test("confirmation names the inc: and occurred time; distinct from create/append/remove/retitle/clear/restamp", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const updated = setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    const confirm = formatIncidentOccurredAtConfirmation(updated);
+    expect(confirm).toContain(`Set incident occurrence ${incident.id}`);
+    expect(confirm).toContain("2026-08-17T14:00:00.000Z");
+    expect(confirm).toContain("Show:");
+    expect(confirm).toContain(`incident ${incident.id}`);
+    expect(confirm).not.toMatch(/^Recorded incident/);
+    expect(confirm).not.toMatch(/^Updated incident/);
+    expect(confirm).not.toMatch(/^Removed from incident/);
+    expect(confirm).not.toMatch(/^Renamed incident/);
+    expect(confirm).not.toMatch(/^Cleared incident title/);
+    expect(confirm).not.toMatch(/^Set incident time/);
+  });
+
+  test("first set from omitted succeeds", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    expect(incident.occurredAt).toBeUndefined();
+    const updated = setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    expect(updated.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(getIncident(dir, incident.id).occurredAt).toBe(
+      "2026-08-17T14:00:00.000Z",
+    );
+  });
+
+  test("same canonical timestamp is INCIDENT_OCCURRED_AT_UNCHANGED; nothing written", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    const error = expectCode(
+      () =>
+        setIncidentOccurredAt({
+          baseDir: dir,
+          incidentId: incident.id,
+          occurredAt: "2026-08-17T14:00:00.000+00:00",
+        }),
+      "INCIDENT_OCCURRED_AT_UNCHANGED",
+    );
+    expect(error.message).toContain(incident.id);
+    expect(getIncident(dir, incident.id).occurredAt).toBe(
+      "2026-08-17T14:00:00.000Z",
+    );
+  });
+
+  test("invalid ISO is INCIDENT_OCCURRED_AT_INVALID; nothing written", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    expectCode(
+      () =>
+        setIncidentOccurredAt({
+          baseDir: dir,
+          incidentId: incident.id,
+          occurredAt: "Nope",
+        }),
+      "INCIDENT_OCCURRED_AT_INVALID",
+    );
+    expect(getIncident(dir, incident.id).occurredAt).toBeUndefined();
+  });
+
+  test("unknown inc: is INCIDENT_NOT_FOUND", () => {
+    expectCode(
+      () =>
+        setIncidentOccurredAt({
+          baseDir: dir,
+          incidentId: "inc:missing",
+          occurredAt: "2026-08-17T14:00:00.000Z",
+        }),
+      "INCIDENT_NOT_FOUND",
+    );
+  });
+
+  test("066 retitle, 067 clear, and 068 restamp leave occurredAt unchanged when set is absent", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    const renamed = retitleIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      title: "Better name",
+    });
+    expect(renamed.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    const cleared = clearIncidentTitle({
+      baseDir: dir,
+      incidentId: incident.id,
+    });
+    expect(cleared.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(cleared.title).toBeUndefined();
+    const restamped = restampIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      recordedAt: "2026-08-17T20:00:00.000Z",
+    });
+    expect(restamped.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(restamped.recordedAt).toBe("2026-08-17T20:00:00.000Z");
+    expect(getIncident(dir, incident.id).occurredAt).toBe(
+      "2026-08-17T14:00:00.000Z",
+    );
+  });
+
+  test("058 create still omits occurredAt", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const created = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    expect(created.occurredAt).toBeUndefined();
+    expect(formatIncident(created)).not.toContain("Occurred at");
+  });
+
+  test("list RECORDED AT unchanged; INCIDENT MEMORY shows OCCURRED AT when set", () => {
+    const subject = seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const frozen = serializeInvestigationSnapshot(saved.record.snapshot);
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+
+    const listed = formatIncidentList(listIncidents(dir));
+    expect(listed).toContain("2026-08-18T09:00:00.000Z");
+    expect(listed).not.toContain("2026-08-17T14:00:00.000Z");
+    expect(listed).not.toContain("OCCURRED AT");
+    expect(listed).toContain("API error spike");
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    const rendered = formatWithIncidentMemory(
+      live,
+      listIncidentsForSubject(dir, subject.id),
+      "subject",
+    );
+    expect(rendered).toContain("INCIDENT MEMORY");
+    expect(rendered).toContain("OCCURRED AT");
+    expect(rendered).toContain("2026-08-17T14:00:00.000Z");
+    expect(rendered).toContain(`${incident.id}  2026-08-18T09:00:00.000Z`);
+
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozen);
+    const compared = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+      }),
+    );
+    expect(compared).not.toContain("INCIDENT MEMORY");
+    expect(compared).not.toContain("2026-08-17T14:00:00.000Z");
+  });
+
+  test("pre-077 incidents table upgrades with nullable occurred_at", () => {
+    const legacy = join(dir, "pre077");
+    mkdirSync(legacy);
+    const raw = new Database(dbPath(legacy));
+    raw.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE incidents (
+        id TEXT PRIMARY KEY,
+        recorded_at TEXT NOT NULL,
+        title TEXT,
+        resolution_ids TEXT NOT NULL
+      );
+      INSERT INTO incidents VALUES ('inc:old', '2026-08-18T09:00:00.000Z', 'API error spike', '["res:a","res:b"]');
+    `);
+    raw.close();
+
+    const store = new Store(legacy);
+    expect(store.isInitialized()).toBe(true);
+    store.init();
+    const listed = store.listIncidentSummaries();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.occurredAt).toBeUndefined();
+    expect(store.getIncidentRow("inc:old")!.occurredAt).toBeUndefined();
+    store.close();
+
+    const probe = new Database(dbPath(legacy));
+    const columns = probe
+      .query(`PRAGMA table_info(incidents)`)
+      .all() as Array<{ name: string }>;
+    probe.close();
+    expect(columns.map((c) => c.name)).toContain("occurred_at");
+  });
+});
+
+describe("clear an existing Incident occurredAt (Sprint 078)", () => {
+  test("omits a stored occurredAt; recordedAt, title and members unchanged", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id, { decision: "Rollback" });
+    seedResolution("res:b", subject.id, { decision: "Hold deploys" });
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+
+    const cleared = clearIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+    });
+    expect(cleared.id).toBe(incident.id);
+    expect(cleared.occurredAt).toBeUndefined();
+    expect(cleared.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(cleared.title).toBe("API error spike");
+    expect(cleared.resolutionIds).toEqual(["res:a", "res:b"]);
+
+    const stored = getIncident(dir, incident.id);
+    expect(stored.occurredAt).toBeUndefined();
+    expect(stored.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+    expect(stored.title).toBe("API error spike");
+    expect(stored.resolutionIds).toEqual(["res:a", "res:b"]);
+    expect(formatIncident(stored)).not.toContain("Occurred at");
+    expect(formatIncident(stored)).toContain(
+      "Recorded by Combie at 2026-08-18T09:00:00.000Z",
+    );
+    expect(formatIncident(stored)).toContain("TITLE");
+    expect(formatIncident(stored)).toContain("API error spike");
+
+    const probe = new Database(dbPath(dir));
+    const columns = probe
+      .query(`PRAGMA table_info(resolutions)`)
+      .all() as Array<{ name: string }>;
+    const row = probe
+      .query(
+        `SELECT recorded_at, occurred_at, title, resolution_ids FROM incidents WHERE id = ?`,
+      )
+      .get(incident.id) as {
+        recorded_at: string;
+        occurred_at: string | null;
+        title: string | null;
+        resolution_ids: string;
+      };
+    const resolutions = probe
+      .query(`SELECT id, recorded_at FROM resolutions ORDER BY id`)
+      .all() as Array<{ id: string; recorded_at: string }>;
+    probe.close();
+    expect(columns.map((c) => c.name)).not.toContain("incident_id");
+    expect(row.occurred_at).toBeNull();
+    expect(row.recorded_at).toBe("2026-08-18T09:00:00.000Z");
+    expect(row.title).toBe("API error spike");
+    expect(JSON.parse(row.resolution_ids)).toEqual(["res:a", "res:b"]);
+    expect(resolutions).toHaveLength(2);
+    expect(stored.resolutionIds.some((id) => id.startsWith("inv:"))).toBe(
+      false,
+    );
+  });
+
+  test("confirmation names the inc: and is distinct from create/append/remove/retitle/clear/restamp/set", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    const cleared = clearIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+    });
+    const confirm = formatIncidentClearOccurredAtConfirmation(cleared);
+    expect(confirm).toContain(`Cleared incident occurrence ${incident.id}`);
+    expect(confirm).not.toMatch(/^Recorded incident/);
+    expect(confirm).not.toMatch(/^Updated incident/);
+    expect(confirm).not.toMatch(/^Removed from incident/);
+    expect(confirm).not.toMatch(/^Renamed incident/);
+    expect(confirm).not.toContain("Cleared incident title");
+    expect(confirm).not.toContain("Set incident time");
+    expect(confirm).not.toContain("Set incident occurrence");
+  });
+
+  test("already-omitted occurredAt is INCIDENT_OCCURRED_AT_UNCHANGED; nothing written", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    const error = expectCode(
+      () =>
+        clearIncidentOccurredAt({
+          baseDir: dir,
+          incidentId: incident.id,
+        }),
+      "INCIDENT_OCCURRED_AT_UNCHANGED",
+    );
+    expect(error.message).toContain(incident.id);
+    expect(error.message).toContain("already has no occurred time");
+    expect(getIncident(dir, incident.id).occurredAt).toBeUndefined();
+
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    clearIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+    });
+    const second = expectCode(
+      () =>
+        clearIncidentOccurredAt({
+          baseDir: dir,
+          incidentId: incident.id,
+        }),
+      "INCIDENT_OCCURRED_AT_UNCHANGED",
+    );
+    expect(second.message).toContain("already has no occurred time");
+    expect(second.message).not.toContain("already has that occurred time");
+    expect(getIncident(dir, incident.id).occurredAt).toBeUndefined();
+  });
+
+  test("unknown inc: is INCIDENT_NOT_FOUND", () => {
+    expectCode(
+      () =>
+        clearIncidentOccurredAt({
+          baseDir: dir,
+          incidentId: "inc:missing",
+        }),
+      "INCIDENT_NOT_FOUND",
+    );
+  });
+
+  test("after clear, set can establish a first occurredAt again", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    clearIncidentOccurredAt({ baseDir: dir, incidentId: incident.id });
+    const updated = setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    expect(updated.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(updated.recordedAt).toBe("2026-08-18T09:00:00.000Z");
+  });
+
+  test("077 set, 067 clear-title, and 068 restamp unchanged when clear-occurred-at is absent", () => {
+    const subject = seedSubject();
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    const renamed = retitleIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      title: "Better name",
+    });
+    expect(renamed.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    const cleared = clearIncidentTitle({
+      baseDir: dir,
+      incidentId: incident.id,
+    });
+    expect(cleared.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(cleared.title).toBeUndefined();
+    const restamped = restampIncident({
+      baseDir: dir,
+      incidentId: incident.id,
+      recordedAt: "2026-08-17T20:00:00.000Z",
+    });
+    expect(restamped.occurredAt).toBe("2026-08-17T14:00:00.000Z");
+    expect(restamped.recordedAt).toBe("2026-08-17T20:00:00.000Z");
+    expect(getIncident(dir, incident.id).occurredAt).toBe(
+      "2026-08-17T14:00:00.000Z",
+    );
+  });
+
+  test("list RECORDED AT unchanged; INCIDENT MEMORY omits OCCURRED AT", () => {
+    const subject = seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const frozen = serializeInvestigationSnapshot(saved.record.snapshot);
+    seedResolution("res:a", subject.id);
+    seedResolution("res:b", subject.id);
+    const incident = recordIncident({
+      baseDir: dir,
+      resolutionIds: ["res:a", "res:b"],
+      title: "API error spike",
+      recordedAt: "2026-08-18T09:00:00.000Z",
+    });
+    setIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+      occurredAt: "2026-08-17T14:00:00.000Z",
+    });
+    clearIncidentOccurredAt({
+      baseDir: dir,
+      incidentId: incident.id,
+    });
+
+    const listed = formatIncidentList(listIncidents(dir));
+    expect(listed).toContain("2026-08-18T09:00:00.000Z");
+    expect(listed).not.toContain("2026-08-17T14:00:00.000Z");
+    expect(listed).not.toContain("OCCURRED AT");
+    expect(listed).toContain("API error spike");
+
+    const live = formatInvestigationContext(
+      getInvestigationContext({ baseDir: dir, resourceRef: subject.id }),
+    );
+    const rendered = formatWithIncidentMemory(
+      live,
+      listIncidentsForSubject(dir, subject.id),
+      "subject",
+    );
+    expect(rendered).toContain("INCIDENT MEMORY");
+    expect(rendered).not.toContain("OCCURRED AT");
+    expect(rendered).not.toContain("2026-08-17T14:00:00.000Z");
+    expect(rendered).toContain(`${incident.id}  2026-08-18T09:00:00.000Z`);
+
+    expect(
+      serializeInvestigationSnapshot(
+        getSavedInvestigation(dir, saved.record.id).snapshot,
+      ),
+    ).toBe(frozen);
+    const compared = formatInvestigationCompare(
+      compareInvestigationToCurrent({
+        baseDir: dir,
+        investigationId: saved.record.id,
+      }),
+    );
+    expect(compared).not.toContain("INCIDENT MEMORY");
   });
 });

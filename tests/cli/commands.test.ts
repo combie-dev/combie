@@ -3780,6 +3780,548 @@ describe("CLI commands", () => {
     expect(help.stdout).toContain("--recorded-at");
   });
 
+  test("incident <id> --occurred-at sets occurrence time on an existing grouping (Sprint 077)", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "inc077",
+      kind: "project",
+      name: "inc-occurred-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-inc077",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const resA = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Rollback",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resB = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Hold deploys",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resC = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Scale up",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--title",
+        "API error spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(grouped.code).toBe(0);
+    const incId = grouped.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+    const shownBefore = await capture(() =>
+      main(["incident", incId, "--dir", dir]),
+    );
+    expect(shownBefore.stdout).not.toContain("Occurred at");
+    const createdAt = shownBefore.stdout.match(
+      /Recorded by Combie at (\S+)/,
+    )![1]!;
+
+    const setOccurred = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--occurred-at",
+        "2026-08-17T14:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(setOccurred.code).toBe(0);
+    expect(setOccurred.stdout).toContain(`Set incident occurrence ${incId}`);
+    expect(setOccurred.stdout).toContain("2026-08-17T14:00:00.000Z");
+    expect(setOccurred.stdout).not.toMatch(/^Set incident time/);
+
+    const shown = await capture(() => main(["incident", incId, "--dir", dir]));
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain("Occurred at 2026-08-17T14:00:00.000Z");
+    expect(shown.stdout).toContain(`Recorded by Combie at ${createdAt}`);
+    expect(shown.stdout).toContain("TITLE");
+    expect(shown.stdout).toContain("API error spike");
+    expect(shown.stdout).toContain(resA);
+    expect(shown.stdout).toContain(resB);
+
+    const listed = await capture(() => main(["incidents", "--dir", dir]));
+    expect(listed.stdout).toContain(createdAt);
+    expect(listed.stdout).not.toContain("2026-08-17T14:00:00.000Z");
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    const incidentMemory = live.stdout.slice(
+      live.stdout.indexOf("INCIDENT MEMORY"),
+    );
+    expect(incidentMemory).toContain("OCCURRED AT");
+    expect(incidentMemory).toContain("2026-08-17T14:00:00.000Z");
+    expect(incidentMemory).toContain(createdAt);
+
+    const unchanged = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--occurred-at",
+        "2026-08-17T14:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(unchanged.code).toBe(1);
+    expect(unchanged.stderr).toContain("already");
+
+    const invalid = await capture(() =>
+      main(["incident", incId, "--occurred-at", "Nope", "--dir", dir]),
+    );
+    expect(invalid.code).toBe(1);
+
+    const blank = await capture(() =>
+      main(["incident", incId, "--occurred-at", "--dir", dir]),
+    );
+    expect(blank.code).toBe(1);
+
+    const mixedTitle = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--occurred-at",
+        "2026-08-17T15:00:00.000Z",
+        "--title",
+        "Nope",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedTitle.code).toBe(1);
+
+    const mixedClear = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--clear-title",
+        "--occurred-at",
+        "2026-08-17T15:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedClear.code).toBe(1);
+
+    const mixedRestamp = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--recorded-at",
+        "2026-08-17T21:00:00.000Z",
+        "--occurred-at",
+        "2026-08-17T15:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedRestamp.code).toBe(1);
+
+    const mixedAppend = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--resolution",
+        resC,
+        "--occurred-at",
+        "2026-08-17T15:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedAppend.code).toBe(1);
+
+    const mixedRemove = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--remove-resolution",
+        resA,
+        "--occurred-at",
+        "2026-08-17T15:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedRemove.code).toBe(1);
+
+    const noPositional = await capture(() =>
+      main([
+        "incident",
+        "--occurred-at",
+        "2026-08-17T14:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(noPositional.code).toBe(1);
+
+    const groupingSnapshots = await capture(() =>
+      main([
+        "incident",
+        "--investigation",
+        "inv:a",
+        "--investigation",
+        "inv:b",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(groupingSnapshots.code).toBe(1);
+    expect(groupingSnapshots.stderr).toContain("do not pass --investigation");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.stdout).toContain("incident inc:… --occurred-at");
+    expect(help.stdout).toContain("--occurred-at");
+  });
+
+  test("incident <id> --clear-occurred-at omits the stored occurredAt (Sprint 078)", async () => {
+    await capture(() => main(["init", "--dir", dir]));
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "inc078",
+      kind: "project",
+      name: "inc-clear-occurred-sentry",
+      metadata: { organization_slug: "acme" },
+    });
+    store.applyResource(project, {
+      id: "obs-inc078",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const resA = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Rollback",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resB = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Hold deploys",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resC = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Scale up",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+    const resD = (
+      await capture(() =>
+        main([
+          "resolution",
+          "--resource",
+          project.id,
+          "--decision",
+          "Hold again",
+          "--dir",
+          dir,
+        ]),
+      )
+    ).stdout.match(/Recorded resolution (res:\S+)/)![1]!;
+
+    const grouped = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resA,
+        "--resolution",
+        resB,
+        "--title",
+        "API error spike",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(grouped.code).toBe(0);
+    const incId = grouped.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+    const shownBefore = await capture(() =>
+      main(["incident", incId, "--dir", dir]),
+    );
+    const createdAt = shownBefore.stdout.match(
+      /Recorded by Combie at (\S+)/,
+    )![1]!;
+
+    const setOccurred = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--occurred-at",
+        "2026-08-17T14:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(setOccurred.code).toBe(0);
+
+    const cleared = await capture(() =>
+      main(["incident", incId, "--clear-occurred-at", "--dir", dir]),
+    );
+    expect(cleared.code).toBe(0);
+    expect(cleared.stdout).toContain(`Cleared incident occurrence ${incId}`);
+    expect(cleared.stdout).not.toMatch(/^Recorded incident/);
+    expect(cleared.stdout).not.toMatch(/^Updated incident/);
+    expect(cleared.stdout).not.toMatch(/^Removed from incident/);
+    expect(cleared.stdout).not.toMatch(/^Renamed incident/);
+    expect(cleared.stdout).not.toContain("Cleared incident title");
+    expect(cleared.stdout).not.toContain("Set incident time");
+    expect(cleared.stdout).not.toContain("Set incident occurrence");
+
+    const shown = await capture(() => main(["incident", incId, "--dir", dir]));
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).not.toContain("Occurred at");
+    expect(shown.stdout).toContain(`Recorded by Combie at ${createdAt}`);
+    expect(shown.stdout).toContain("TITLE");
+    expect(shown.stdout).toContain("API error spike");
+    expect(shown.stdout).toContain(resA);
+    expect(shown.stdout).toContain(resB);
+
+    const listed = await capture(() => main(["incidents", "--dir", dir]));
+    expect(listed.stdout).toContain(createdAt);
+    expect(listed.stdout).not.toContain("2026-08-17T14:00:00.000Z");
+
+    const live = await capture(() =>
+      main(["investigate", project.id, "--dir", dir]),
+    );
+    const incidentMemory = live.stdout.slice(
+      live.stdout.indexOf("INCIDENT MEMORY"),
+    );
+    expect(incidentMemory).toContain("INCIDENT MEMORY");
+    expect(incidentMemory).not.toContain("OCCURRED AT");
+    expect(incidentMemory).not.toContain("2026-08-17T14:00:00.000Z");
+
+    const roundTrip = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--occurred-at",
+        "2026-08-17T14:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(roundTrip.code).toBe(0);
+
+    const clearAgain = await capture(() =>
+      main(["incident", incId, "--clear-occurred-at", "--dir", dir]),
+    );
+    expect(clearAgain.code).toBe(0);
+
+    const already = await capture(() =>
+      main(["incident", incId, "--clear-occurred-at", "--dir", dir]),
+    );
+    expect(already.code).toBe(1);
+    expect(already.stderr).toContain("already");
+
+    const omitted = await capture(() =>
+      main([
+        "incident",
+        "--resolution",
+        resC,
+        "--resolution",
+        resD,
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(omitted.code).toBe(0);
+    const inc2 = omitted.stdout.match(/Recorded incident (inc:\S+)/)![1]!;
+    const omittedClear = await capture(() =>
+      main(["incident", inc2, "--clear-occurred-at", "--dir", dir]),
+    );
+    expect(omittedClear.code).toBe(1);
+    expect(omittedClear.stderr).toContain("already");
+
+    const withValue = await capture(() =>
+      main(["incident", incId, "--clear-occurred-at", "extra", "--dir", dir]),
+    );
+    expect(withValue.code).toBe(1);
+
+    const mixedOccurred = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--clear-occurred-at",
+        "--occurred-at",
+        "2026-08-17T15:00:00.000Z",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedOccurred.code).toBe(1);
+    expect(mixedOccurred.stderr).toMatch(/--clear-occurred-at|--occurred-at/);
+
+    const mixedClearTitle = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--clear-title",
+        "--clear-occurred-at",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedClearTitle.code).toBe(1);
+    expect(mixedClearTitle.stderr).toMatch(/--clear-title|--clear-occurred-at/);
+
+    const mixedRestamp = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--recorded-at",
+        "2026-08-17T21:00:00.000Z",
+        "--clear-occurred-at",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedRestamp.code).toBe(1);
+    expect(mixedRestamp.stderr).toMatch(/--recorded-at|--clear-occurred-at/);
+
+    const mixedTitle = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--title",
+        "Nope",
+        "--clear-occurred-at",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedTitle.code).toBe(1);
+    expect(mixedTitle.stderr).toMatch(/--title|--clear-occurred-at/);
+
+    const mixedAppend = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--resolution",
+        resC,
+        "--clear-occurred-at",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedAppend.code).toBe(1);
+    expect(mixedAppend.stderr).toMatch(/--resolution|--clear-occurred-at/);
+
+    const mixedRemove = await capture(() =>
+      main([
+        "incident",
+        incId,
+        "--remove-resolution",
+        resA,
+        "--clear-occurred-at",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(mixedRemove.code).toBe(1);
+    expect(mixedRemove.stderr).toMatch(
+      /--remove-resolution|--clear-occurred-at/,
+    );
+
+    const noPositional = await capture(() =>
+      main(["incident", "--clear-occurred-at", "--dir", dir]),
+    );
+    expect(noPositional.code).toBe(1);
+    expect(noPositional.stderr).toMatch(/--clear-occurred-at|Usage:/);
+
+    const groupingSnapshots = await capture(() =>
+      main([
+        "incident",
+        "--investigation",
+        "inv:a",
+        "--investigation",
+        "inv:b",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(groupingSnapshots.code).toBe(1);
+    expect(groupingSnapshots.stderr).toContain("do not pass --investigation");
+
+    const help = await capture(() => main(["help"]));
+    expect(help.stdout).toContain("--clear-occurred-at");
+    expect(help.stdout).toContain("incident inc:… --clear-occurred-at");
+
+    const blankOccurred = await capture(() =>
+      main(["incident", incId, "--occurred-at", "--dir", dir]),
+    );
+    expect(blankOccurred.code).toBe(1);
+  });
+
   test("investigate and investigation reopen show retained snapshot history (Sprint 069)", async () => {
     await capture(() => main(["init", "--dir", dir]));
     const store = new Store(dir);

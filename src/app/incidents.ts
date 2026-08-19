@@ -336,15 +336,22 @@ export interface RestampIncidentOptions {
   recordedAt: string;
 }
 
-function canonicalizeIncidentRecordedAt(value: string): string {
+function canonicalizeIncidentIso(value: string): string | undefined {
   const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) {
-    throw new CombieError(
-      "INCIDENT_RECORDED_AT_INVALID",
-      `--recorded-at requires a valid ISO timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
-    );
-  }
+  if (!Number.isFinite(ms)) return undefined;
   return new Date(ms).toISOString();
+}
+
+function requireCanonicalIncidentIso(
+  value: string,
+  code: string,
+  message: string,
+): string {
+  const canonical = canonicalizeIncidentIso(value.trim());
+  if (!canonical) {
+    throw new CombieError(code, message);
+  }
+  return canonical;
 }
 
 export function restampIncident(
@@ -357,14 +364,11 @@ export function restampIncident(
       `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>\nList ids: ${BINARY_NAME} incidents`,
     );
   }
-  const raw = trimField(options.recordedAt);
-  if (!raw) {
-    throw new CombieError(
-      "INCIDENT_RECORDED_AT_INVALID",
-      `--recorded-at requires a valid ISO timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
-    );
-  }
-  const recordedAt = canonicalizeIncidentRecordedAt(raw);
+  const recordedAt = requireCanonicalIncidentIso(
+    options.recordedAt,
+    "INCIDENT_RECORDED_AT_INVALID",
+    `--recorded-at requires a valid ISO timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --recorded-at <iso>`,
+  );
   const store = new Store(options.baseDir);
   try {
     if (!store.isInitialized()) throw notInitialized();
@@ -383,6 +387,104 @@ export function restampIncident(
       );
     }
     store.updateIncidentRecordedAt(incident.id, recordedAt);
+    const record = store.getIncidentRow(incident.id);
+    if (!record) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incident.id}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    return record;
+  } finally {
+    store.close();
+  }
+}
+
+export interface SetIncidentOccurredAtOptions {
+  baseDir: string;
+  incidentId: string;
+  occurredAt: string;
+}
+
+export function setIncidentOccurredAt(
+  options: SetIncidentOccurredAtOptions,
+): IncidentRecord {
+  const incidentId = options.incidentId.trim();
+  if (!incidentId) {
+    throw new CombieError(
+      "INCIDENT_ID_REQUIRED",
+      `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --occurred-at <iso>\nList ids: ${BINARY_NAME} incidents`,
+    );
+  }
+  const occurredAt = requireCanonicalIncidentIso(
+    options.occurredAt,
+    "INCIDENT_OCCURRED_AT_INVALID",
+    `--occurred-at requires a valid ISO timestamp.\nUsage: ${BINARY_NAME} incident <incident-id> --occurred-at <iso>`,
+  );
+  const store = new Store(options.baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    store.init();
+    const incident = store.getIncidentRow(incidentId);
+    if (!incident) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incidentId}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    if (incident.occurredAt === occurredAt) {
+      throw new CombieError(
+        "INCIDENT_OCCURRED_AT_UNCHANGED",
+        `Incident ${incident.id} already has that occurred time.\nNothing was changed.\nShow: ${BINARY_NAME} incident ${incident.id}`,
+      );
+    }
+    store.updateIncidentOccurredAt(incident.id, occurredAt);
+    const record = store.getIncidentRow(incident.id);
+    if (!record) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incident.id}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    return record;
+  } finally {
+    store.close();
+  }
+}
+
+export interface ClearIncidentOccurredAtOptions {
+  baseDir: string;
+  incidentId: string;
+}
+
+export function clearIncidentOccurredAt(
+  options: ClearIncidentOccurredAtOptions,
+): IncidentRecord {
+  const incidentId = options.incidentId.trim();
+  if (!incidentId) {
+    throw new CombieError(
+      "INCIDENT_ID_REQUIRED",
+      `Incident id is required.\nUsage: ${BINARY_NAME} incident <incident-id> --clear-occurred-at\nList ids: ${BINARY_NAME} incidents`,
+    );
+  }
+  const store = new Store(options.baseDir);
+  try {
+    if (!store.isInitialized()) throw notInitialized();
+    store.init();
+    const incident = store.getIncidentRow(incidentId);
+    if (!incident) {
+      throw new CombieError(
+        "INCIDENT_NOT_FOUND",
+        `Incident not found: ${incidentId}\nList recorded incidents: ${BINARY_NAME} incidents`,
+      );
+    }
+    if (incident.occurredAt === undefined) {
+      throw new CombieError(
+        "INCIDENT_OCCURRED_AT_UNCHANGED",
+        `Incident ${incident.id} already has no occurred time.\nNothing was cleared.\nShow: ${BINARY_NAME} incident ${incident.id}`,
+      );
+    }
+    store.clearIncidentOccurredAt(incident.id);
     const record = store.getIncidentRow(incident.id);
     if (!record) {
       throw new CombieError(
@@ -528,8 +630,13 @@ export function formatIncident(record: IncidentRecord): string {
     "INCIDENT",
     `ID: ${record.id}`,
     `Recorded by Combie at ${record.recordedAt}`,
-    "This is retained organizational grouping. It is not current provider truth.",
   ];
+  if (record.occurredAt) {
+    lines.push(`Occurred at ${record.occurredAt}`);
+  }
+  lines.push(
+    "This is retained organizational grouping. It is not current provider truth.",
+  );
   if (record.title) {
     lines.push("", "TITLE", record.title);
   }
@@ -593,6 +700,25 @@ export function formatIncidentRestampConfirmation(
   return (
     `Set incident time ${record.id}\n` +
     `${record.recordedAt}\n` +
+    `Show: ${BINARY_NAME} incident ${record.id}`
+  );
+}
+
+export function formatIncidentOccurredAtConfirmation(
+  record: IncidentRecord,
+): string {
+  return (
+    `Set incident occurrence ${record.id}\n` +
+    `${record.occurredAt}\n` +
+    `Show: ${BINARY_NAME} incident ${record.id}`
+  );
+}
+
+export function formatIncidentClearOccurredAtConfirmation(
+  record: IncidentRecord,
+): string {
+  return (
+    `Cleared incident occurrence ${record.id}\n` +
     `Show: ${BINARY_NAME} incident ${record.id}`
   );
 }
@@ -737,6 +863,9 @@ function incidentMemoryFieldBlocks(record: IncidentRecord): string[] {
   const blocks: string[] = [];
   if (record.title) {
     blocks.push("TITLE", record.title);
+  }
+  if (record.occurredAt) {
+    blocks.push("OCCURRED AT", record.occurredAt);
   }
   if (blocks.length > 0) blocks.push("");
   blocks.push("RESOLUTIONS", ...record.resolutionIds);

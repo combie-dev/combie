@@ -15,6 +15,8 @@ export interface IncidentRecord {
   resolutionIds: string[];
   /** Combie observation time of the grouping (ISO). */
   recordedAt: string;
+  /** Human-named occurrence time (ISO). Omitted when unknown. */
+  occurredAt?: string;
   title?: string;
 }
 

@@ -268,6 +268,7 @@ CREATE INDEX IF NOT EXISTS resolutions_recorded_at_id_idx
 CREATE TABLE IF NOT EXISTS incidents (
   id TEXT PRIMARY KEY,
   recorded_at TEXT NOT NULL,
+  occurred_at TEXT,
   title TEXT,
   resolution_ids TEXT NOT NULL
 );
@@ -323,6 +324,8 @@ export class Store {
     this.ensureNullableTextColumn(db, "sentry_releases", "git_commit_sha");
     // Sprint 054: pre-054 resolutions lack evidence_ids (nullable JSON array).
     this.ensureNullableTextColumn(db, "resolutions", "evidence_ids");
+    // Sprint 077: pre-077 incidents lack occurred_at (nullable ISO).
+    this.ensureNullableTextColumn(db, "incidents", "occurred_at");
     // Sprint 057: pre-057 investigation_id is NOT NULL. Rebuild so Resource-
     // anchored rows can omit it. Existing rows keep their investigation ids.
     this.ensureResolutionsInvestigationIdNullable(db);
@@ -1835,6 +1838,24 @@ export class Store {
    * and never stores an empty string.
    */
   updateIncidentRecordedAt(incidentId: string, recordedAt: string): void {
+    this.updateIncidentTextColumn(incidentId, "recorded_at", recordedAt);
+  }
+
+  /**
+   * Replace an Incident's occurredAt. recorded_at, title, and
+   * resolution_ids are untouched. This never DELETEs the Incident
+   * row and never writes an empty string.
+   */
+  updateIncidentOccurredAt(incidentId: string, occurredAt: string): void {
+    this.updateIncidentTextColumn(incidentId, "occurred_at", occurredAt);
+  }
+
+  /**
+   * Omit an Incident's occurredAt (SQL NULL). recorded_at, title, and
+   * resolution_ids are untouched. This never DELETEs the Incident or
+   * any Resolution row, and never stores an empty string.
+   */
+  clearIncidentOccurredAt(incidentId: string): void {
     const db = this.getWritableDb();
     const row = db
       .query(`SELECT id FROM incidents WHERE id = ?`)
@@ -1842,8 +1863,25 @@ export class Store {
     if (!row) {
       throw new Error(`Incident not found: ${incidentId}`);
     }
-    db.query(`UPDATE incidents SET recorded_at = ? WHERE id = ?`).run(
-      recordedAt,
+    db.query(`UPDATE incidents SET occurred_at = NULL WHERE id = ?`).run(
+      incidentId,
+    );
+  }
+
+  private updateIncidentTextColumn(
+    incidentId: string,
+    column: "recorded_at" | "occurred_at",
+    value: string,
+  ): void {
+    const db = this.getWritableDb();
+    const row = db
+      .query(`SELECT id FROM incidents WHERE id = ?`)
+      .get(incidentId) as { id: string } | null;
+    if (!row) {
+      throw new Error(`Incident not found: ${incidentId}`);
+    }
+    db.query(`UPDATE incidents SET ${column} = ? WHERE id = ?`).run(
+      value,
       incidentId,
     );
   }
@@ -1853,7 +1891,7 @@ export class Store {
     if (!this.hasIncidentsTable(db)) return [];
     const rows = db
       .query(
-        `SELECT id, recorded_at, title, resolution_ids
+        `SELECT id, recorded_at, occurred_at, title, resolution_ids
          FROM incidents
          ORDER BY recorded_at DESC, id DESC`,
       )
@@ -1866,7 +1904,7 @@ export class Store {
     if (!this.hasIncidentsTable(db)) return null;
     const row = db
       .query(
-        `SELECT id, recorded_at, title, resolution_ids
+        `SELECT id, recorded_at, occurred_at, title, resolution_ids
          FROM incidents
          WHERE id = ?`,
       )
@@ -1938,6 +1976,7 @@ function parseResolutionEvidence(raw: string | null | undefined): string[] | und
 type IncidentSqlRow = {
   id: string;
   recorded_at: string;
+  occurred_at: string | null;
   title: string | null;
   resolution_ids: string;
 };
@@ -1946,6 +1985,7 @@ type IncidentRow = {
   id: string;
   resolutionIds: string[];
   recordedAt: string;
+  occurredAt?: string;
   title?: string;
 };
 
@@ -1974,6 +2014,7 @@ function mapIncidentRow(row: IncidentSqlRow): IncidentRow {
     id: row.id,
     resolutionIds: parseIncidentMembers(row.resolution_ids),
     recordedAt: row.recorded_at,
+    ...(row.occurred_at ? { occurredAt: row.occurred_at } : {}),
     ...(row.title ? { title: row.title } : {}),
   };
 }

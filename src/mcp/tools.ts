@@ -77,6 +77,7 @@ function toIncidentMemoryRow(
     resolutionIds: record.resolutionIds,
   };
   if (record.title !== undefined) row.title = record.title;
+  if (record.occurredAt !== undefined) row.occurredAt = record.occurredAt;
   return row;
 }
 
