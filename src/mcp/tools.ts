@@ -4,7 +4,7 @@ import { CombieError } from "../app/errors.ts";
 import { compareInvestigationToCurrent } from "../app/compare-investigation.ts";
 import { listIncidentsForSubject } from "../app/incidents.ts";
 import { composeInvestigationFacts } from "../app/investigation-facts.ts";
-import { listInvestigations } from "../app/investigations.ts";
+import { listInvestigations, getSavedInvestigation } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
 import { composeProviderActivityChronology } from "../app/provider-activity.ts";
@@ -207,9 +207,12 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "May also include retained investigation history (snapshot summaries: exact inv: id and composedAt) " +
         "for that exact subject; that is retained composition, not current provider truth, not an incident, " +
         "and not a recommendation. " +
-        "Optional investigationId (exact inv: id for this Resource) also returns an ephemeral " +
-        "snapshot-versus-current comparison; that is not current provider truth, not an incident, " +
-        "not a recommendation, and not snapshot reopen. Omit investigationId to skip compare. " +
+        "Optional investigationId (exact inv: id for this Resource) also returns the retained " +
+        "048 snapshot composition for that id as investigationSnapshot (retained composition " +
+        "at composedAt; not current provider truth, not an incident, not a recommendation) " +
+        "plus an ephemeral snapshot-versus-current comparison; those are not current provider " +
+        "truth, not an incident, not a recommendation, and not a rewrite of the snapshot row. " +
+        "Omit investigationId to skip snapshot and compare. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -218,7 +221,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .string()
           .optional()
           .describe(
-            "Exact saved Investigation id (inv:…). When set, also returns an ephemeral snapshot-versus-current comparison if that snapshot belongs to this Resource. Omit to skip compare.",
+            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot) and an ephemeral snapshot-versus-current comparison if that snapshot belongs to this Resource. Omit to skip snapshot and compare.",
           ),
       }),
     },
@@ -289,6 +292,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         let investigationCompare: ReturnType<
           typeof compareInvestigationToCurrent
         > | undefined;
+        let investigationSnapshot: ReturnType<
+          typeof getSavedInvestigation
+        > | undefined;
         if (investigationId !== undefined) {
           const named = investigationId.trim();
           if (!named) {
@@ -308,6 +314,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             );
           }
           investigationCompare = comparison;
+          investigationSnapshot = getSavedInvestigation(baseDir, named);
         }
 
         return {
@@ -346,6 +353,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               : {}),
             ...(investigationCompare
               ? { investigationCompare }
+              : {}),
+            ...(investigationSnapshot
+              ? { investigationSnapshot }
               : {}),
           }) as Record<string, unknown>,
         };
