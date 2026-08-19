@@ -172,6 +172,15 @@ tool, not changing 059 subject-scoped `incidentMemory`, not live
 memory on `investigationSnapshot`, not grouping snapshots as
 members, not MCP writes, not lifecycle, not `occurredAt`, not
 the Investigation Engine).
+Sprint 075 shipped
+the orphan-subject-named-id-observe-on-`investigate_resource`
+slice (ROADMAP v0.6; named aligned `investigationId` still
+returns 072–074 sidecars when the subject Resource is missing;
+compare `currentStatus: subject_missing`; live compose keys
+omitted; omitted id still `RESOURCE_NOT_FOUND`; not a fifth
+tool, not snapshot JSON as the live body, not grouping snapshots
+as members, not MCP writes, not lifecycle, not `occurredAt`, not
+the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -193,7 +202,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–074 complete; Sprint 075 not started
+## Current baseline: Sprints 001–075 complete
 
 Multi-provider connection loop:
 
@@ -456,6 +465,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `investigationSnapshot`; no `incident_id`; not grouping
   snapshots as members, not a fifth tool, not MCP writes, not
   lifecycle, not `occurredAt`).
+- **Sprint 075 shipped:** Orphan-subject named-id observe on
+  `investigate_resource` (ROADMAP v0.6; named aligned
+  `investigationId` returns 072–074 sidecars when the subject
+  Resource is missing; compare `subject_missing`; live keys
+  omitted; omitted id still `RESOURCE_NOT_FOUND`; no
+  `incident_id`; not grouping snapshots as members, not a fifth
+  tool, not snapshot JSON as the live body, not MCP writes, not
+  lifecycle, not `occurredAt`).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -676,7 +693,17 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   as Incident members remains unearned. Fifth-tool snapshot
   reopen / `list_investigations` remains unearned. Orphan-subject
   MCP survival remains unearned. `occurredAt` remains unearned.
-  Sprint 075 is not started.
+  On 2026-08-18 Sprint 075 started as the smallest named-id
+  observe when live compose is `RESOURCE_NOT_FOUND` (aligned
+  `investigationId`; sidecars remain; live keys omitted; compare
+  `subject_missing`). It does not authorize Recommendation,
+  Learning, similarity, Investigation lifecycle, MCP writes, a
+  fifth tool, grouping snapshots as members, omitted-id survival,
+  inferred latest, or `occurredAt`. Sprint 075 shipped that slice.
+  Sprint 075 leftover is not a sequence; grouping Investigation
+  snapshots as Incident members remains unearned. Fifth-tool
+  snapshot reopen / `list_investigations` remains unearned.
+  `occurredAt` remains unearned.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
