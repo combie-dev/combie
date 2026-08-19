@@ -162,6 +162,16 @@ changing 056 subject-scoped `resolutionMemory`, not live memory
 on `investigationSnapshot`, not investigation-scoped Incident
 memory, not grouping snapshots as members, not MCP writes, not
 lifecycle, not `occurredAt`, not the Investigation Engine).
+Sprint 074 shipped
+the Investigation-scoped-Incident-memory-on-`investigate_resource`
+slice (ROADMAP v0.7; additive investigation-scoped Incident
+recall on the existing agent investigate tool when
+`investigationId` is named; 059 `listIncidentsForInvestigation`
+filter; omitted when the id is not passed or empty; not a fifth
+tool, not changing 059 subject-scoped `incidentMemory`, not live
+memory on `investigationSnapshot`, not grouping snapshots as
+members, not MCP writes, not lifecycle, not `occurredAt`, not
+the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -183,7 +193,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–073 complete; Sprint 074 not started
+## Current baseline: Sprints 001–074 complete; Sprint 075 not started
 
 Multi-provider connection loop:
 
@@ -438,6 +448,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   snapshots as members, not a fifth tool, not investigation-scoped
   Incident memory, not MCP writes, not lifecycle, not
   `occurredAt`).
+- **Sprint 074 shipped:** Investigation-scoped Incident recall
+  on `investigate_resource` (ROADMAP v0.7; additive
+  `investigationIncidentMemory` when named `investigationId`;
+  059 filter; omitted when the id is not passed or empty; 059
+  subject-scoped `incidentMemory` unchanged; no live memory on
+  `investigationSnapshot`; no `incident_id`; not grouping
+  snapshots as members, not a fifth tool, not MCP writes, not
+  lifecycle, not `occurredAt`).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -645,8 +663,20 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   unearned. Fifth-tool snapshot reopen / `list_investigations`
   remains unearned. Investigation-scoped Incident memory on this
   path remains unearned. Orphan-subject MCP survival remains
-  unearned. `occurredAt` remains unearned. Sprint 074 is not
-  started.
+  unearned. `occurredAt` remains unearned. On 2026-08-18 Sprint
+  074 started as the smallest investigation-scoped Incident
+  observe of 059 on existing `investigate_resource` (additive
+  `investigationIncidentMemory` when `investigationId` is named;
+  059 subject-scoped `incidentMemory` unchanged). It does not
+  authorize Recommendation, Learning, similarity, Investigation
+  lifecycle, MCP writes, a fifth tool, grouping snapshots as
+  members, orphan-subject MCP survival, inferred latest, or
+  `occurredAt`. Sprint 074 shipped that slice. Sprint 074
+  leftover is not a sequence; grouping Investigation snapshots
+  as Incident members remains unearned. Fifth-tool snapshot
+  reopen / `list_investigations` remains unearned. Orphan-subject
+  MCP survival remains unearned. `occurredAt` remains unearned.
+  Sprint 075 is not started.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
