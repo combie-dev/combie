@@ -181,6 +181,15 @@ omitted; omitted id still `RESOURCE_NOT_FOUND`; not a fifth
 tool, not snapshot JSON as the live body, not grouping snapshots
 as members, not MCP writes, not lifecycle, not `occurredAt`, not
 the Investigation Engine).
+Sprint 076 shipped
+the named-id-only-observe-on-`investigate_resource` slice
+(ROADMAP v0.6; optional `resourceId` when `investigationId` is
+named; subject derived from the 048 row; 074 path if Resource
+exists, 075 path if missing; omitted `investigationId` still
+requires `resourceId`; not a fifth tool, not
+`list_investigations`, not grouping snapshots as members, not
+MCP writes, not lifecycle, not `occurredAt`, not the
+Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -202,7 +211,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–075 complete
+## Current baseline: Sprints 001–076 complete
 
 Multi-provider connection loop:
 
@@ -473,6 +482,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `incident_id`; not grouping snapshots as members, not a fifth
   tool, not snapshot JSON as the live body, not MCP writes, not
   lifecycle, not `occurredAt`).
+- **Sprint 076 shipped:** Named-id-only observe on
+  `investigate_resource` (ROADMAP v0.6; optional `resourceId`
+  when `investigationId` is named; subject from the 048 row;
+  074 if Resource exists, 075 if missing; omitted
+  `investigationId` still requires `resourceId`; no
+  `incident_id`; not grouping snapshots as members, not a fifth
+  tool, not `list_investigations`, not snapshot JSON as the live
+  body, not MCP writes, not lifecycle, not `occurredAt`).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -702,8 +719,23 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   inferred latest, or `occurredAt`. Sprint 075 shipped that slice.
   Sprint 075 leftover is not a sequence; grouping Investigation
   snapshots as Incident members remains unearned. Fifth-tool
-  snapshot reopen / `list_investigations` remains unearned.
-  `occurredAt` remains unearned.
+  snapshot reopen / `list_investigations` remained unearned until
+  this Sprint split leftover[1]: named-id-only observe on the
+  existing tool (optional `resourceId` when `investigationId` is
+  named) is earned; `list_investigations` / `get_investigation`
+  stay frozen. `occurredAt` remains unearned. On 2026-08-18
+  Sprint 076 started as the smallest named-id-only observe on
+  existing `investigate_resource` (`resourceId` optional when
+  `investigationId` is named; subject from the 048 row; 074 or
+  075 path). It does not authorize Recommendation, Learning,
+  similarity, Investigation lifecycle, MCP writes, a fifth tool,
+  grouping snapshots as members, `list_investigations`, inferred
+  latest, omitted-id live investigate, or `occurredAt`. Sprint
+  076 shipped that slice. Sprint 076 leftover is not a sequence;
+  grouping Investigation snapshots as Incident members remains
+  unearned. Fifth-tool snapshot reopen /
+  `list_investigations` remains unearned. `occurredAt` remains
+  unearned.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md` remains the learning
   ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
