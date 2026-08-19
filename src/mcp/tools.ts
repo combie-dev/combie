@@ -2,7 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { CombieError } from "../app/errors.ts";
 import { compareInvestigationToCurrent } from "../app/compare-investigation.ts";
-import { listIncidentsForSubject } from "../app/incidents.ts";
+import {
+  listIncidentsForInvestigation,
+  listIncidentsForSubject,
+} from "../app/incidents.ts";
 import { composeInvestigationFacts } from "../app/investigation-facts.ts";
 import { listInvestigations, getSavedInvestigation } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
@@ -216,7 +219,12 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "against that exact Investigation as investigationResolutionMemory; that is not current " +
         "provider truth, not an incident, and not a recommendation, and it does not replace " +
         "subject-scoped resolution memory. " +
-        "Omit investigationId to skip snapshot, compare, and investigation-scoped resolution memory. " +
+        "When investigationId is set, may also include retained organizational grouping whose " +
+        "members include a Resolution recorded against that exact Investigation as " +
+        "investigationIncidentMemory; that is not current provider truth, not a recommendation, " +
+        "and it does not replace subject-scoped incident memory. " +
+        "Omit investigationId to skip snapshot, compare, investigation-scoped resolution memory, " +
+        "and investigation-scoped incident memory. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -225,7 +233,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .string()
           .optional()
           .describe(
-            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), an ephemeral snapshot-versus-current comparison, and investigation-scoped resolution memory recorded against that id if any exist and the snapshot belongs to this Resource. Omit to skip snapshot, compare, and investigation-scoped resolution memory.",
+            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. Omit to skip snapshot, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
           ),
       }),
     },
@@ -326,6 +334,12 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               investigationId: investigationSnapshot.id,
             })
           : [];
+        const investigationIncidentRows = investigationSnapshot
+          ? listIncidentsForInvestigation(
+              baseDir,
+              investigationSnapshot.id,
+            )
+          : [];
 
         return {
           content: [
@@ -371,6 +385,13 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               ? {
                   investigationResolutionMemory: toResolutionMemory(
                     investigationResolutionRows,
+                  ),
+                }
+              : {}),
+            ...(investigationIncidentRows.length > 0
+              ? {
+                  investigationIncidentMemory: toIncidentMemory(
+                    investigationIncidentRows,
                   ),
                 }
               : {}),
