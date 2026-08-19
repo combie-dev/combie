@@ -225,6 +225,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "and it does not replace subject-scoped incident memory. " +
         "Omit investigationId to skip snapshot, compare, investigation-scoped resolution memory, " +
         "and investigation-scoped incident memory. " +
+        "resourceId is optional when investigationId is named: the subject is then taken from " +
+        "that exact investigation's retained 048 row (subjectResourceId) instead of a named " +
+        "Resource id. Omitted investigationId still requires resourceId. " +
         "When investigationId is set and the subject Resource is missing from the local store, " +
         "the tool still returns the retained snapshot, the snapshot-versus-current comparison " +
         "with currentStatus subject_missing, investigation history for that subject, " +
@@ -235,12 +238,17 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
-        resourceId: z.string().describe("Exact Combie Resource ID (e.g. 'vercel:project:prj_abc')"),
+        resourceId: z
+          .string()
+          .optional()
+          .describe(
+            "Exact Combie Resource ID (e.g. 'vercel:project:prj_abc'). Optional when investigationId is named: the subject is then taken from that investigation's retained 048 row (subjectResourceId).",
+          ),
         investigationId: z
           .string()
           .optional()
           .describe(
-            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. Omit to skip snapshot, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
+            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. resourceId may be omitted; the subject is then taken from this investigation's 048 row. Omit to skip snapshot, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
           ),
       }),
     },
@@ -252,6 +260,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         let investigationSnapshot: ReturnType<
           typeof getSavedInvestigation
         > | undefined;
+        let subjectRef: string;
         if (investigationId !== undefined) {
           const named = investigationId.trim();
           if (!named) {
@@ -264,14 +273,31 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             baseDir,
             investigationId: named,
           });
-          if (comparison.subjectResourceId !== resourceId) {
-            throw new CombieError(
-              "INVESTIGATION_SUBJECT_MISMATCH",
-              `Investigation ${named} is retained for ${comparison.subjectResourceId}, not ${resourceId}.\nCompare a snapshot of this subject, or investigate that snapshot's subject.`,
-            );
+          const namedResourceRef =
+            resourceId === undefined ? "" : resourceId.trim();
+          if (namedResourceRef !== "") {
+            if (comparison.subjectResourceId !== resourceId) {
+              throw new CombieError(
+                "INVESTIGATION_SUBJECT_MISMATCH",
+                `Investigation ${named} is retained for ${comparison.subjectResourceId}, not ${resourceId}.\nCompare a snapshot of this subject, or investigate that snapshot's subject.`,
+              );
+            }
+            subjectRef = resourceId!;
+          } else {
+            subjectRef = comparison.subjectResourceId;
           }
           investigationCompare = comparison;
           investigationSnapshot = getSavedInvestigation(baseDir, named);
+        } else {
+          const namedResourceRef =
+            resourceId === undefined ? "" : resourceId.trim();
+          if (namedResourceRef === "") {
+            throw new CombieError(
+              "RESOURCE_ID_REQUIRED",
+              "Resource id is required when investigationId is omitted.\nPass an exact resource id, or name an exact inv: id as investigationId.",
+            );
+          }
+          subjectRef = resourceId!;
         }
 
         const investigationResolutionRows = investigationSnapshot
@@ -288,7 +314,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
 
         try {
           const { getInvestigationContext } = await import("../app/investigate.ts");
-          const ctx = getInvestigationContext({ baseDir, resourceRef: resourceId });
+          const ctx = getInvestigationContext({ baseDir, resourceRef: subjectRef });
 
           const subject = {
             id: ctx.subject.id,
@@ -425,7 +451,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
                 {
                   type: "text" as const,
                   text:
-                    `Investigation context for ${resourceId} is unavailable: ` +
+                    `Investigation context for ${subjectRef} is unavailable: ` +
                     `the subject Resource is not in the local store. ` +
                     `Retained snapshot ${investigationSnapshot.id} (composed at ` +
                     `${investigationSnapshot.composedAt}) with comparison ` +
