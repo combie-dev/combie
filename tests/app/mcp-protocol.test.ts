@@ -102,6 +102,9 @@ describe("MCP stdio contract", () => {
       expect(result.structuredContent).not.toHaveProperty("incidentMemory");
       expect(result.structuredContent).not.toHaveProperty("investigationHistory");
       expect(result.structuredContent).not.toHaveProperty("investigationCompare");
+      expect(result.structuredContent).not.toHaveProperty(
+        "investigationResolutionMemory",
+      );
     } finally {
       await client.close();
     }
@@ -2454,6 +2457,280 @@ describe("MCP stdio contract (Sprint 072)", () => {
     expect(row?.snapshotJson).not.toContain("investigationSnapshot");
     expect(JSON.parse(row!.snapshotJson)).not.toHaveProperty(
       "investigationSnapshot",
+    );
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 073)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource returns investigation-scoped resolution memory without replacing 056", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-073-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    const other = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(other, {
+      id: "obs-2",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const invA = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+    const invB = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const otherSaved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: other.id,
+      composedAt: "2026-08-16T11:00:00.000Z",
+    });
+    const viaInv = recordResolution({
+      baseDir: dir,
+      investigationId: invA.record.id,
+      decision: "Rollback",
+      recordedAt: "2026-08-16T13:00:00.000Z",
+    });
+    const viaResource = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subject.id,
+      decision: "Watch",
+      recordedAt: "2026-08-16T14:00:00.000Z",
+    });
+    const viaOtherInv = recordResolution({
+      baseDir: dir,
+      investigationId: invB.record.id,
+      decision: "Keep",
+      recordedAt: "2026-08-16T15:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-073", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      for (const tool of listed.tools) {
+        expect(tool.annotations).toMatchObject({
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        });
+      }
+      expect(
+        listed.tools.every(
+          (tool) =>
+            tool.name !== "list_investigations" &&
+            tool.name !== "compare_investigation" &&
+            tool.name !== "get_investigation",
+        ),
+      ).toBe(true);
+      const investigate = listed.tools.find(
+        (tool) => tool.name === "investigate_resource",
+      );
+      expect(investigate?.description).toMatch(
+        /investigationResolutionMemory|recorded against that exact Investigation/i,
+      );
+
+      const omitted = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(omitted.isError).not.toBe(true);
+      expect(omitted.content).toEqual([
+        {
+          type: "text",
+          text: `Investigation context for ${subject.name}. 0 change(s), 0 related resource(s).`,
+        },
+      ]);
+      const omittedContent = omitted.structuredContent as Record<
+        string,
+        unknown
+      >;
+      expect(omittedContent).not.toHaveProperty(
+        "investigationResolutionMemory",
+      );
+      expect(omittedContent).not.toHaveProperty("investigationIncidentMemory");
+      const omittedResolution = omittedContent.resolutionMemory as Array<
+        Record<string, unknown>
+      >;
+      expect(omittedResolution.map((row) => row.id).sort()).toEqual(
+        [viaInv.id, viaResource.id, viaOtherInv.id].sort(),
+      );
+
+      const named = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: invA.record.id,
+        },
+      });
+      expect(named.isError).not.toBe(true);
+      expect(named.content).toEqual(omitted.content);
+      const namedContent = named.structuredContent as Record<string, unknown>;
+      expect(namedContent.investigationResolutionMemory).toEqual([
+        {
+          id: viaInv.id,
+          investigationId: invA.record.id,
+          recordedAt: "2026-08-16T13:00:00.000Z",
+          decision: "Rollback",
+        },
+      ]);
+      const namedResolution = namedContent.resolutionMemory as Array<
+        Record<string, unknown>
+      >;
+      expect(namedResolution.map((row) => row.id).sort()).toEqual(
+        [viaInv.id, viaResource.id, viaOtherInv.id].sort(),
+      );
+      expect(
+        (namedContent.investigationResolutionMemory as Array<Record<string, unknown>>)
+          .map((row) => row.id),
+      ).not.toContain(viaResource.id);
+      expect(
+        (namedContent.investigationResolutionMemory as Array<Record<string, unknown>>)
+          .map((row) => row.id),
+      ).not.toContain(viaOtherInv.id);
+      const snapshot = namedContent.investigationSnapshot as Record<
+        string,
+        unknown
+      >;
+      expect(Object.keys(snapshot).sort()).toEqual([
+        "composedAt",
+        "id",
+        "snapshot",
+        "subjectResourceId",
+      ]);
+      expect(snapshot).not.toHaveProperty("resolutionMemory");
+      expect(snapshot).not.toHaveProperty("investigationResolutionMemory");
+      expect(snapshot).not.toHaveProperty("occurredAt");
+      expect(namedContent).not.toHaveProperty("investigationIncidentMemory");
+      expect(JSON.stringify(namedContent.knownFacts)).not.toContain(viaInv.id);
+      expect(JSON.stringify(namedContent.missingContext)).not.toContain(
+        viaInv.id,
+      );
+      expect(JSON.stringify(namedContent.investigationCompare)).not.toContain(
+        viaInv.id,
+      );
+      expect(JSON.stringify(namedContent.investigationSnapshot)).not.toContain(
+        viaInv.id,
+      );
+
+      const emptyNamed = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: other.id,
+          investigationId: otherSaved.record.id,
+        },
+      });
+      expect(emptyNamed.isError).not.toBe(true);
+      expect(emptyNamed.structuredContent).not.toHaveProperty(
+        "investigationResolutionMemory",
+      );
+      expect(emptyNamed.structuredContent).toHaveProperty(
+        "investigationSnapshot",
+      );
+
+      const mismatch = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: otherSaved.record.id,
+        },
+      });
+      expect(mismatch.isError).toBe(true);
+      expect(JSON.stringify(mismatch.structuredContent ?? {})).not.toContain(
+        "investigationResolutionMemory",
+      );
+      expect(JSON.stringify(mismatch.structuredContent ?? {})).not.toContain(
+        viaInv.id,
+      );
+
+      const unknown = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: "inv:missing",
+        },
+      });
+      expect(unknown.isError).toBe(true);
+      expect(JSON.stringify(unknown.structuredContent ?? {})).not.toContain(
+        "investigationResolutionMemory",
+      );
+
+      const blank = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id, investigationId: "" },
+      });
+      expect(blank.isError).toBe(true);
+      expect(JSON.stringify(blank.structuredContent ?? {})).not.toContain(
+        "investigationResolutionMemory",
+      );
+
+      const related = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: subject.id },
+      });
+      expect(related.isError).not.toBe(true);
+      expect(related.structuredContent).not.toHaveProperty(
+        "investigationResolutionMemory",
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const row = storeAfter.getInvestigationRow(invA.record.id);
+    storeAfter.close();
+    expect(row?.snapshotJson).not.toContain("investigationResolutionMemory");
+    expect(JSON.parse(row!.snapshotJson)).not.toHaveProperty(
+      "investigationResolutionMemory",
     );
   }, 15_000);
 });

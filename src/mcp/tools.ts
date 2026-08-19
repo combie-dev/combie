@@ -212,7 +212,11 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "at composedAt; not current provider truth, not an incident, not a recommendation) " +
         "plus an ephemeral snapshot-versus-current comparison; those are not current provider " +
         "truth, not an incident, not a recommendation, and not a rewrite of the snapshot row. " +
-        "Omit investigationId to skip snapshot and compare. " +
+        "When investigationId is set, may also include retained organizational response recorded " +
+        "against that exact Investigation as investigationResolutionMemory; that is not current " +
+        "provider truth, not an incident, and not a recommendation, and it does not replace " +
+        "subject-scoped resolution memory. " +
+        "Omit investigationId to skip snapshot, compare, and investigation-scoped resolution memory. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -221,7 +225,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .string()
           .optional()
           .describe(
-            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot) and an ephemeral snapshot-versus-current comparison if that snapshot belongs to this Resource. Omit to skip snapshot and compare.",
+            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), an ephemeral snapshot-versus-current comparison, and investigation-scoped resolution memory recorded against that id if any exist and the snapshot belongs to this Resource. Omit to skip snapshot, compare, and investigation-scoped resolution memory.",
           ),
       }),
     },
@@ -317,6 +321,12 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           investigationSnapshot = getSavedInvestigation(baseDir, named);
         }
 
+        const investigationResolutionRows = investigationSnapshot
+          ? listResolutions(baseDir, {
+              investigationId: investigationSnapshot.id,
+            })
+          : [];
+
         return {
           content: [
             {
@@ -356,6 +366,13 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               : {}),
             ...(investigationSnapshot
               ? { investigationSnapshot }
+              : {}),
+            ...(investigationResolutionRows.length > 0
+              ? {
+                  investigationResolutionMemory: toResolutionMemory(
+                    investigationResolutionRows,
+                  ),
+                }
               : {}),
           }) as Record<string, unknown>,
         };
