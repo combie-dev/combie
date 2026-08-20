@@ -1,0 +1,336 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getInvestigationContext } from "../../src/app/investigate.ts";
+import { listIncidentsForSubject } from "../../src/app/incidents.ts";
+import { listInvestigations } from "../../src/app/investigations.ts";
+import { listProviders, listResources } from "../../src/app/list.ts";
+import { getRelatedContext } from "../../src/app/related.ts";
+import { listResolutions } from "../../src/app/resolutions.ts";
+import { main } from "../../src/cli/index.ts";
+import { createRelationship } from "../../src/domain/relationship.ts";
+import { createResource } from "../../src/domain/resource.ts";
+import {
+  projectInvestigateResourceLive,
+  projectListProviders,
+  projectListResources,
+  projectRelatedContext,
+} from "../../src/mcp/projections.ts";
+import { safeJson } from "../../src/mcp/serialization.ts";
+import { Store } from "../../src/storage/store.ts";
+
+function capture(fn: () => Promise<number>): Promise<{
+  code: number;
+  stdout: string;
+  stderr: string;
+}> {
+  const logs: string[] = [];
+  const errs: string[] = [];
+  const origLog = console.log;
+  const origErr = console.error;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  console.error = (...args: unknown[]) => {
+    errs.push(args.map(String).join(" "));
+  };
+  return fn()
+    .then((code) => ({
+      code,
+      stdout: logs.join("\n"),
+      stderr: errs.join("\n"),
+    }))
+    .finally(() => {
+      console.log = origLog;
+      console.error = origErr;
+    });
+}
+
+describe("CLI MCP-parity --json", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), "combie-cli-json-"));
+    await capture(() => main(["init", "--dir", dir]));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("providers emits a valid known-empty JSON document", async () => {
+    const result = await capture(() =>
+      main(["providers", "--json", "--dir", dir]),
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({ providers: [] });
+  });
+
+  test("providers shares the MCP projection and omits a null attempt clock", async () => {
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-19T12:00:00.000Z",
+      config: { accountId: "123", accountName: "acme" },
+    });
+    store.close();
+
+    const result = await capture(() =>
+      main(["providers", "--json", "--dir", dir]),
+    );
+    const expected = safeJson(
+      projectListProviders(listProviders(dir).providers),
+    );
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(expected);
+    expect(JSON.parse(result.stdout).providers[0]).not.toHaveProperty(
+      "lastAttemptAt",
+    );
+  });
+
+  test("resources shares identity projection and preserves filters", async () => {
+    const github = createResource({
+      provider: "github",
+      providerResourceId: "repo-json",
+      kind: "repository",
+      name: "repo-json",
+      metadata: { private: true },
+    });
+    const vercel = createResource({
+      provider: "vercel",
+      providerResourceId: "project-json",
+      kind: "project",
+      name: "project-json",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(github);
+    store.upsertResource(vercel);
+    store.close();
+
+    const result = await capture(() =>
+      main([
+        "resources",
+        "--provider",
+        "github",
+        "--kind",
+        "repository",
+        "--json",
+        "--dir",
+        dir,
+      ]),
+    );
+    const expectedResources = listResources({
+      baseDir: dir,
+      provider: "github",
+      kind: "repository",
+    }).resources;
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(
+      safeJson(projectListResources(expectedResources)),
+    );
+    expect(JSON.parse(result.stdout).resources).toEqual([
+      {
+        id: github.id,
+        provider: "github",
+        kind: "repository",
+        providerResourceId: "repo-json",
+        name: "repo-json",
+      },
+    ]);
+  });
+
+  test("related shares the MCP subject and relationship projection", async () => {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "related-repo",
+      kind: "repository",
+      name: "related-repo",
+      metadata: {},
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "related-project",
+      kind: "project",
+      name: "related-project",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/related-repo",
+        },
+      }),
+    );
+    store.close();
+
+    const result = await capture(() =>
+      main(["related", repository.id, "--json", "--dir", dir]),
+    );
+    const expected = safeJson(
+      projectRelatedContext(
+        getRelatedContext({ baseDir: dir, resourceRef: repository.id }),
+      ),
+    );
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(expected);
+  });
+
+  test("investigate shares the live MCP projection and omits empty memory", async () => {
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "investigate-json",
+      kind: "repository",
+      name: "investigate-json",
+      metadata: { fullName: "acme/investigate-json" },
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(resource);
+    store.close();
+
+    const result = await capture(() =>
+      main(["investigate", resource.id, "--json", "--dir", dir]),
+    );
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: resource.id,
+    });
+    const expected = safeJson(
+      projectInvestigateResourceLive({
+        ctx,
+        resolutionRows: listResolutions(dir, {
+          subjectResourceId: resource.id,
+        }),
+        incidentRows: listIncidentsForSubject(dir, resource.id),
+        investigationRows: listInvestigations(dir, {
+          subjectResourceId: resource.id,
+        }),
+      }),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(parsed).toEqual(expected);
+    expect(parsed).not.toHaveProperty("resolutionMemory");
+    expect(parsed).not.toHaveProperty("incidentMemory");
+    expect(parsed).not.toHaveProperty("investigationHistory");
+  });
+
+  test("omitting --json preserves human output", async () => {
+    const providers = await capture(() => main(["providers", "--dir", dir]));
+    expect(providers.code).toBe(0);
+    expect(providers.stdout).toContain("No providers connected");
+
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "human",
+      kind: "repository",
+      name: "human",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(resource);
+    store.close();
+    const investigate = await capture(() =>
+      main(["investigate", resource.id, "--dir", dir]),
+    );
+    expect(investigate.code).toBe(0);
+    expect(investigate.stdout).toContain("SUBJECT");
+  });
+
+  test("--json rejects unsupported commands without a JSON document", async () => {
+    for (const command of ["history", "sync", "investigation"]) {
+      const result = await capture(() =>
+        main([command, "--json", "--dir", dir]),
+      );
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("providers, resources, related, investigate");
+      expect(result.stdout).toBe("");
+    }
+  });
+
+  test("investigate refuses --json with --save before writing", async () => {
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "no-save",
+      kind: "repository",
+      name: "no-save",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(resource);
+    store.close();
+
+    const result = await capture(() =>
+      main([
+        "investigate",
+        resource.id,
+        "--json",
+        "--save",
+        "--dir",
+        dir,
+      ]),
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--json is read-only observe");
+    expect(result.stdout).toBe("");
+    expect(listInvestigations(dir)).toEqual([]);
+  });
+
+  test("--json rejects a value", async () => {
+    const result = await capture(() =>
+      main(["providers", "--json", "foo", "--dir", dir]),
+    );
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--json does not take a value");
+    expect(result.stderr).toContain("providers, resources, related, investigate");
+    expect(result.stdout).toBe("");
+  });
+
+  test("provider credential material never appears in JSON stdout", async () => {
+    const fakeToken = "ghp_fake_secret_json_token";
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      config: {
+        accountId: "123",
+        accountName: "acme",
+        token: fakeToken,
+      },
+    });
+    store.close();
+
+    const result = await capture(() =>
+      main(["providers", "--json", "--dir", dir]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain(fakeToken);
+    expect(result.stdout).not.toContain("token");
+  });
+});

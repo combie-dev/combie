@@ -1,6 +1,6 @@
 # SPRINT-080 — MCP-Parity CLI `--json`
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-079 (complete)
 > **Authorized by:** `docs/internal/ARCHITECTURE.md` Shell-Native
 > Command Contract and `docs/internal/ROADMAP.md` Next Work Sequence
@@ -540,20 +540,20 @@ git diff --check
 
 # Definition of Done
 
-- [ ] Sprint 080 is the single Active sprint
-- [ ] baseline SHA and test count recorded
-- [ ] Repository Understanding report completed
-- [ ] Architecture Pressure report completed before implementation
-- [ ] if earned: `--json` on the four MCP-parity reads shares MCP
+- [x] Sprint 080 is the single Active sprint
+- [x] baseline SHA and test count recorded
+- [x] Repository Understanding report completed
+- [x] Architecture Pressure report completed before implementation
+- [x] if earned: `--json` on the four MCP-parity reads shares MCP
       projections; human default unchanged; unsupported `--json`
       and `--json --save` fail clearly; no `--limit`; no fifth tool
-- [ ] if earned: no artifact handles; no `skills/combie`; no 078
+- [x] if earned: no artifact handles; no `skills/combie`; no 078
       leftover thaw
-- [ ] if not earned: rejection documented; do not invent a second
+- [x] if not earned: rejection documented; do not invent a second
       JSON schema
-- [ ] full test suite and typecheck pass
-- [ ] completion notes finalized
-- [ ] Canon unchanged except AGENTS.md operational baseline and CLI
+- [x] full test suite and typecheck pass
+- [x] completion notes finalized
+- [x] Canon unchanged except AGENTS.md operational baseline and CLI
       help unless Phase 2 found a lie
 
 ---
@@ -563,3 +563,120 @@ git diff --check
 > **MCP already speaks structured JSON. The CLI is the primary
 > composable primitive. Those four reads must not require scraping
 > a table — and they must not grow a second schema to avoid it.**
+
+---
+
+# Completion Notes (2026-08-19)
+
+## Phase 1 — Repository Understanding
+
+HEAD `50ceb20` (Canon authorization). Pins:
+
+1. CLI `--json` exists today? **No.** `parseArgs` would store
+   `flags.json`; nothing read it. Bare `--json` is boolean
+   `true`; `--json foo` becomes a string (must reject).
+2. Four MCP tools already return structured JSON from existing
+   composers? **Yes.** `list_providers` / `list_resources` /
+   `get_related_context` / `investigate_resource` in
+   `src/mcp/tools.ts` via `safeJson`.
+3. CLI `providers` / `resources` / `related` / `investigate`
+   already call those composers? **Yes.** Human formatters only.
+4. `history` / `context` / `changes` / `relationships` /
+   `investigation(s)` / `resolutions` / `incidents` are MCP
+   tools? **No.** Stay deferred.
+5. `investigate --save` is a write? **Yes.** Refuse mix with
+   `--json` before `saveInvestigation`.
+6. Artifact handles / `skills/combie` / 078 leftovers? **No.**
+   `incident --investigation` still usage.
+7. stdout JSON, stderr errors, exit codes unchanged for
+   non-JSON failures? **Yes.** Composer failures stay
+   `CombieError` on stderr. No JSON error documents.
+8. Shared MCP projections; no second schema; no fifth tool?
+   **Yes.** Extracted `src/mcp/projections.ts`. Pretty-print
+   pinned: `JSON.stringify(safeJson(projection), null, 2)`.
+
+## Phase 2 — Architecture Pressure
+
+1. Persistence necessary? **No.**
+2. Second source of truth? **No.** CLI `--json` and MCP call
+   the same `project*` helpers then `safeJson`.
+3. Inferred deletion / existence? **No.**
+4. Evidence-refresh leak? **No.**
+5. Artifact / skill leak? **No.**
+6. 078 leftover leak? **No.**
+7. MCP tool / write needed? **No.**
+8. Compare / snapshot change? **No.** `--json` is not
+   `investigation <id> --compare`. Snapshot JSON untouched.
+9. Canon? AGENTS.md operational baseline + CLI help.
+   ARCHITECTURE / ROADMAP already recorded this sequence in
+   `50ceb20`. `docs/public/MCP.md` unchanged.
+
+No STOP conflict.
+
+## Implemented
+
+- Shared MCP/CLI projections in `src/mcp/projections.ts`:
+  `projectListProviders`, `projectListResources`,
+  `projectRelatedContext`, `projectInvestigateResourceLive`,
+  plus the existing memory-row helpers.
+- CLI `--json` on `providers`, `resources`, `related`, and
+  live `investigate` prints that projection. Human default
+  unchanged.
+- `--json` on any other command exits 1 and names the four
+  supported commands. `--json` with a value exits 1.
+  `investigate --json --save` exits 1 before any snapshot
+  write.
+- Help documents `--json` under Read options. `--limit` /
+  `--offline` / `--refresh` remain absent.
+- Four MCP tools unchanged. Named-id / orphan MCP paths still
+  assemble sidecars in `tools.ts` over the live projection.
+
+## Deviations
+
+None that change the claim. Pretty-print is 2-space JSON plus
+`console.log`'s trailing newline (not an extra stringify
+newline). `safeJson` remains the omit-vs-null boundary.
+
+## Validation
+
+```text
+baseline:          50ceb20 docs(canon): open Sprint 080
+                   MCP-parity CLI --json
+                   bun test at HEAD: 1160 pass / 1 fail
+                   (MCP stdio flake; isolated 076 test pass)
+                   79 files / 6001 expect()
+bun test:          1170 pass / 1 fail across 80 files
+                   (6042 expect(); MCP stdio flake —
+                   isolated 075 test pass)
+focused:           tests/cli/json.test.ts +
+                   tests/cli/commands.test.ts 87 pass
+bun run typecheck: clean
+git diff --check:  clean
+live (isolated):   not performed (JSON is a local
+                   projection; no provider reads)
+founder .combie:   no workspace .combie/combie.db
+```
+
+## Learnings
+
+- MCP already had the schema. The missing slice was CLI emit
+  plus a shared builder, not a new DTO.
+- `parseArgs` treats `--json foo` as a string value. Boolean
+  `--json` must reject strings or the flag silently disappears.
+- `investigate --save` persists before print. The `--json`
+  mix must fail before `saveInvestigation` or jq pipes and
+  snapshot tables both break.
+- Full-suite MCP stdio tests still flake under parallel load;
+  isolated reruns pass. Not a product regression from this
+  extract.
+
+## Canon Changes
+
+VISION, ARCHITECTURE, ROADMAP, SKILL, and `docs/public/MCP.md`
+unchanged during implementation. AGENTS.md baseline becomes
+Sprints 001–080 complete. CLI help records `--json` on the
+four MCP-parity reads. Grouping Investigation snapshots as
+Incident members remains unearned. Fifth-tool snapshot reopen
+/ `list_investigations` remains unearned. Artifact-backed
+investigation and `skills/combie/SKILL.md` remain sequence
+items 3 and 4.

@@ -6,20 +6,18 @@ import {
   listIncidentsForInvestigation,
   listIncidentsForSubject,
 } from "../app/incidents.ts";
-import { composeInvestigationFacts } from "../app/investigation-facts.ts";
 import { listInvestigations, getSavedInvestigation } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
-import { composeMissingContext } from "../app/missing-context.ts";
-import { composeProviderActivityChronology } from "../app/provider-activity.ts";
 import { listResolutions } from "../app/resolutions.ts";
 import {
-  composeSharedCommitContext,
-  composeSharedCommitCorrespondences,
-} from "../app/shared-commit-context.ts";
-import { composeInvestigationTimeline } from "../app/timeline.ts";
-import type { IncidentRecord } from "../domain/incident.ts";
-import type { InvestigationRecord } from "../domain/investigation.ts";
-import type { ResolutionRecord } from "../domain/resolution.ts";
+  projectInvestigateResourceLive,
+  projectListProviders,
+  projectListResources,
+  projectRelatedContext,
+  toIncidentMemory,
+  toInvestigationHistory,
+  toResolutionMemory,
+} from "./projections.ts";
 import { safeJson } from "./serialization.ts";
 
 export interface ToolContext {
@@ -35,71 +33,6 @@ const READ_ONLY_ANNOTATIONS = {
 
 function toolError(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
-}
-
-/**
- * MCP-facing Resolution projection (Sprint 056): plain objects, absent
- * optional fields omitted. Retained organizational response — not current
- * provider truth, not a recommendation.
- */
-function toResolutionMemoryRow(
-  record: ResolutionRecord,
-): Record<string, unknown> {
-  const row: Record<string, unknown> = {
-    id: record.id,
-    recordedAt: record.recordedAt,
-  };
-  if (record.investigationId !== undefined) {
-    row.investigationId = record.investigationId;
-  }
-  if (record.decision !== undefined) row.decision = record.decision;
-  if (record.action !== undefined) row.action = record.action;
-  if (record.outcome !== undefined) row.outcome = record.outcome;
-  if (record.evidenceIds !== undefined) row.evidenceIds = record.evidenceIds;
-  return row;
-}
-
-function toResolutionMemory(records: ResolutionRecord[]) {
-  return records.map(toResolutionMemoryRow);
-}
-
-/**
- * MCP-facing Incident projection (Sprint 059): plain objects, absent
- * optional fields omitted. Retained organizational grouping — not current
- * provider truth, not a recommendation.
- */
-function toIncidentMemoryRow(
-  record: IncidentRecord,
-): Record<string, unknown> {
-  const row: Record<string, unknown> = {
-    id: record.id,
-    recordedAt: record.recordedAt,
-    resolutionIds: record.resolutionIds,
-  };
-  if (record.title !== undefined) row.title = record.title;
-  if (record.occurredAt !== undefined) row.occurredAt = record.occurredAt;
-  return row;
-}
-
-function toIncidentMemory(records: IncidentRecord[]) {
-  return records.map(toIncidentMemoryRow);
-}
-
-/**
- * MCP-facing Investigation snapshot pointers (Sprint 070): id + composedAt
- * only. Retained composition — not current provider truth, not an incident.
- */
-function toInvestigationHistoryRow(
-  record: InvestigationRecord,
-): Record<string, unknown> {
-  return {
-    id: record.id,
-    composedAt: record.composedAt,
-  };
-}
-
-function toInvestigationHistory(records: InvestigationRecord[]) {
-  return records.map(toInvestigationHistoryRow);
 }
 
 export function registerTools(server: McpServer, ctx: ToolContext): void {
@@ -122,16 +55,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     async ({ provider, kind }) => {
       try {
         const result = listResources({ baseDir, provider: provider ?? undefined, kind: kind ?? undefined });
-        const resources = result.resources.map((r) => ({
-          id: r.id,
-          provider: r.provider,
-          kind: r.kind,
-          providerResourceId: r.providerResourceId,
-          name: r.name,
-        }));
+        const projection = projectListResources(result.resources);
         return {
-          content: [{ type: "text" as const, text: `${resources.length} resource(s) found.` }],
-          structuredContent: safeJson({ resources }) as Record<string, unknown>,
+          content: [{ type: "text" as const, text: `${result.resources.length} resource(s) found.` }],
+          structuredContent: safeJson(projection) as Record<string, unknown>,
         };
       } catch (err) {
         const message = err instanceof CombieError ? err.message : String(err);
@@ -157,38 +84,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
       try {
         const { getRelatedContext } = await import("../app/related.ts");
         const ctx = getRelatedContext({ baseDir, resourceRef: resourceId });
-        const related = ctx.related.map((neighbor) => ({
-          direction: neighbor.direction,
-          relationship: {
-            id: neighbor.relationship.id,
-            kind: neighbor.relationship.kind,
-            sourceResourceId: neighbor.relationship.sourceResourceId,
-            targetResourceId: neighbor.relationship.targetResourceId,
-            evidence: neighbor.relationship.evidence,
-            createdAt: neighbor.relationship.createdAt,
-          },
-          resource: neighbor.resource
-            ? {
-                id: neighbor.resource.id,
-                provider: neighbor.resource.provider,
-                kind: neighbor.resource.kind,
-                providerResourceId: neighbor.resource.providerResourceId,
-                name: neighbor.resource.name,
-              }
-            : null,
-        }));
+        const projection = projectRelatedContext(ctx);
         return {
-          content: [{ type: "text" as const, text: `${related.length} relationship(s) found.` }],
-          structuredContent: safeJson({
-            subject: {
-              id: ctx.resource.id,
-              provider: ctx.resource.provider,
-              kind: ctx.resource.kind,
-              providerResourceId: ctx.resource.providerResourceId,
-              name: ctx.resource.name,
-            },
-            related,
-          }) as Record<string, unknown>,
+          content: [{ type: "text" as const, text: `${ctx.related.length} relationship(s) found.` }],
+          structuredContent: safeJson(projection) as Record<string, unknown>,
         };
       } catch (err) {
         const message = err instanceof CombieError ? err.message : String(err);
@@ -316,39 +215,6 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         try {
           const { getInvestigationContext } = await import("../app/investigate.ts");
           const ctx = getInvestigationContext({ baseDir, resourceRef: subjectRef });
-
-          const subject = {
-            id: ctx.subject.id,
-            provider: ctx.subject.provider,
-            kind: ctx.subject.kind,
-            providerResourceId: ctx.subject.providerResourceId,
-            name: ctx.subject.name,
-            metadata: ctx.subject.metadata,
-            createdAt: ctx.subject.createdAt,
-            updatedAt: ctx.subject.updatedAt,
-            ...(ctx.providerSyncClocks?.lastSuccessfulSyncAt != null
-              ? {
-                  lastSuccessfulProviderSyncAt:
-                    ctx.providerSyncClocks.lastSuccessfulSyncAt,
-                }
-              : {}),
-            ...(ctx.providerSyncClocks?.lastAttemptAt != null
-              ? {
-                  lastProviderSyncAttemptAt:
-                    ctx.providerSyncClocks.lastAttemptAt,
-                }
-              : {}),
-          };
-
-          const subjectChanges = ctx.subjectChanges.map((c) => ({
-            id: c.id,
-            kind: c.kind,
-            observedAt: c.observedAt,
-            fields: c.fields,
-          }));
-
-          const sharedCommitGroups = composeSharedCommitContext(ctx);
-
           const resolutionRows = listResolutions(baseDir, {
             subjectResourceId: ctx.subject.id,
           });
@@ -356,72 +222,23 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           const investigationRows = listInvestigations(baseDir, {
             subjectResourceId: ctx.subject.id,
           });
-
-          const related = ctx.related.map((n) => ({
-            direction: n.direction,
-            relationship: {
-              id: n.relationship.id,
-              kind: n.relationship.kind,
-              sourceResourceId: n.relationship.sourceResourceId,
-              targetResourceId: n.relationship.targetResourceId,
-              evidence: n.relationship.evidence,
-            },
-            resource: n.resource
-              ? {
-                  id: n.resource.id,
-                  provider: n.resource.provider,
-                  kind: n.resource.kind,
-                  providerResourceId: n.resource.providerResourceId,
-                  name: n.resource.name,
-                }
-              : null,
-            changes: n.changes.map((c) => ({
-              id: c.id,
-              kind: c.kind,
-              observedAt: c.observedAt,
-              fields: c.fields,
-            })),
-            deployments: n.deployments,
-            workflowRuns: n.workflowRuns,
-            operations: n.operations,
-            releases: n.releases,
-            issues: n.issues,
-          }));
+          const liveProjection = projectInvestigateResourceLive({
+            ctx,
+            resolutionRows,
+            incidentRows,
+            investigationRows,
+          });
 
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Investigation context for ${subject.name}. ` +
-                  `${subjectChanges.length} change(s), ${related.length} related resource(s).`,
+                text: `Investigation context for ${ctx.subject.name}. ` +
+                  `${ctx.subjectChanges.length} change(s), ${ctx.related.length} related resource(s).`,
               },
             ],
             structuredContent: safeJson({
-              subject,
-              subjectChanges,
-              subjectDeployments: ctx.subjectDeployments,
-              subjectWorkflowRuns: ctx.subjectWorkflowRuns,
-              subjectOperations: ctx.subjectOperations,
-              subjectReleases: ctx.subjectReleases,
-              subjectIssues: ctx.subjectIssues,
-              related,
-              knownFacts: composeInvestigationFacts(ctx),
-              missingContext: composeMissingContext(ctx),
-              providerActivity: composeProviderActivityChronology(ctx),
-              timeline: composeInvestigationTimeline(ctx),
-              sharedCommitContext: sharedCommitGroups,
-              sharedCommitCorrespondences: composeSharedCommitCorrespondences(
-                sharedCommitGroups,
-              ),
-              ...(resolutionRows.length > 0
-                ? { resolutionMemory: toResolutionMemory(resolutionRows) }
-                : {}),
-              ...(incidentRows.length > 0
-                ? { incidentMemory: toIncidentMemory(incidentRows) }
-                : {}),
-              ...(investigationRows.length > 0
-                ? { investigationHistory: toInvestigationHistory(investigationRows) }
-                : {}),
+              ...liveProjection,
               ...(investigationCompare
                 ? { investigationCompare }
                 : {}),
@@ -523,18 +340,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     async () => {
       try {
         const result = listProviders(baseDir);
-        const providers = result.providers.map((p) => ({
-          id: p.id,
-          name: p.name,
-          status: p.status,
-          lastSyncAt: p.lastSyncAt,
-          ...(p.lastAttemptAt != null ? { lastAttemptAt: p.lastAttemptAt } : {}),
-          accountId: p.config?.accountId ?? null,
-          accountName: p.config?.accountName ?? null,
-        }));
+        const projection = projectListProviders(result.providers);
         return {
-          content: [{ type: "text" as const, text: `${providers.length} provider(s) found; ${providers.filter((p) => p.status === "connected").length} connected.` }],
-          structuredContent: safeJson({ providers }) as Record<string, unknown>,
+          content: [{ type: "text" as const, text: `${result.providers.length} provider(s) found; ${result.providers.filter((p) => p.status === "connected").length} connected.` }],
+          structuredContent: safeJson(projection) as Record<string, unknown>,
         };
       } catch (err) {
         const message = err instanceof CombieError ? err.message : String(err);

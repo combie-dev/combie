@@ -211,6 +211,12 @@ CURRENT shows Combie `updatedAt` plus last success vs last
 attempt; `unknown_provider_sync_authority` when attempt is after
 success; not Resource deletion, not `--json`, not a fifth tool,
 not MCP writes, not 078 leftovers, not the Investigation Engine).
+Sprint 080 shipped
+MCP-parity CLI `--json` on `providers`, `resources`, `related`,
+and live `investigate` (shared structured projections; human
+output remains default; errors remain stderr; not writes, not
+non-MCP commands, not a fifth tool, not artifact handles, not
+`skills/combie`, not 078 leftovers).
 
 ## Mandatory reading order before any substantive change
 
@@ -232,7 +238,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–079 complete
+## Current baseline: Sprints 001–080 complete
 
 Multi-provider connection loop:
 
@@ -534,6 +540,12 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `investigate_resource` subject clocks; no Resource deletion,
   no `--json`, no fifth tool, no MCP writes, no 078 leftover
   thaw).
+- **Sprint 080 shipped:** MCP-parity CLI `--json` on `providers`,
+  `resources`, `related`, and live `investigate` (shared MCP
+  structured projections; human output remains default; errors
+  remain stderr with existing exit codes; no persistence; no
+  `--json` on writes or non-MCP commands; no fifth tool, artifact
+  handles, `skills/combie`, or 078 leftover thaw).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -823,9 +835,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   verification clocks, populated-membership id sets, a generic
   Observation type, MCP writes, a fifth tool, Resource deletion,
   or 078 leftover thaw. Sprint 079 shipped that slice. Sprint
-  079 leftover is not a sequence; shell-native `--json`,
-  artifact-backed investigation, and `skills/combie/SKILL.md`
-  remain later sequence items. `docs/internal/beta/INVESTIGATION-DOGFOOD.md`
+  079 leftover is not a sequence. On 2026-08-19 Sprint 080
+  shipped shell-native `--json` on the four MCP-parity CLI reads
+  using shared projections. It did not authorize `--json` on
+  writes or non-MCP commands, `--limit`, `--offline`, `--refresh`,
+  a fifth MCP tool, artifact handles, `skills/combie`, or 078
+  leftover thaw. Artifact-backed investigation and
+  `skills/combie/SKILL.md` remain later sequence items.
+  `docs/internal/beta/INVESTIGATION-DOGFOOD.md`
   remains the learning ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
   tools or semantics, API, SDK, hosted Combie, and in-product analytics or

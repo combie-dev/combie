@@ -77,8 +77,19 @@ import {
   compareInvestigationToCurrent,
   formatInvestigationCompare,
 } from "../app/compare-investigation.ts";
+import {
+  projectInvestigateResourceLive,
+  projectListProviders,
+  projectListResources,
+  projectRelatedContext,
+} from "../mcp/projections.ts";
+import { safeJson } from "../mcp/serialization.ts";
 import { serveMcp } from "../mcp/server.ts";
 import { BINARY_NAME, VERSION } from "./constants.ts";
+
+const JSON_COMMANDS = ["providers", "resources", "related", "investigate"] as const;
+const JSON_USAGE =
+  "--json is only available for: providers, resources, related, investigate.";
 
 const HELP = `combie — engineering context layer
 
@@ -128,6 +139,10 @@ Connect options:
 Resources options:
   --provider <id>              Filter by provider
   --kind <kind>                Filter by kind (worker, database, kv_namespace, zone, repository, project)
+
+Read options:
+  --json                       Emit structured JSON for providers, resources,
+                               related, or investigate
 
 Investigate options:
   --save                       Persist a retained investigation snapshot
@@ -326,6 +341,19 @@ async function main(argv: string[]): Promise<number> {
     return 1;
   }
 
+  if (typeof flags.json === "string") {
+    console.error(`--json does not take a value.\n${JSON_USAGE}`);
+    return 1;
+  }
+
+  if (
+    flags.json === true &&
+    !JSON_COMMANDS.some((jsonCommand) => jsonCommand === command)
+  ) {
+    console.error(JSON_USAGE);
+    return 1;
+  }
+
   const baseDir = baseDirFromFlags(flags);
 
   try {
@@ -375,14 +403,26 @@ async function main(argv: string[]): Promise<number> {
       }
       case "providers": {
         const { providers } = listProviders(baseDir);
-        console.log(formatProvidersTable(providers));
+        if (flags.json === true) {
+          console.log(
+            JSON.stringify(safeJson(projectListProviders(providers)), null, 2),
+          );
+        } else {
+          console.log(formatProvidersTable(providers));
+        }
         return 0;
       }
       case "resources": {
         const provider = typeof flags.provider === "string" ? flags.provider : undefined;
         const kind = typeof flags.kind === "string" ? flags.kind : undefined;
         const { resources } = listResources({ baseDir, provider, kind });
-        console.log(formatResourcesTable(resources));
+        if (flags.json === true) {
+          console.log(
+            JSON.stringify(safeJson(projectListResources(resources)), null, 2),
+          );
+        } else {
+          console.log(formatResourcesTable(resources));
+        }
         return 0;
       }
       case "relationships": {
@@ -416,7 +456,13 @@ async function main(argv: string[]): Promise<number> {
           return 1;
         }
         const ctx = getRelatedContext({ baseDir, resourceRef });
-        console.log(formatRelatedContext(ctx));
+        if (flags.json === true) {
+          console.log(
+            JSON.stringify(safeJson(projectRelatedContext(ctx)), null, 2),
+          );
+        } else {
+          console.log(formatRelatedContext(ctx));
+        }
         return 0;
       }
       case "context": {
@@ -436,6 +482,12 @@ async function main(argv: string[]): Promise<number> {
         if (!resourceRef) {
           console.error(
             `Usage: ${BINARY_NAME} investigate <resource-id> [--save]\nExample: ${BINARY_NAME} investigate vercel:project:prj_abc\nList ids: ${BINARY_NAME} resources`,
+          );
+          return 1;
+        }
+        if (flags.json === true && flags.save === true) {
+          console.error(
+            `--json is read-only observe. Use: ${BINARY_NAME} investigate <resource-id> --save`,
           );
           return 1;
         }
@@ -470,6 +522,33 @@ async function main(argv: string[]): Promise<number> {
           baseDir,
           resourceRef,
         });
+        if (flags.json === true) {
+          const resolutionRows = listResolutions(baseDir, {
+            subjectResourceId: investigation.subject.id,
+          });
+          const incidentRows = listIncidentsForSubject(
+            baseDir,
+            investigation.subject.id,
+          );
+          const investigationRows = listInvestigations(baseDir, {
+            subjectResourceId: investigation.subject.id,
+          });
+          console.log(
+            JSON.stringify(
+              safeJson(
+                projectInvestigateResourceLive({
+                  ctx: investigation,
+                  resolutionRows,
+                  incidentRows,
+                  investigationRows,
+                }),
+              ),
+              null,
+              2,
+            ),
+          );
+          return 0;
+        }
         console.log(
           formatWithIncidentMemory(
             formatWithResolutionMemory(

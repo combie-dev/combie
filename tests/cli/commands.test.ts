@@ -154,10 +154,13 @@ describe("CLI commands", () => {
     expect(result.stdout).toContain("LAST ATTEMPT");
   });
 
-  test("--json stays absent from help", async () => {
+  test("help documents only the earned shell-native JSON flag", async () => {
     const result = await capture(() => main(["help"]));
     expect(result.code).toBe(0);
-    expect(result.stdout).not.toContain("--json");
+    expect(result.stdout).toContain("--json");
+    expect(result.stdout).not.toContain("--limit");
+    expect(result.stdout).not.toContain("--offline");
+    expect(result.stdout).not.toContain("--refresh");
   });
 
   test("incident --investigation stays usage (Sprint 078 leftover frozen)", async () => {
