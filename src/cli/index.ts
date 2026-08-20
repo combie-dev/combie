@@ -34,6 +34,7 @@ import {
   formatSaveConfirmation,
   formatSavedInvestigation,
   formatWithInvestigationHistory,
+  getInvestigationArtifact,
   getSavedInvestigation,
   listInvestigations,
   saveInvestigation,
@@ -602,11 +603,12 @@ async function main(argv: string[]): Promise<number> {
           return 0;
         }
         const saved = getSavedInvestigation(baseDir, investigationId);
+        const artifact = getInvestigationArtifact(baseDir, saved.id);
         console.log(
           formatWithIncidentMemory(
             formatWithResolutionMemory(
               formatWithInvestigationHistory(
-                formatSavedInvestigation(saved),
+                formatSavedInvestigation(saved, artifact),
                 listInvestigations(baseDir, {
                   subjectResourceId: saved.subjectResourceId,
                 }),

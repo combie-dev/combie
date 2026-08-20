@@ -217,6 +217,18 @@ and live `investigate` (shared structured projections; human
 output remains default; errors remain stderr; not writes, not
 non-MCP commands, not a fifth tool, not artifact handles, not
 `skills/combie`, not 078 leftovers).
+Sprint 081 shipped
+the Investigation snapshot artifact handle (ROADMAP Next Work
+Sequence item 3; read-time over `investigations.snapshot_json`
+only; sha256 of the stored TEXT, record counts from the retained
+snapshot only, in-database location, and a reopen retrieve line
+on CLI `investigation <id>` ARTIFACT block and additive MCP
+`investigationArtifact` on named-id `investigate_resource`
+(happy and orphan-subject 075 paths); `investigationSnapshot`
+dump stays; not a file artifact store, not persisted columns,
+not a fifth tool, not `--json` on `investigation`, not
+`skills/combie`, not 078 leftovers, not the Investigation
+Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -238,7 +250,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–080 complete
+## Current baseline: Sprints 001–081 complete
 
 Multi-provider connection loop:
 

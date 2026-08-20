@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { InvestigationRecord } from "../domain/investigation.ts";
 import { investigationId } from "../domain/investigation.ts";
 import { Store } from "../storage/store.ts";
@@ -13,6 +13,23 @@ import { BINARY_NAME } from "../cli/constants.ts";
 export interface SavedInvestigation extends InvestigationRecord {
   snapshot: InvestigationContext;
 }
+
+/** Read-time artifact handle over one retained `investigations.snapshot_json` row (Sprint 081). */
+export interface InvestigationArtifact {
+  handle: string;
+  schema: string;
+  hash: string;
+  location: string;
+  counts: {
+    related: number;
+    subjectChanges: number;
+    byteLength: number;
+  };
+  retrieve: string;
+}
+
+export const INVESTIGATION_SNAPSHOT_SCHEMA =
+  "combie.investigation.snapshot.v048";
 
 export interface SaveInvestigationOptions {
   baseDir: string;
@@ -116,10 +133,14 @@ export function listInvestigations(
   }
 }
 
-export function getSavedInvestigation(
-  baseDir: string,
-  id: string,
-): SavedInvestigation {
+interface InvestigationRow {
+  id: string;
+  subjectResourceId: string;
+  composedAt: string;
+  snapshotJson: string;
+}
+
+function loadInvestigationRow(baseDir: string, id: string): InvestigationRow {
   const ref = id.trim();
   if (!ref) {
     throw new CombieError(
@@ -137,15 +158,55 @@ export function getSavedInvestigation(
         `Investigation not found: ${ref}\nList saved investigations: ${BINARY_NAME} investigations`,
       );
     }
-    return {
-      id: row.id,
-      subjectResourceId: row.subjectResourceId,
-      composedAt: row.composedAt,
-      snapshot: parseInvestigationSnapshot(row.snapshotJson),
-    };
+    return row;
   } finally {
     store.close();
   }
+}
+
+export function getSavedInvestigation(
+  baseDir: string,
+  id: string,
+): SavedInvestigation {
+  const row = loadInvestigationRow(baseDir, id);
+  return {
+    id: row.id,
+    subjectResourceId: row.subjectResourceId,
+    composedAt: row.composedAt,
+    snapshot: parseInvestigationSnapshot(row.snapshotJson),
+  };
+}
+
+export function buildInvestigationArtifact(
+  id: string,
+  snapshotJson: string,
+  snapshot: InvestigationContext,
+): InvestigationArtifact {
+  const hash = createHash("sha256").update(snapshotJson).digest("hex");
+  return {
+    handle: id,
+    schema: INVESTIGATION_SNAPSHOT_SCHEMA,
+    hash: `sha256:${hash}`,
+    location: `investigations.snapshot_json id=${id}`,
+    counts: {
+      related: snapshot.related.length,
+      subjectChanges: snapshot.subjectChanges.length,
+      byteLength: Buffer.byteLength(snapshotJson, "utf8"),
+    },
+    retrieve: `${BINARY_NAME} investigation ${id}`,
+  };
+}
+
+export function getInvestigationArtifact(
+  baseDir: string,
+  id: string,
+): InvestigationArtifact {
+  const row = loadInvestigationRow(baseDir, id);
+  return buildInvestigationArtifact(
+    row.id,
+    row.snapshotJson,
+    parseInvestigationSnapshot(row.snapshotJson),
+  );
 }
 
 export function formatInvestigationList(
@@ -188,8 +249,29 @@ export function formatInvestigationList(
   return `${header}\n${body}`;
 }
 
+export function formatInvestigationArtifact(
+  artifact: InvestigationArtifact,
+): string {
+  const pad = 12;
+  const line = (label: string, value: string) =>
+    `  ${label.padEnd(pad)}${value}`;
+  return [
+    "ARTIFACT",
+    line("handle:", artifact.handle),
+    line("schema:", artifact.schema),
+    line("hash:", artifact.hash),
+    line("location:", artifact.location),
+    line(
+      "counts:",
+      `related=${artifact.counts.related}, subjectChanges=${artifact.counts.subjectChanges}, byteLength=${artifact.counts.byteLength}`,
+    ),
+    line("retrieve:", artifact.retrieve),
+  ].join("\n");
+}
+
 export function formatSavedInvestigation(
   record: SavedInvestigation,
+  artifact?: InvestigationArtifact,
 ): string {
   const banner =
     `${SNAPSHOT_BANNER_TITLE}\n` +
@@ -197,7 +279,9 @@ export function formatSavedInvestigation(
     `SUBJECT: ${record.subjectResourceId}\n` +
     `Composed by Combie at ${record.composedAt}\n` +
     `This is retained composition from that time. It is not current provider truth.`;
-  return `${banner}\n\n${formatInvestigationContext(record.snapshot)}`;
+  const artifactBlock =
+    artifact === undefined ? "" : `\n\n${formatInvestigationArtifact(artifact)}`;
+  return `${banner}${artifactBlock}\n\n${formatInvestigationContext(record.snapshot)}`;
 }
 
 export function formatSaveConfirmation(record: SavedInvestigation): string {

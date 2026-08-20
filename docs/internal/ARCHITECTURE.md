@@ -837,7 +837,7 @@ The CLI is Combie’s primary composable agent primitive. MCP remains a small in
 
 Machine composition may eventually include structured JSON, bounded results, justified filtering, explicit refresh versus offline behavior, stdout for results, stderr for diagnostics, stable exit codes, and no prompts in machine-readable mode.
 
-Do not add flags merely to satisfy that list. Refresh is already the `sync` command; reads are already offline. The smallest remaining slice is `--json` on the four MCP-parity CLI reads (`providers`, `resources`, `related`, `investigate`) over the existing composers and MCP structured projections. Do not add `--limit`, `--since`, `--output`, `--offline`, or `--refresh`. Do not add `--json` on writes or on non-MCP CLI commands in that slice. The frozen four-tool MCP contract remains:
+Do not add flags merely to satisfy that list. Refresh is already the `sync` command; reads are already offline. Sprint 080 shipped `--json` on the four MCP-parity CLI reads (`providers`, `resources`, `related`, `investigate`) over the existing composers and MCP structured projections. Do not add `--limit`, `--since`, `--output`, `--offline`, or `--refresh`. Do not add `--json` on writes or on non-MCP CLI commands unless a later sprint authorizes it. The frozen four-tool MCP contract remains:
 
 - `list_resources`
 - `list_providers`
@@ -852,7 +852,7 @@ Large evidence sets should not be pushed wholesale through an agent’s context 
 
 Investigations should eventually be capable of returning a compact summary, a bounded preview, the location of the complete local artifact, record count, schema version, content hash, and safe follow-up retrieval instructions. Complete evidence remains locally inspectable through deterministic tools such as the Combie CLI, `jq`, and `rg`.
 
-Reuse existing primitives. The Sprint 048 `investigations.snapshot_json` row in local `combie.db` is already the complete retained composition. Do not invent a generic artifact framework, ContextPack, or fifth MCP snapshot tool to satisfy this boundary.
+Reuse existing primitives. The Sprint 048 `investigations.snapshot_json` row in local `combie.db` is already the complete retained composition. The smallest remaining slice is a read-time artifact handle over that row (id, content hash, record counts, in-database location, follow-up retrieve). Do not invent a generic artifact framework, ContextPack, a fifth MCP snapshot tool, or a parallel file store to satisfy this boundary. Thinning the named-id MCP `investigationSnapshot` dump is later.
 
 ### Composition-Oriented Agent Skill
 

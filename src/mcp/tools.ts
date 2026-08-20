@@ -6,7 +6,7 @@ import {
   listIncidentsForInvestigation,
   listIncidentsForSubject,
 } from "../app/incidents.ts";
-import { listInvestigations, getSavedInvestigation } from "../app/investigations.ts";
+import { listInvestigations, getSavedInvestigation, getInvestigationArtifact } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { listResolutions } from "../app/resolutions.ts";
 import {
@@ -115,6 +115,11 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "at composedAt; not current provider truth, not an incident, not a recommendation) " +
         "plus an ephemeral snapshot-versus-current comparison; those are not current provider " +
         "truth, not an incident, not a recommendation, and not a rewrite of the snapshot row. " +
+        "When investigationId is set, also returns investigationArtifact: a read-time handle " +
+        "for that retained snapshot (exact inv: id, schema, sha256 of the stored snapshot text, " +
+        "in-database location investigations.snapshot_json, record counts from the retained " +
+        "snapshot only, and the CLI retrieve command); that is retained composition, not " +
+        "current provider truth, not an incident, and not a recommendation. " +
         "When investigationId is set, may also include retained organizational response recorded " +
         "against that exact Investigation as investigationResolutionMemory; that is not current " +
         "provider truth, not an incident, and not a recommendation, and it does not replace " +
@@ -148,7 +153,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .string()
           .optional()
           .describe(
-            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. resourceId may be omitted; the subject is then taken from this investigation's 048 row. Omit to skip snapshot, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
+            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), a read-time investigationArtifact handle (schema, sha256 of the stored snapshot text, in-database location, record counts), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. resourceId may be omitted; the subject is then taken from this investigation's 048 row. Omit to skip snapshot, artifact, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
           ),
       }),
     },
@@ -159,6 +164,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         > | undefined;
         let investigationSnapshot: ReturnType<
           typeof getSavedInvestigation
+        > | undefined;
+        let investigationArtifact: ReturnType<
+          typeof getInvestigationArtifact
         > | undefined;
         let subjectRef: string;
         if (investigationId !== undefined) {
@@ -188,6 +196,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           }
           investigationCompare = comparison;
           investigationSnapshot = getSavedInvestigation(baseDir, named);
+          investigationArtifact = getInvestigationArtifact(baseDir, named);
         } else {
           const namedResourceRef =
             resourceId === undefined ? "" : resourceId.trim();
@@ -245,6 +254,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               ...(investigationSnapshot
                 ? { investigationSnapshot }
                 : {}),
+              ...(investigationArtifact
+                ? { investigationArtifact }
+                : {}),
               ...(investigationResolutionRows.length > 0
                 ? {
                     investigationResolutionMemory: toResolutionMemory(
@@ -294,6 +306,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
                   : {}),
                 ...(investigationSnapshot
                   ? { investigationSnapshot }
+                  : {}),
+                ...(investigationArtifact
+                  ? { investigationArtifact }
                   : {}),
                 ...(investigationRows.length > 0
                   ? {

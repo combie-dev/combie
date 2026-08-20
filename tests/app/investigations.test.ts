@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,10 +10,12 @@ import {
   getInvestigationContext,
 } from "../../src/app/investigate.ts";
 import {
+  formatInvestigationArtifact,
   formatInvestigationHistorySection,
   formatInvestigationList,
   formatSavedInvestigation,
   formatWithInvestigationHistory,
+  getInvestigationArtifact,
   getSavedInvestigation,
   listInvestigations,
   parseInvestigationSnapshot,
@@ -345,6 +348,147 @@ describe("investigation snapshots", () => {
         resourceRef: "missing",
       }),
     )).toThrow(/Resource not found/);
+  });
+});
+
+describe("Sprint 081 artifact handle", () => {
+  test("getInvestigationArtifact names the retained row as a local artifact", () => {
+    seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const artifact = getInvestigationArtifact(dir, saved.record.id);
+
+    expect(artifact.handle).toBe(saved.record.id);
+    expect(artifact.schema).toBe("combie.investigation.snapshot.v048");
+    expect(artifact.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+    const store = new Store(dir);
+    store.init();
+    const row = store.getInvestigationRow(saved.record.id);
+    store.close();
+    expect(artifact.hash).toBe(
+      `sha256:${createHash("sha256").update(row!.snapshotJson).digest("hex")}`,
+    );
+
+    expect(artifact.location).toBe(
+      `investigations.snapshot_json id=${saved.record.id}`,
+    );
+    expect(artifact.location).not.toMatch(/[\\/]/);
+
+    expect(artifact.counts.related).toBe(saved.record.snapshot.related.length);
+    expect(artifact.counts.subjectChanges).toBe(
+      saved.record.snapshot.subjectChanges.length,
+    );
+    expect(artifact.counts.byteLength).toBe(
+      Buffer.byteLength(row!.snapshotJson, "utf8"),
+    );
+    expect(artifact.retrieve).toContain(`investigation ${saved.record.id}`);
+    expect(artifact.retrieve).not.toContain("/");
+  });
+
+  test("artifact counts and hash come from the retained snapshot, not live compose", () => {
+    seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const frozen = getInvestigationArtifact(dir, saved.record.id);
+
+    const store = new Store(dir);
+    store.init();
+    store.applyResource(
+      createResource({
+        provider: "sentry",
+        providerResourceId: "450",
+        kind: "project",
+        name: "combie-renamed",
+        metadata: { slug: "combie-renamed", organization_slug: "acme" },
+      }),
+      { id: "obs-2", observedAt: "2026-08-16T13:00:00.000Z" },
+    );
+    store.close();
+
+    const live = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+    });
+    expect(live.subject.name).toBe("combie-renamed");
+    expect(live.subjectChanges.length).toBeGreaterThan(
+      saved.record.snapshot.subjectChanges.length,
+    );
+
+    const reopened = getInvestigationArtifact(dir, saved.record.id);
+    expect(reopened).toEqual(frozen);
+    expect(reopened.counts.subjectChanges).toBe(
+      saved.record.snapshot.subjectChanges.length,
+    );
+    expect(reopened.counts.subjectChanges).toBeLessThan(
+      live.subjectChanges.length,
+    );
+  });
+
+  test("unknown id and untrusted snapshot fail without a handle", () => {
+    expect(() => getInvestigationArtifact(dir, "")).toThrow(
+      /Investigation id is required/,
+    );
+    expect(() => getInvestigationArtifact(dir, "inv:missing")).toThrow(
+      /Investigation not found/,
+    );
+
+    seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const db = new Database(dbPath(dir));
+    db.exec(
+      `UPDATE investigations SET snapshot_json = 'not-json' WHERE id = '${saved.record.id}'`,
+    );
+    db.close();
+    expect(() => getInvestigationArtifact(dir, saved.record.id)).toThrow(
+      /untrusted/,
+    );
+  });
+
+  test("formatInvestigationArtifact renders the ARTIFACT block between banner and compose", () => {
+    seedSubject();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: "sentry:project:450",
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const artifact = getInvestigationArtifact(dir, saved.record.id);
+    const block = formatInvestigationArtifact(artifact);
+    expect(block.startsWith("ARTIFACT\n")).toBe(true);
+    expect(block).toContain(`  handle:     ${saved.record.id}`);
+    expect(block).toContain(`  schema:     combie.investigation.snapshot.v048`);
+    expect(block).toMatch(/  hash:       sha256:[0-9a-f]{64}/);
+    expect(block).toContain(
+      `  location:   investigations.snapshot_json id=${saved.record.id}`,
+    );
+    expect(block).toMatch(
+      /  counts:     related=\d+, subjectChanges=\d+, byteLength=\d+/,
+    );
+    expect(block).toContain(`  retrieve:   bun run combie investigation ${saved.record.id}`);
+
+    const rendered = formatSavedInvestigation(saved.record, artifact);
+    expect(rendered.startsWith("INVESTIGATION SNAPSHOT")).toBe(true);
+    expect(rendered.indexOf("INVESTIGATION SNAPSHOT")).toBeLessThan(
+      rendered.indexOf("ARTIFACT"),
+    );
+    expect(rendered.indexOf("ARTIFACT")).toBeLessThan(
+      rendered.indexOf(saved.liveOutput),
+    );
+    expect(rendered).toContain(saved.liveOutput);
+
+    const without = formatSavedInvestigation(saved.record);
+    expect(without).not.toContain("ARTIFACT");
+    expect(without).toBe(formatSavedInvestigation(saved.record, undefined));
   });
 });
 

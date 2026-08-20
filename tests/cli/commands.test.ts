@@ -662,6 +662,7 @@ describe("CLI commands", () => {
     expect(compared.stdout).toContain("RELATIONSHIPS");
     expect(compared.stdout).toContain("AUTHORITY CLOCKS");
     expect(compared.stdout).not.toContain("subject_missing");
+    expect(compared.stdout).not.toContain("ARTIFACT");
 
     const reopened = await capture(() =>
       main(["investigation", id, "--dir", dir]),
@@ -669,6 +670,25 @@ describe("CLI commands", () => {
     expect(reopened.code).toBe(0);
     expect(reopened.stdout).toContain("INVESTIGATION SNAPSHOT");
     expect(reopened.stdout).not.toContain("INVESTIGATION COMPARE");
+    expect(reopened.stdout).toContain("ARTIFACT");
+    expect(reopened.stdout).toContain(`  handle:     ${id}`);
+    expect(reopened.stdout).toContain(
+      "  schema:     combie.investigation.snapshot.v048",
+    );
+    expect(reopened.stdout).toMatch(/  hash:       sha256:[0-9a-f]{64}/);
+    expect(reopened.stdout).toContain(
+      `  location:   investigations.snapshot_json id=${id}`,
+    );
+    expect(reopened.stdout).toMatch(
+      /  counts:     related=0, subjectChanges=\d+, byteLength=\d+/,
+    );
+    expect(reopened.stdout).toContain(
+      `  retrieve:   bun run combie investigation ${id}`,
+    );
+    expect(reopened.stdout).not.toMatch(/\/Users\/|artifacts\//);
+    expect(reopened.stdout.indexOf("ARTIFACT")).toBeGreaterThan(
+      reopened.stdout.indexOf("INVESTIGATION SNAPSHOT"),
+    );
   });
 
   test("investigation --compare reports subject_missing and still exits 0", async () => {

@@ -4723,3 +4723,207 @@ describe("MCP stdio contract (Sprint 079)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 });
+
+describe("MCP stdio contract (Sprint 081)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("named-id observe adds investigationArtifact without thinning the snapshot dump", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-081-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-081", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const investigate = listed.tools.find(
+        (tool) => tool.name === "investigate_resource",
+      );
+      expect(investigate?.description).toMatch(/investigationArtifact/i);
+
+      const omitted = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(omitted.isError).not.toBe(true);
+      const omittedContent = omitted.structuredContent as Record<
+        string,
+        unknown
+      >;
+      expect(omittedContent).not.toHaveProperty("investigationArtifact");
+      expect(omittedContent).not.toHaveProperty("investigationSnapshot");
+
+      const named = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: saved.record.id,
+        },
+      });
+      expect(named.isError).not.toBe(true);
+      const namedContent = named.structuredContent as Record<string, unknown>;
+      expect(namedContent).toHaveProperty("investigationSnapshot");
+      expect(namedContent.investigationSnapshot).toHaveProperty("snapshot");
+
+      const artifact = namedContent.investigationArtifact as Record<
+        string,
+        unknown
+      >;
+      expect(artifact.handle).toBe(saved.record.id);
+      expect(artifact.schema).toBe("combie.investigation.snapshot.v048");
+
+      const rowStore = new Store(dir);
+      rowStore.init();
+      const row = rowStore.getInvestigationRow(saved.record.id);
+      rowStore.close();
+      expect(artifact.hash).toBe(
+        `sha256:${createHash("sha256").update(row!.snapshotJson).digest("hex")}`,
+      );
+      expect(artifact.location).toBe(
+        `investigations.snapshot_json id=${saved.record.id}`,
+      );
+      expect(artifact.location).not.toContain("/");
+      expect(artifact.counts).toEqual({
+        related: saved.record.snapshot.related.length,
+        subjectChanges: saved.record.snapshot.subjectChanges.length,
+        byteLength: Buffer.byteLength(row!.snapshotJson, "utf8"),
+      });
+      expect(artifact.retrieve).toContain(
+        `investigation ${saved.record.id}`,
+      );
+      expect(JSON.stringify(artifact)).not.toMatch(
+        /INVESTIGATION SNAPSHOT|Investigation context for/,
+      );
+
+      const unknown = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: "inv:missing",
+        },
+      });
+      expect(unknown.isError).toBe(true);
+      expect(
+        (unknown.content as Array<{ type: string; text: string }>)[0]?.text,
+      ).toContain("Investigation not found");
+      expect(JSON.stringify(unknown.structuredContent ?? {})).not.toContain(
+        "investigationArtifact",
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const rowAfter = storeAfter.getInvestigationRow(saved.record.id);
+    storeAfter.close();
+    expect(rowAfter?.snapshotJson).not.toContain("investigationArtifact");
+  }, 15_000);
+
+  test("orphan-subject named-id observe keeps investigationArtifact", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-081b-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.close();
+
+    const client = new Client({ name: "combie-test-081b", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const named = await client.callTool({
+        name: "investigate_resource",
+        arguments: { investigationId: saved.record.id },
+      });
+      expect(named.isError).not.toBe(true);
+      const content = named.structuredContent as Record<string, unknown>;
+      expect(
+        (content.investigationCompare as Record<string, unknown>)
+          ?.currentStatus,
+      ).toBe("subject_missing");
+      expect(content).not.toHaveProperty("subject");
+      expect(content).toHaveProperty("investigationSnapshot");
+
+      const artifact = content.investigationArtifact as Record<string, unknown>;
+      expect(artifact.handle).toBe(saved.record.id);
+      expect(artifact.schema).toBe("combie.investigation.snapshot.v048");
+      expect(artifact.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(artifact.location).toBe(
+        `investigations.snapshot_json id=${saved.record.id}`,
+      );
+      expect(artifact.retrieve).toContain(`investigation ${saved.record.id}`);
+    } finally {
+      await client.close();
+    }
+  }, 15_000);
+});

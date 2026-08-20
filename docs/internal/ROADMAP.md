@@ -410,7 +410,7 @@ investigate_resource
 
 Connect, sync, credential management, and infrastructure writes should remain outside the initial MCP boundary.
 
-The CLI remains the primary composable primitive. MCP already returns structured JSON from those four tools over the same application core. CLI reads still render human tables by default. Structured `--json` on the four MCP-parity CLI reads is the next sequence item after Sprint 079; do not add `--limit`, `--since`, `--offline`, or `--refresh` flags merely to complete a composition checklist. Refresh is `sync`. Reads are already offline.
+The CLI remains the primary composable primitive. MCP already returns structured JSON from those four tools over the same application core. CLI reads render human tables by default. Sprint 080 shipped `--json` on the four MCP-parity CLI reads. Do not add `--limit`, `--since`, `--offline`, or `--refresh` flags merely to complete a composition checklist. Refresh is `sync`. Reads are already offline. Artifact-backed investigation is the next sequence item.
 
 ## BYO Models
 
@@ -1387,9 +1387,9 @@ Build the smallest next capability justified by repeated real-world friction.
 
 ---
 
-# Next Work Sequence (post-Sprint 079)
+# Next Work Sequence (post-Sprint 080)
 
-Sprints 001–079 shipped the local multi-provider foundation, deterministic Investigation (v0.6 closed), the smallest v0.7 capture slices (Resolution, Incident grouping, recall, named clocks), and Resource CURRENT observation clocks (provider last-attempt vs last-success).
+Sprints 001–080 shipped the local multi-provider foundation, deterministic Investigation (v0.6 closed), the smallest v0.7 capture slices (Resolution, Incident grouping, recall, named clocks), Resource CURRENT observation clocks, and MCP-parity CLI `--json` on the four read commands.
 
 Sprint 078 leftovers are **not a sequence** and remain frozen until separately earned:
 
@@ -1400,7 +1400,7 @@ Sprint 078 leftovers are **not a sequence** and remain frozen until separately e
 - inferred Action from provider activity
 - Recommendation, Learning, similarity
 
-Sprint 079 leftover is **not a sequence**. Source authority on Resource CURRENT is shipped. Relationship currency remains later. Artifact-backed investigation and a composition-oriented agent skill depend on shell-native `--json` existing first so agents can compose without scraping human tables.
+Sprint 079 leftover is **not a sequence**. Relationship currency remains later. Sprint 080 leftover is **not a sequence**; `--json` on additional CLI reads stays unearned. A composition-oriented agent skill depends on agents being able to cite a local snapshot artifact without stuffing the full `snapshot_json` into every named-id observe.
 
 Minimum correctly ordered work:
 
@@ -1409,13 +1409,13 @@ Minimum correctly ordered work:
    smallest: Resource CURRENT observation clocks + provider last-attempt vs last-success
    not: generic Observation type, Relationship verification clocks, populated-membership id sets
 
-2. Shell-native CLI contract                   ← next (Sprint 080)
+2. Shell-native CLI contract                   ← shipped Sprint 080
    smallest: `--json` on MCP-parity read commands over existing composers
    not: `--limit` / time filters / `--output` / `--offline` / `--refresh` as synonyms
    not: a fifth MCP tool
-   not: `--json` on writes or on non-MCP CLI commands in this slice
+   not: `--json` on writes or on non-MCP CLI commands in that slice
 
-3. Artifact-backed investigation
+3. Artifact-backed investigation               ← next (Sprint 081)
    smallest: treat existing `investigations.snapshot_json` as the complete local artifact
             (handle, hash/counts/location); thin MCP named-id dumps later
    not: a generic artifact framework, ContextPack, or fifth snapshot tool
