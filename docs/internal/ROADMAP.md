@@ -322,7 +322,7 @@ These clocks and meanings must not be silently collapsed.
 
 Shipped for provider-native evidence families (Vercel deployments, GitHub workflow runs, Neon operations, Sentry releases and issues, Sentry code-mapping refresh): latest-attempt vs last-success observation time, known-empty vs unknown, retained stale rows, dual chronologies.
 
-Remaining v0.3 surface: Resource CURRENT and provider last-attempt clocks. A stored Resource can still be read as current provider truth because `history` / `context` / `investigate` CURRENT do not expose Combie observation time or failed-sync attempt time. That remaining contract is the next implementation sequence after Sprint 078 — not more Incident mutations.
+Sprint 079 shipped Resource CURRENT observation clocks and provider last-attempt vs last-success. Remaining v0.3 surface is Relationship currency. That is not the next implementation sequence — shell-native `--json` on MCP-parity CLI reads is.
 
 ## Example Timeline
 
@@ -410,7 +410,7 @@ investigate_resource
 
 Connect, sync, credential management, and infrastructure writes should remain outside the initial MCP boundary.
 
-The CLI remains the primary composable primitive. MCP already returns structured JSON from those four tools over the same application core. CLI reads still render human tables only. Structured `--json` on MCP-parity CLI reads is later in the post-078 sequence; do not add `--limit`, `--since`, `--offline`, or `--refresh` flags merely to complete a composition checklist. Refresh is `sync`. Reads are already offline.
+The CLI remains the primary composable primitive. MCP already returns structured JSON from those four tools over the same application core. CLI reads still render human tables by default. Structured `--json` on the four MCP-parity CLI reads is the next sequence item after Sprint 079; do not add `--limit`, `--since`, `--offline`, or `--refresh` flags merely to complete a composition checklist. Refresh is `sync`. Reads are already offline.
 
 ## BYO Models
 
@@ -1387,9 +1387,9 @@ Build the smallest next capability justified by repeated real-world friction.
 
 ---
 
-# Next Work Sequence (post-Sprint 078)
+# Next Work Sequence (post-Sprint 079)
 
-Sprints 001–078 shipped the local multi-provider foundation, deterministic Investigation (v0.6 closed), and the smallest v0.7 capture slices (Resolution, Incident grouping, recall, named clocks).
+Sprints 001–079 shipped the local multi-provider foundation, deterministic Investigation (v0.6 closed), the smallest v0.7 capture slices (Resolution, Incident grouping, recall, named clocks), and Resource CURRENT observation clocks (provider last-attempt vs last-success).
 
 Sprint 078 leftovers are **not a sequence** and remain frozen until separately earned:
 
@@ -1400,19 +1400,20 @@ Sprint 078 leftovers are **not a sequence** and remain frozen until separately e
 - inferred Action from provider activity
 - Recommendation, Learning, similarity
 
-The Source Authority Contract is unfinished on Resource CURRENT and provider last-attempt clocks. Later CLI composition, artifact-backed investigation, and a composition-oriented agent skill all depend on consumers being able to tell observation from provider truth.
+Sprint 079 leftover is **not a sequence**. Source authority on Resource CURRENT is shipped. Relationship currency remains later. Artifact-backed investigation and a composition-oriented agent skill depend on shell-native `--json` existing first so agents can compose without scraping human tables.
 
 Minimum correctly ordered work:
 
 ```text
-1. Source authority and freshness
+1. Source authority and freshness              ← shipped Sprint 079
    smallest: Resource CURRENT observation clocks + provider last-attempt vs last-success
    not: generic Observation type, Relationship verification clocks, populated-membership id sets
 
-2. Shell-native CLI contract
+2. Shell-native CLI contract                   ← next (Sprint 080)
    smallest: `--json` on MCP-parity read commands over existing composers
    not: `--limit` / time filters / `--output` / `--offline` / `--refresh` as synonyms
    not: a fifth MCP tool
+   not: `--json` on writes or on non-MCP CLI commands in this slice
 
 3. Artifact-backed investigation
    smallest: treat existing `investigations.snapshot_json` as the complete local artifact

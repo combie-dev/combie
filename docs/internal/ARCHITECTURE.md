@@ -829,7 +829,7 @@ Every relevant Combie fact should make it possible to determine:
 
 No synchronized Combie record becomes more authoritative than its originating system. Historical evidence must remain distinguishable from current observed state.
 
-Shipped provider-native evidence families (Vercel deployments, GitHub workflow runs, Neon operations, Sentry releases and issues, Sentry code-mapping refresh) already separate latest-attempt observation time, last-success observation time, known-empty, unknown, and retained stale rows. Resource CURRENT, Relationship currency, and provider last-attempt clocks are the remaining contract surface. Do not invent a generic Observation or Evidence domain type to close that gap.
+Shipped provider-native evidence families (Vercel deployments, GitHub workflow runs, Neon operations, Sentry releases and issues, Sentry code-mapping refresh) already separate latest-attempt observation time, last-success observation time, known-empty, unknown, and retained stale rows. Sprint 079 shipped Resource CURRENT observation clocks and provider last-attempt vs last-success. Remaining Source Authority surface is Relationship currency. Do not invent a generic Observation or Evidence domain type to close that gap.
 
 ### Shell-Native Command Contract
 
@@ -837,7 +837,7 @@ The CLI is Combie’s primary composable agent primitive. MCP remains a small in
 
 Machine composition may eventually include structured JSON, bounded results, justified filtering, explicit refresh versus offline behavior, stdout for results, stderr for diagnostics, stable exit codes, and no prompts in machine-readable mode.
 
-Do not add flags merely to satisfy that list. Refresh is already the `sync` command; reads are already offline. The frozen four-tool MCP contract remains:
+Do not add flags merely to satisfy that list. Refresh is already the `sync` command; reads are already offline. The smallest remaining slice is `--json` on the four MCP-parity CLI reads (`providers`, `resources`, `related`, `investigate`) over the existing composers and MCP structured projections. Do not add `--limit`, `--since`, `--output`, `--offline`, or `--refresh`. Do not add `--json` on writes or on non-MCP CLI commands in that slice. The frozen four-tool MCP contract remains:
 
 - `list_resources`
 - `list_providers`
