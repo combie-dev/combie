@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { saveInvestigation } from "../../src/app/investigations.ts";
+import {
+  saveInvestigation,
+  serializeInvestigationSnapshot,
+} from "../../src/app/investigations.ts";
 import { recordResolution } from "../../src/app/resolutions.ts";
 import {
   appendIncidentResolutions,
@@ -2680,13 +2683,25 @@ describe("MCP stdio contract (Sprint 072)", () => {
       expect(snapshot.id).not.toBe(newer.record.id);
       expect(snapshot.subjectResourceId).toBe(subject.id);
       expect(snapshot.composedAt).toBe("2026-08-16T10:00:00.000Z");
-      const snapshotBody = snapshot.snapshot as Record<string, unknown>;
-      const snapshotSubject = snapshotBody.subject as Record<string, unknown>;
-      expect(snapshotSubject.id).toBe(subject.id);
-      expect(snapshotBody).not.toHaveProperty("knownFacts");
+      expect(snapshot).not.toHaveProperty("snapshot");
+      expect(snapshot.subjectPreview).toEqual({
+        id: subject.id,
+        provider: subject.provider,
+        kind: subject.kind,
+        name: subject.name,
+      });
+      expect(Object.keys(snapshot).sort()).toEqual([
+        "composedAt",
+        "id",
+        "subjectPreview",
+        "subjectResourceId",
+      ]);
       expect(snapshot).not.toHaveProperty("occurredAt");
       expect(JSON.stringify(namedContent.investigationSnapshot)).not.toMatch(
         /INVESTIGATION SNAPSHOT|Investigation context for/,
+      );
+      expect(JSON.stringify(namedContent.investigationSnapshot)).not.toContain(
+        "subjectChanges",
       );
 
       const compare = namedContent.investigationCompare as Record<
@@ -2978,7 +2993,7 @@ describe("MCP stdio contract (Sprint 073)", () => {
       expect(Object.keys(snapshot).sort()).toEqual([
         "composedAt",
         "id",
-        "snapshot",
+        "subjectPreview",
         "subjectResourceId",
       ]);
       expect(snapshot).not.toHaveProperty("resolutionMemory");
@@ -3303,7 +3318,7 @@ describe("MCP stdio contract (Sprint 074)", () => {
       expect(Object.keys(snapshot).sort()).toEqual([
         "composedAt",
         "id",
-        "snapshot",
+        "subjectPreview",
         "subjectResourceId",
       ]);
       expect(snapshot).not.toHaveProperty("incidentMemory");
@@ -4734,7 +4749,7 @@ describe("MCP stdio contract (Sprint 081)", () => {
     dirs.length = 0;
   });
 
-  test("named-id observe adds investigationArtifact without thinning the snapshot dump", async () => {
+  test("named-id observe adds investigationArtifact and a thinned investigationSnapshot without the 048 dump", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-081-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -4805,7 +4820,19 @@ describe("MCP stdio contract (Sprint 081)", () => {
       expect(named.isError).not.toBe(true);
       const namedContent = named.structuredContent as Record<string, unknown>;
       expect(namedContent).toHaveProperty("investigationSnapshot");
-      expect(namedContent.investigationSnapshot).toHaveProperty("snapshot");
+      expect(namedContent.investigationSnapshot).not.toHaveProperty("snapshot");
+      expect(namedContent.investigationSnapshot).toHaveProperty(
+        "subjectPreview",
+      );
+      expect(
+        (namedContent.investigationSnapshot as Record<string, unknown>)
+          .subjectPreview,
+      ).toEqual({
+        id: subject.id,
+        provider: subject.provider,
+        kind: subject.kind,
+        name: subject.name,
+      });
 
       const artifact = namedContent.investigationArtifact as Record<
         string,
@@ -4925,5 +4952,360 @@ describe("MCP stdio contract (Sprint 081)", () => {
     } finally {
       await client.close();
     }
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 082)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("named-id observe returns a thinned investigationSnapshot with identity + subjectPreview and the 081 artifact", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-082-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    const repo = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "acme/api",
+      metadata: {},
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.applyResource(
+      createResource({
+        provider: "sentry",
+        providerResourceId: "450",
+        kind: "project",
+        name: "combie-renamed",
+        metadata: { slug: "combie-renamed", organizationSlug: "acme" },
+      }),
+      { id: "obs-2", observedAt: "2026-08-16T01:00:00.000Z" },
+    );
+    store.applyResource(repo, {
+      id: "obs-3",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repo.id,
+        targetResourceId: subject.id,
+        kind: "code_mapped_to",
+        evidence: {
+          source: "sentry",
+          mechanism: "code_mapping",
+          repository: "acme/api",
+        },
+      }),
+    );
+    store.upsertSentryRelease({
+      provider: "sentry",
+      version: "combie@1.2.0",
+      resourceId: subject.id,
+      projectId: "450",
+      shortVersion: "1.2.0",
+      status: "open",
+      dateCreated: "2026-08-16T00:00:00.000Z",
+      dateReleased: null,
+      observedAt: "2026-08-16T00:00:00.000Z",
+      gitCommitSha: null,
+    });
+    store.close();
+
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    expect(saved.record.snapshot.subjectChanges).not.toHaveLength(0);
+    expect(saved.record.snapshot.related.length).toBeGreaterThan(0);
+
+    const renameStore = new Store(dir);
+    renameStore.init();
+    renameStore.applyResource(
+      createResource({
+        provider: "sentry",
+        providerResourceId: "450",
+        kind: "project",
+        name: "combie-final",
+        metadata: { slug: "combie-final", organizationSlug: "acme" },
+      }),
+      { id: "obs-4", observedAt: "2026-08-16T14:00:00.000Z" },
+    );
+    renameStore.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-082", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      expect(
+        listed.tools.every(
+          (tool) =>
+            tool.name !== "list_investigations" &&
+            tool.name !== "compare_investigation" &&
+            tool.name !== "get_investigation",
+        ),
+      ).toBe(true);
+
+      const named = await client.callTool({
+        name: "investigate_resource",
+        arguments: {
+          resourceId: subject.id,
+          investigationId: saved.record.id,
+        },
+      });
+      expect(named.isError).not.toBe(true);
+      const namedContent = named.structuredContent as Record<string, unknown>;
+      const liveSubject = namedContent.subject as Record<string, unknown>;
+      expect(liveSubject.name).toBe("combie-final");
+      const snapshot = namedContent.investigationSnapshot as Record<
+        string,
+        unknown
+      >;
+      expect(snapshot.id).toBe(saved.record.id);
+      expect(snapshot.subjectResourceId).toBe(subject.id);
+      expect(snapshot.composedAt).toBe("2026-08-16T12:00:00.000Z");
+      expect(snapshot.subjectPreview).toEqual({
+        id: saved.record.snapshot.subject.id,
+        provider: saved.record.snapshot.subject.provider,
+        kind: saved.record.snapshot.subject.kind,
+        name: saved.record.snapshot.subject.name,
+      });
+      expect(snapshot.subjectPreview).not.toHaveProperty("providerResourceId");
+      expect(snapshot.subjectPreview).not.toHaveProperty("metadata");
+      expect(Object.keys(snapshot).sort()).toEqual([
+        "composedAt",
+        "id",
+        "subjectPreview",
+        "subjectResourceId",
+      ]);
+      expect(snapshot).not.toHaveProperty("snapshot");
+      const serialized = JSON.stringify(namedContent.investigationSnapshot);
+      expect(serialized).not.toContain("subjectChanges");
+      expect(serialized).not.toContain("related");
+      expect(serialized).not.toContain("subjectReleases");
+      expect(serialized).not.toContain("knownFacts");
+      expect(serialized).not.toContain("code_mapped_to");
+
+      const artifact = namedContent.investigationArtifact as Record<
+        string,
+        unknown
+      >;
+      expect(artifact.handle).toBe(saved.record.id);
+      expect(artifact.schema).toBe("combie.investigation.snapshot.v048");
+      const rowStore = new Store(dir);
+      rowStore.init();
+      const row = rowStore.getInvestigationRow(saved.record.id);
+      rowStore.close();
+      expect(artifact.hash).toBe(
+        `sha256:${createHash("sha256").update(row!.snapshotJson).digest("hex")}`,
+      );
+      expect(artifact.location).toBe(
+        `investigations.snapshot_json id=${saved.record.id}`,
+      );
+      expect(artifact.counts).toEqual({
+        related: saved.record.snapshot.related.length,
+        subjectChanges: saved.record.snapshot.subjectChanges.length,
+        byteLength: Buffer.byteLength(row!.snapshotJson, "utf8"),
+      });
+      expect(artifact.retrieve).toContain(
+        `investigation ${saved.record.id}`,
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+
+    const storeAfter = new Store(dir);
+    storeAfter.init();
+    const rowAfter = storeAfter.getInvestigationRow(saved.record.id);
+    storeAfter.close();
+    expect(rowAfter?.snapshotJson).toBe(
+      serializeInvestigationSnapshot(saved.record.snapshot),
+    );
+  }, 15_000);
+
+  test("omitted investigationId still omits investigationSnapshot and investigationArtifact", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-082b-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-082b", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const omitted = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subject.id },
+      });
+      expect(omitted.isError).not.toBe(true);
+      const content = omitted.structuredContent as Record<string, unknown>;
+      expect(content).not.toHaveProperty("investigationSnapshot");
+      expect(content).not.toHaveProperty("investigationArtifact");
+      expect(content).not.toHaveProperty("investigationCompare");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("orphan-subject named-id observe keeps thinned snapshot identity + subjectPreview + artifact with live keys omitted", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-082c-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const subject = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.applyResource(subject, {
+      id: "obs-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+    });
+    store.close();
+
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: subject.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+
+    const db = new Database(dbPath(dir));
+    db.exec(`DELETE FROM resources WHERE id = '${subject.id}'`);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    db.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-082c", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const named = await client.callTool({
+        name: "investigate_resource",
+        arguments: { investigationId: saved.record.id },
+      });
+      expect(named.isError).not.toBe(true);
+      const content = named.structuredContent as Record<string, unknown>;
+      for (const key of [
+        "subject",
+        "subjectChanges",
+        "related",
+        "knownFacts",
+        "missingContext",
+        "providerActivity",
+        "timeline",
+        "subjectDeployments",
+        "subjectWorkflowRuns",
+        "subjectOperations",
+        "subjectReleases",
+        "subjectIssues",
+        "sharedCommitContext",
+        "sharedCommitCorrespondences",
+        "resolutionMemory",
+        "incidentMemory",
+      ]) {
+        expect(content).not.toHaveProperty(key);
+      }
+      const snapshot = content.investigationSnapshot as Record<
+        string,
+        unknown
+      >;
+      expect(snapshot.id).toBe(saved.record.id);
+      expect(snapshot.subjectResourceId).toBe(subject.id);
+      expect(snapshot.composedAt).toBe("2026-08-16T12:00:00.000Z");
+      expect(snapshot).not.toHaveProperty("snapshot");
+      expect(snapshot.subjectPreview).toEqual({
+        id: saved.record.snapshot.subject.id,
+        provider: saved.record.snapshot.subject.provider,
+        kind: saved.record.snapshot.subject.kind,
+        name: saved.record.snapshot.subject.name,
+      });
+      const compare = content.investigationCompare as Record<string, unknown>;
+      expect(compare.currentStatus).toBe("subject_missing");
+      const artifact = content.investigationArtifact as Record<string, unknown>;
+      expect(artifact.handle).toBe(saved.record.id);
+      expect(artifact.schema).toBe("combie.investigation.snapshot.v048");
+      expect(artifact.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(artifact.location).toBe(
+        `investigations.snapshot_json id=${saved.record.id}`,
+      );
+      expect(artifact.retrieve).toContain(
+        `investigation ${saved.record.id}`,
+      );
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
   }, 15_000);
 });

@@ -2,6 +2,7 @@ import {
   composeInvestigationFacts,
 } from "../app/investigation-facts.ts";
 import type { InvestigationContext } from "../app/investigate.ts";
+import type { SavedInvestigation } from "../app/investigations.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
 import { composeProviderActivityChronology } from "../app/provider-activity.ts";
 import type { RelatedResourceContext } from "../app/related.ts";
@@ -65,6 +66,22 @@ export function toInvestigationHistoryRow(
 
 export function toInvestigationHistory(records: InvestigationRecord[]) {
   return records.map(toInvestigationHistoryRow);
+}
+
+export function projectInvestigationSnapshot(
+  record: SavedInvestigation,
+): Record<string, unknown> {
+  return {
+    id: record.id,
+    subjectResourceId: record.subjectResourceId,
+    composedAt: record.composedAt,
+    subjectPreview: {
+      id: record.snapshot.subject.id,
+      provider: record.snapshot.subject.provider,
+      kind: record.snapshot.subject.kind,
+      name: record.snapshot.subject.name,
+    },
+  };
 }
 
 export function projectListProviders(providers: ProviderRecord[]) {

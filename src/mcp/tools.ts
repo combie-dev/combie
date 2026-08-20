@@ -11,6 +11,7 @@ import { listProviders, listResources } from "../app/list.ts";
 import { listResolutions } from "../app/resolutions.ts";
 import {
   projectInvestigateResourceLive,
+  projectInvestigationSnapshot,
   projectListProviders,
   projectListResources,
   projectRelatedContext,
@@ -111,8 +112,9 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "for that exact subject; that is retained composition, not current provider truth, not an incident, " +
         "and not a recommendation. " +
         "Optional investigationId (exact inv: id for this Resource) also returns the retained " +
-        "048 snapshot composition for that id as investigationSnapshot (retained composition " +
-        "at composedAt; not current provider truth, not an incident, not a recommendation) " +
+        "snapshot identity for that id as investigationSnapshot (id, subjectResourceId, " +
+        "composedAt, and a bounded subjectPreview from the retained snapshot's subject — " +
+        "not the 048 body; retrieve the complete retained composition with the CLI) " +
         "plus an ephemeral snapshot-versus-current comparison; those are not current provider " +
         "truth, not an incident, not a recommendation, and not a rewrite of the snapshot row. " +
         "When investigationId is set, also returns investigationArtifact: a read-time handle " +
@@ -134,7 +136,8 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "that exact investigation's retained 048 row (subjectResourceId) instead of a named " +
         "Resource id. Omitted investigationId still requires resourceId. " +
         "When investigationId is set and the subject Resource is missing from the local store, " +
-        "the tool still returns the retained snapshot, the snapshot-versus-current comparison " +
+        "the tool still returns the retained snapshot identity and bounded subject preview, " +
+        "the snapshot-versus-current comparison " +
         "with currentStatus subject_missing, investigation history for that subject, " +
         "investigation-scoped resolution memory, and investigation-scoped incident memory, " +
         "omitting live compose keys; that is retained composition, not current provider truth, " +
@@ -153,7 +156,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .string()
           .optional()
           .describe(
-            "Exact saved Investigation id (inv:…). When set, also returns the retained 048 snapshot composition (investigationSnapshot), a read-time investigationArtifact handle (schema, sha256 of the stored snapshot text, in-database location, record counts), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. resourceId may be omitted; the subject is then taken from this investigation's 048 row. Omit to skip snapshot, artifact, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
+            "Exact saved Investigation id (inv:…). When set, also returns the retained snapshot identity for that id as investigationSnapshot (id, subjectResourceId, composedAt, and a bounded subjectPreview from the retained snapshot's subject — not the 048 body; retrieve the complete snapshot with the CLI), a read-time investigationArtifact handle (schema, sha256 of the stored snapshot text, in-database location, record counts), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. resourceId may be omitted; the subject is then taken from this investigation's 048 row. Omit to skip snapshot, artifact, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
           ),
       }),
     },
@@ -162,7 +165,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         let investigationCompare: ReturnType<
           typeof compareInvestigationToCurrent
         > | undefined;
-        let investigationSnapshot: ReturnType<
+        let investigationSnapshotRecord: ReturnType<
           typeof getSavedInvestigation
         > | undefined;
         let investigationArtifact: ReturnType<
@@ -195,7 +198,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             subjectRef = comparison.subjectResourceId;
           }
           investigationCompare = comparison;
-          investigationSnapshot = getSavedInvestigation(baseDir, named);
+          investigationSnapshotRecord = getSavedInvestigation(baseDir, named);
           investigationArtifact = getInvestigationArtifact(baseDir, named);
         } else {
           const namedResourceRef =
@@ -209,15 +212,19 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           subjectRef = resourceId!;
         }
 
-        const investigationResolutionRows = investigationSnapshot
+        const investigationSnapshot = investigationSnapshotRecord
+          ? projectInvestigationSnapshot(investigationSnapshotRecord)
+          : undefined;
+
+        const investigationResolutionRows = investigationSnapshotRecord
           ? listResolutions(baseDir, {
-              investigationId: investigationSnapshot.id,
+              investigationId: investigationSnapshotRecord.id,
             })
           : [];
-        const investigationIncidentRows = investigationSnapshot
+        const investigationIncidentRows = investigationSnapshotRecord
           ? listIncidentsForInvestigation(
               baseDir,
-              investigationSnapshot.id,
+              investigationSnapshotRecord.id,
             )
           : [];
 
@@ -283,10 +290,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           if (
             err instanceof CombieError &&
             err.code === "RESOURCE_NOT_FOUND" &&
-            investigationSnapshot !== undefined
+            investigationSnapshotRecord !== undefined
           ) {
             const investigationRows = listInvestigations(baseDir, {
-              subjectResourceId: investigationSnapshot.subjectResourceId,
+              subjectResourceId: investigationSnapshotRecord.subjectResourceId,
             });
             return {
               content: [
@@ -295,8 +302,8 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
                   text:
                     `Investigation context for ${subjectRef} is unavailable: ` +
                     `the subject Resource is not in the local store. ` +
-                    `Retained snapshot ${investigationSnapshot.id} (composed at ` +
-                    `${investigationSnapshot.composedAt}) with comparison ` +
+                    `Retained snapshot ${investigationSnapshotRecord.id} (composed at ` +
+                    `${investigationSnapshotRecord.composedAt}) with comparison ` +
                     `currentStatus subject_missing.`,
                 },
               ],

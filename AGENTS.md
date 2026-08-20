@@ -229,6 +229,18 @@ dump stays; not a file artifact store, not persisted columns,
 not a fifth tool, not `--json` on `investigation`, not
 `skills/combie`, not 078 leftovers, not the Investigation
 Engine).
+Sprint 082 shipped
+the thin named-id MCP snapshot dump (ROADMAP Next Work Sequence
+item 3 remaining slice; named-id `investigate_resource`
+`investigationSnapshot` keeps `id` / `subjectResourceId` /
+`composedAt` plus a bounded `subjectPreview` (`id`, `provider`,
+`kind`, `name`) from the retained snapshot's subject and omits
+the nested 048 `InvestigationContext`; `investigationArtifact`
+unchanged; complete retrieve stays CLI `investigation <id>`;
+`snapshot_json` not rewritten; not a file artifact store, not
+persisted preview columns, not a fifth tool, not `--json` on
+`investigation`, not `skills/combie`, not 078 leftovers, not the
+Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -250,7 +262,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–081 complete
+## Current baseline: Sprints 001–082 complete
 
 Multi-provider connection loop:
 
