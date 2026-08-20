@@ -5,6 +5,7 @@ node_modules
 .DS_Store
 dist
 .history
+docs/internal
 .env
 .env.*
 coverage/
