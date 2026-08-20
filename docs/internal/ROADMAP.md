@@ -410,7 +410,7 @@ investigate_resource
 
 Connect, sync, credential management, and infrastructure writes should remain outside the initial MCP boundary.
 
-The CLI remains the primary composable primitive. MCP already returns structured JSON from those four tools over the same application core. CLI reads render human tables by default. Sprint 080 shipped `--json` on the four MCP-parity CLI reads. Do not add `--limit`, `--since`, `--offline`, or `--refresh` flags merely to complete a composition checklist. Refresh is `sync`. Reads are already offline. Artifact-backed investigation is the next sequence item.
+The CLI remains the primary composable primitive. MCP already returns structured JSON from those four tools over the same application core. CLI reads render human tables by default. Sprint 080 shipped `--json` on the four MCP-parity CLI reads. Do not add `--limit`, `--since`, `--offline`, or `--refresh` flags merely to complete a composition checklist. Refresh is `sync`. Reads are already offline. Thinning the named-id MCP `investigationSnapshot` dump is the next sequence item.
 
 ## BYO Models
 
@@ -1387,9 +1387,9 @@ Build the smallest next capability justified by repeated real-world friction.
 
 ---
 
-# Next Work Sequence (post-Sprint 080)
+# Next Work Sequence (post-Sprint 081)
 
-Sprints 001–080 shipped the local multi-provider foundation, deterministic Investigation (v0.6 closed), the smallest v0.7 capture slices (Resolution, Incident grouping, recall, named clocks), Resource CURRENT observation clocks, and MCP-parity CLI `--json` on the four read commands.
+Sprints 001–081 shipped the local multi-provider foundation, deterministic Investigation (v0.6 closed), the smallest v0.7 capture slices (Resolution, Incident grouping, recall, named clocks), Resource CURRENT observation clocks, MCP-parity CLI `--json` on the four read commands, and a read-time Investigation snapshot artifact handle.
 
 Sprint 078 leftovers are **not a sequence** and remain frozen until separately earned:
 
@@ -1400,7 +1400,7 @@ Sprint 078 leftovers are **not a sequence** and remain frozen until separately e
 - inferred Action from provider activity
 - Recommendation, Learning, similarity
 
-Sprint 079 leftover is **not a sequence**. Relationship currency remains later. Sprint 080 leftover is **not a sequence**; `--json` on additional CLI reads stays unearned. A composition-oriented agent skill depends on agents being able to cite a local snapshot artifact without stuffing the full `snapshot_json` into every named-id observe.
+Sprint 079 leftover is **not a sequence**. Relationship currency remains later. Sprint 080 leftover is **not a sequence**; `--json` on additional CLI reads stays unearned. Sprint 081 leftover for a file store, `--json` on `investigation`, and a fifth tool is **not a sequence** and stays frozen. Thinning named-id MCP `investigationSnapshot` dumps remains sequence item 3 and is next (Sprint 082). A composition-oriented agent skill depends on that thinning.
 
 Minimum correctly ordered work:
 
@@ -1415,9 +1415,9 @@ Minimum correctly ordered work:
    not: a fifth MCP tool
    not: `--json` on writes or on non-MCP CLI commands in that slice
 
-3. Artifact-backed investigation               ← next (Sprint 081)
-   smallest: treat existing `investigations.snapshot_json` as the complete local artifact
-            (handle, hash/counts/location); thin MCP named-id dumps later
+3. Artifact-backed investigation
+   handle: shipped Sprint 081 (inv:, hash, counts, location, retrieve)
+   remaining: thin MCP named-id `investigationSnapshot` dumps     ← next (Sprint 082)
    not: a generic artifact framework, ContextPack, or fifth snapshot tool
 
 4. Composition-oriented agent skill

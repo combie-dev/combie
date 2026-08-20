@@ -1,6 +1,6 @@
 # SPRINT-081 — Investigation Snapshot Artifact Handle
 
-> **Status:** Active
+> **Status:** Complete
 > **Depends on:** SPRINT-080 (complete)
 > **Authorized by:** `docs/internal/ARCHITECTURE.md` Artifact-Backed
 > Investigation and `docs/internal/ROADMAP.md` Next Work Sequence

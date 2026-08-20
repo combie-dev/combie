@@ -852,7 +852,7 @@ Large evidence sets should not be pushed wholesale through an agent’s context 
 
 Investigations should eventually be capable of returning a compact summary, a bounded preview, the location of the complete local artifact, record count, schema version, content hash, and safe follow-up retrieval instructions. Complete evidence remains locally inspectable through deterministic tools such as the Combie CLI, `jq`, and `rg`.
 
-Reuse existing primitives. The Sprint 048 `investigations.snapshot_json` row in local `combie.db` is already the complete retained composition. The smallest remaining slice is a read-time artifact handle over that row (id, content hash, record counts, in-database location, follow-up retrieve). Do not invent a generic artifact framework, ContextPack, a fifth MCP snapshot tool, or a parallel file store to satisfy this boundary. Thinning the named-id MCP `investigationSnapshot` dump is later.
+Reuse existing primitives. The Sprint 048 `investigations.snapshot_json` row in local `combie.db` is already the complete retained composition. Sprint 081 shipped a read-time artifact handle over that row (id, content hash, record counts, in-database location, follow-up retrieve). The remaining artifact slice is thinning the named-id MCP `investigationSnapshot` dump so agents receive the handle plus identity and a bounded subject preview, not the nested 048 composition, and retrieve the complete snapshot through CLI `investigation <id>`. Do not invent a generic artifact framework, ContextPack, a fifth MCP snapshot tool, or a parallel file store.
 
 ### Composition-Oriented Agent Skill
 
