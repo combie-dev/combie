@@ -39,6 +39,99 @@ function withoutCredentialEnvironment<T>(run: () => T): T {
   }
 }
 
+const CLOCK_PROVIDER_NAMES: Record<string, string> = {
+  cloudflare: "Cloudflare",
+  github: "GitHub",
+  sentry: "Sentry",
+  vercel: "Vercel",
+};
+
+function seedRelatedClockGraph(
+  dir: string,
+  clocks: { sourceForUpdatedAt: string; usesDomainUpdatedAt: string },
+) {
+  const store = new Store(dir);
+  store.isInitialized();
+  const repository = createResource({
+    provider: "github",
+    providerResourceId: "clock-repo",
+    kind: "repository",
+    name: "clock-hub",
+    metadata: { fullName: "acme/clock-hub" },
+  });
+  const project = createResource({
+    provider: "vercel",
+    providerResourceId: "prj_clock",
+    kind: "project",
+    name: "clock-web",
+    metadata: {},
+  });
+  const zone = createResource({
+    provider: "cloudflare",
+    providerResourceId: "zone_clock",
+    kind: "zone",
+    name: "clock.dev",
+    metadata: {},
+  });
+  store.applyResource(repository, {
+    id: "repository-clock-initial",
+    observedAt: "2026-08-19T08:00:00.000Z",
+  });
+  store.applyResource(project, {
+    id: "project-clock-initial",
+    observedAt: "2026-08-19T08:00:00.000Z",
+  });
+  store.applyResource(zone, {
+    id: "zone-clock-initial",
+    observedAt: "2026-08-19T08:00:00.000Z",
+  });
+  store.upsertRelationship(
+    createRelationship({
+      sourceResourceId: repository.id,
+      targetResourceId: project.id,
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "acme/clock-hub",
+      },
+      updatedAt: clocks.sourceForUpdatedAt,
+    }),
+  );
+  store.upsertRelationship(
+    createRelationship({
+      sourceResourceId: project.id,
+      targetResourceId: zone.id,
+      kind: "uses_domain_in",
+      evidence: {
+        source: "vercel",
+        mechanism: "custom_domain_apex",
+        apexName: "clock.dev",
+      },
+      updatedAt: clocks.usesDomainUpdatedAt,
+    }),
+  );
+  store.close();
+  return { repository, project, zone };
+}
+
+function pinProviderLastAttemptAt(
+  dir: string,
+  attempts: Record<string, string | null>,
+) {
+  const store = new Store(dir);
+  store.isInitialized();
+  for (const [id, lastAttemptAt] of Object.entries(attempts)) {
+    store.upsertProvider({
+      id,
+      name: CLOCK_PROVIDER_NAMES[id] ?? id,
+      status: "connected",
+      lastAttemptAt,
+    });
+  }
+  store.close();
+}
+
 describe("Resource context composition", () => {
   let dir: string;
 
@@ -520,6 +613,119 @@ describe("Resource context composition", () => {
       "last successful discovery: not in last successful discovery",
     );
     expect(emptyLive.resource.id).toBe(resource.id);
+  });
+
+  test("RELATED includes last verified by Combie at for each neighbor edge", () => {
+    const { project } = seedRelatedClockGraph(dir, {
+      sourceForUpdatedAt: "2026-08-19T12:00:00.000Z",
+      usesDomainUpdatedAt: "2026-08-19T13:00:00.000Z",
+    });
+    pinProviderLastAttemptAt(dir, { github: null, vercel: null });
+
+    const context = getResourceContext({
+      baseDir: dir,
+      resourceRef: project.id,
+    });
+    const output = formatResourceContext(context);
+    expect(output).toContain("← source_for");
+    expect(output).toContain("uses_domain_in →");
+    expect(output.match(/last verified by Combie at:/g)).toHaveLength(2);
+    expect(output).toContain(
+      "last verified by Combie at: 2026-08-19T12:00:00.000Z",
+    );
+    expect(output).toContain(
+      "last verified by Combie at: 2026-08-19T13:00:00.000Z",
+    );
+  });
+
+  test("RELATED shows verification clocks even when verified equals the required-provider attempt", () => {
+    const { repository } = seedRelatedClockGraph(dir, {
+      sourceForUpdatedAt: "2026-08-19T12:00:00.000Z",
+      usesDomainUpdatedAt: "2026-08-19T12:00:00.000Z",
+    });
+    pinProviderLastAttemptAt(dir, {
+      github: "2026-08-19T12:00:00.000Z",
+      vercel: "2026-08-19T12:00:00.000Z",
+    });
+
+    const output = formatResourceContext(
+      getResourceContext({ baseDir: dir, resourceRef: repository.id }),
+    );
+    expect(output).toContain(
+      "last verified by Combie at: 2026-08-19T12:00:00.000Z\n" +
+        "last required-provider sync attempt: 2026-08-19T12:00:00.000Z",
+    );
+  });
+
+  test("RELATED keeps the edge when an attempt is later than last verified", () => {
+    const { repository } = seedRelatedClockGraph(dir, {
+      sourceForUpdatedAt: "2026-08-19T12:00:00.000Z",
+      usesDomainUpdatedAt: "2026-08-19T12:00:00.000Z",
+    });
+    pinProviderLastAttemptAt(dir, {
+      github: "2026-08-19T12:00:00.000Z",
+      vercel: "2026-08-19T12:30:00.000Z",
+    });
+
+    const output = formatResourceContext(
+      getResourceContext({ baseDir: dir, resourceRef: repository.id }),
+    );
+    expect(output).toContain("source_for →");
+    expect(output).toContain(
+      "last verified by Combie at: 2026-08-19T12:00:00.000Z",
+    );
+    expect(output).toContain(
+      "last required-provider sync attempt: 2026-08-19T12:30:00.000Z",
+    );
+    expect(output).not.toContain("unknown_relationship_authority");
+
+    const reopened = new Store(dir);
+    reopened.isInitialized();
+    expect(reopened.listRelationships()).toHaveLength(2);
+    expect(reopened.listRelationships()[0]!.kind).toBe("source_for");
+    reopened.close();
+  });
+
+  test("RELATED omits the attempt line when required providers have null lastAttemptAt", () => {
+    const { repository } = seedRelatedClockGraph(dir, {
+      sourceForUpdatedAt: "2026-08-19T12:00:00.000Z",
+      usesDomainUpdatedAt: "2026-08-19T12:00:00.000Z",
+    });
+    pinProviderLastAttemptAt(dir, { github: null, vercel: null });
+
+    const output = formatResourceContext(
+      getResourceContext({ baseDir: dir, resourceRef: repository.id }),
+    );
+    expect(output).toContain(
+      "last verified by Combie at: 2026-08-19T12:00:00.000Z",
+    );
+    expect(output).not.toContain("last required-provider sync attempt:");
+  });
+
+  test("context never renders investigate-only unknown relationship authority copy", () => {
+    const { repository } = seedRelatedClockGraph(dir, {
+      sourceForUpdatedAt: "2026-08-19T12:00:00.000Z",
+      usesDomainUpdatedAt: "2026-08-19T12:00:00.000Z",
+    });
+    pinProviderLastAttemptAt(dir, {
+      github: "2026-08-19T11:30:00.000Z",
+      vercel: "2026-08-19T12:45:00.000Z",
+    });
+
+    const context = getResourceContext({
+      baseDir: dir,
+      resourceRef: repository.id,
+    });
+    expect(context.providerLastAttemptAt).toEqual({
+      github: "2026-08-19T11:30:00.000Z",
+      vercel: "2026-08-19T12:45:00.000Z",
+    });
+    const output = formatResourceContext(context);
+    expect(output).not.toContain("unknown_relationship_authority");
+    expect(output).not.toContain("Missing Context");
+    expect(output).toContain(
+      "last required-provider sync attempt: 2026-08-19T12:45:00.000Z",
+    );
   });
 
   test("is offline, credential-independent, deterministic, and read-only", () => {

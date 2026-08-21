@@ -14,6 +14,10 @@ import {
   getRelatedContextForResource,
   type RelatedNeighbor,
 } from "./related.ts";
+import {
+  formatRelationshipClockLines,
+  lastRequiredProviderAttemptAt,
+} from "./relationship-verification-clocks.ts";
 
 /** Derived, non-persistent facts Combie knows locally about one exact Resource. */
 export interface ResourceContext {
@@ -22,6 +26,7 @@ export interface ResourceContext {
   changes: Change[];
   providerSyncClocks: ProviderSyncClocks;
   lastSuccessfulDiscovery: LastSuccessfulDiscovery | null;
+  providerLastAttemptAt: Record<string, string | null>;
 }
 
 export interface GetResourceContextOptions {
@@ -65,6 +70,7 @@ export function getResourceContext(
       changes: history.changes,
       providerSyncClocks: history.providerSyncClocks,
       lastSuccessfulDiscovery: history.lastSuccessfulDiscovery,
+      providerLastAttemptAt: related.providerLastAttemptAt,
     };
   } finally {
     store.close();
@@ -120,7 +126,10 @@ function relationshipNeighborId(
     : item.relationship.sourceResourceId;
 }
 
-function formatRelatedNeighbor(item: RelatedNeighbor): string {
+function formatRelatedNeighbor(
+  item: RelatedNeighbor,
+  providerLastAttemptAt: Record<string, string | null>,
+): string {
   const direction =
     item.direction === "outbound"
       ? `${item.relationship.kind} →`
@@ -133,7 +142,11 @@ function formatRelatedNeighbor(item: RelatedNeighbor): string {
   return (
     `${direction}\n` +
     `${identity}${stableId}\n` +
-    `Evidence: ${formatEvidence(item.relationship.evidence)}`
+    `Evidence: ${formatEvidence(item.relationship.evidence)}\n` +
+    formatRelationshipClockLines(
+      item.relationship.updatedAt,
+      lastRequiredProviderAttemptAt(item.relationship.kind, providerLastAttemptAt),
+    )
   );
 }
 
@@ -170,7 +183,11 @@ export function formatResourceContext(context: ResourceContext): string {
   const related =
     context.related.length === 0
       ? "No relationships discovered yet."
-      : context.related.map(formatRelatedNeighbor).join("\n\n");
+      : context.related
+          .map((item) =>
+            formatRelatedNeighbor(item, context.providerLastAttemptAt),
+          )
+          .join("\n\n");
 
   const changes =
     context.changes.length === 0

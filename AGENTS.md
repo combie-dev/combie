@@ -288,6 +288,16 @@ optional hint after MCP configure or when already configured, never
 shelling out; skill body and denylist unchanged; no Combie skill
 registry, no checkout copy, no fifth tool, no MCP writes, no extra
 `--json`, no RELATED clock thaw, no 078 leftover thaw).
+Sprint 087 shipped
+Context RELATED verification clocks under founder override
+2026-08-21 (ROADMAP v0.3 Source Authority parity; `combie context`
+RELATED reuses `formatRelationshipClockLines` /
+`lastRequiredProviderAttemptAt` — same copy and semantics as
+`related` / investigate; attempt map already computed by
+`getRelatedContextForResource`, now threaded through
+`ResourceContext`; no Missing Context on `context`, no new clock
+model, no `--json`, no checkout skill copy, no fifth tool, no MCP
+writes, no 078 leftover thaw).
 
 ## Mandatory reading order before any substantive change
 
@@ -309,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–086 complete
+## Current baseline: Sprints 001–087 complete
 
 Multi-provider connection loop:
 
@@ -649,6 +659,15 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   shelling out; skill body and denylist unchanged; no Combie skill
   registry, no checkout copy, no fifth tool, no MCP writes, no
   extra `--json`, no RELATED clock thaw, no 078 leftover thaw).
+- **Sprint 087 shipped:** Context RELATED verification clocks under
+  founder override 2026-08-21 (ROADMAP v0.3 Source Authority parity;
+  `combie context` RELATED reuses `formatRelationshipClockLines` /
+  `lastRequiredProviderAttemptAt` — same copy and semantics as
+  `related` / investigate; attempt map already computed by
+  `getRelatedContextForResource`, now threaded through
+  `ResourceContext`; no Missing Context on `context`, no new clock
+  model, no `--json`, no checkout skill copy, no fifth tool, no MCP
+  writes, no 078 leftover thaw).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
