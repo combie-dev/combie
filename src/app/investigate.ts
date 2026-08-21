@@ -35,6 +35,10 @@ import {
   formatCurrentClockLines,
   type ProviderSyncClocks,
 } from "./provider-sync-clocks.ts";
+import {
+  formatRelationshipClockLines,
+  lastRequiredProviderAttemptAt,
+} from "./relationship-verification-clocks.ts";
 import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { getResourceHistoryForResource } from "./history.ts";
@@ -122,6 +126,11 @@ export interface InvestigationContext {
    * Stripped from 048 snapshots (not current provider truth on reopen).
    */
   providerSyncClocks?: ProviderSyncClocks;
+  /**
+   * Live required-provider last_attempt_at map (Sprint 084).
+   * Stripped from 048 snapshots (not current provider truth on reopen).
+   */
+  providerLastAttemptAt?: Record<string, string | null>;
 }
 
 export interface GetInvestigationContextOptions {
@@ -300,6 +309,7 @@ export function getInvestigationContextForResource(
     subjectReleases: loadReleaseAuthority(store, subject),
     subjectIssues: loadIssueAuthority(store, subject),
     providerSyncClocks: clocksFromProvider(store.getProvider(subject.provider)),
+    providerLastAttemptAt: relatedContext.providerLastAttemptAt,
   };
 }
 
@@ -852,7 +862,10 @@ function formatRelatedSummary(item: InvestigationNeighbor): string {
  * No nested Change or provider evidence dumps here — DETAILED EVIDENCE owns
  * the complete cards.
  */
-function formatRelatedNeighborBlock(group: InvestigationNeighbor[]): string {
+function formatRelatedNeighborBlock(
+  group: InvestigationNeighbor[],
+  attempts: Readonly<Record<string, string | null>> = {},
+): string {
   const first = group[0]!;
   const id = neighborId(first);
   const identity = first.resource
@@ -862,6 +875,12 @@ function formatRelatedNeighborBlock(group: InvestigationNeighbor[]): string {
   for (const item of group) {
     lines.push(relatedDirectionLine(item));
     lines.push(`Evidence: ${formatEvidence(item.relationship.evidence)}`);
+    lines.push(
+      formatRelationshipClockLines(
+        item.relationship.updatedAt,
+        lastRequiredProviderAttemptAt(item.relationship.kind, attempts),
+      ),
+    );
   }
   if (first.resource) {
     lines.push(formatRelatedSummary(first));
@@ -1521,7 +1540,9 @@ export function formatInvestigationContext(
     context.related.length === 0
       ? "No relationships discovered."
       : groupRelatedNeighbors(context.related)
-          .map(formatRelatedNeighborBlock)
+          .map((group) =>
+            formatRelatedNeighborBlock(group, context.providerLastAttemptAt),
+          )
           .join("\n\n");
 
   const sharedCommitGroups = composeSharedCommitContext(context);

@@ -6,6 +6,7 @@ import type { SavedInvestigation } from "../app/investigations.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
 import { composeProviderActivityChronology } from "../app/provider-activity.ts";
 import type { RelatedResourceContext } from "../app/related.ts";
+import { lastRequiredProviderAttemptAt } from "../app/relationship-verification-clocks.ts";
 import {
   composeSharedCommitContext,
   composeSharedCommitCorrespondences,
@@ -13,9 +14,24 @@ import {
 import { composeInvestigationTimeline } from "../app/timeline.ts";
 import type { IncidentRecord } from "../domain/incident.ts";
 import type { InvestigationRecord } from "../domain/investigation.ts";
+import type { RelationshipKind } from "../domain/relationship.ts";
 import type { ResolutionRecord } from "../domain/resolution.ts";
 import type { Resource } from "../domain/resource.ts";
 import type { ProviderRecord } from "../storage/store.ts";
+
+function relationshipVerificationClockFields(
+  kind: RelationshipKind,
+  lastVerifiedAt: string,
+  attempts: Readonly<Record<string, string | null | undefined>>,
+) {
+  const lastRequired = lastRequiredProviderAttemptAt(kind, attempts);
+  return {
+    lastVerifiedAt,
+    ...(lastRequired != null
+      ? { lastRequiredProviderAttemptAt: lastRequired }
+      : {}),
+  };
+}
 
 export function toResolutionMemoryRow(
   record: ResolutionRecord,
@@ -130,6 +146,11 @@ export function projectRelatedContext(ctx: RelatedResourceContext) {
         targetResourceId: neighbor.relationship.targetResourceId,
         evidence: neighbor.relationship.evidence,
         createdAt: neighbor.relationship.createdAt,
+        ...relationshipVerificationClockFields(
+          neighbor.relationship.kind,
+          neighbor.relationship.updatedAt,
+          ctx.providerLastAttemptAt ?? {},
+        ),
       },
       resource: neighbor.resource
         ? {
@@ -157,6 +178,8 @@ export function projectInvestigateResourceLive({
   incidentRows,
   investigationRows,
 }: ProjectInvestigateResourceLiveOptions) {
+  const providerLastAttemptAt = ctx.providerLastAttemptAt ?? {};
+
   const subject = {
     id: ctx.subject.id,
     provider: ctx.subject.provider,
@@ -194,6 +217,11 @@ export function projectInvestigateResourceLive({
       sourceResourceId: neighbor.relationship.sourceResourceId,
       targetResourceId: neighbor.relationship.targetResourceId,
       evidence: neighbor.relationship.evidence,
+      ...relationshipVerificationClockFields(
+        neighbor.relationship.kind,
+        neighbor.relationship.updatedAt,
+        providerLastAttemptAt,
+      ),
     },
     resource: neighbor.resource
       ? {

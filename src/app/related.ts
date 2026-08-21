@@ -3,6 +3,11 @@ import type { Relationship } from "../domain/relationship.ts";
 import { Store } from "../storage/store.ts";
 import { notInitialized, CombieError } from "./errors.ts";
 import { BINARY_NAME } from "../cli/constants.ts";
+import {
+  formatRelationshipClockLines,
+  lastAttemptAtByProvider,
+  lastRequiredProviderAttemptAt,
+} from "./relationship-verification-clocks.ts";
 
 /**
  * Direction of a canonical Relationship relative to the queried Resource.
@@ -21,6 +26,8 @@ export interface RelatedNeighbor {
 export interface RelatedResourceContext {
   resource: Resource;
   related: RelatedNeighbor[];
+  /** Live required-provider last_attempt_at map (Sprint 084). Not persisted. */
+  providerLastAttemptAt: Record<string, string | null>;
 }
 
 export interface GetRelatedContextOptions {
@@ -63,7 +70,11 @@ export function getRelatedContextForResource(
     });
   }
 
-  return { resource, related };
+  return {
+    resource,
+    related,
+    providerLastAttemptAt: lastAttemptAtByProvider(store.listProviders()),
+  };
 }
 
 /**
@@ -174,7 +185,14 @@ export function formatRelatedContext(ctx: RelatedResourceContext): string {
         : item.relationship.sourceResourceId;
     const neighborLine = formatNeighborResource(item.resource, neighborId);
     const evidenceLine = `Evidence: ${formatEvidence(item.relationship)}`;
-    return `${directionLine}\n${neighborLine}\n${evidenceLine}`;
+    const clocks = formatRelationshipClockLines(
+      item.relationship.updatedAt,
+      lastRequiredProviderAttemptAt(
+        item.relationship.kind,
+        ctx.providerLastAttemptAt,
+      ),
+    );
+    return `${directionLine}\n${neighborLine}\n${evidenceLine}\n${clocks}`;
   });
 
   return `${header}\n\nRELATED\n\n${blocks.join("\n\n")}`;

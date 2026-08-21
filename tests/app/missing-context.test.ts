@@ -197,6 +197,27 @@ function kinds(items: MissingContextItem[]): string[] {
   return items.map((item) => item.kind);
 }
 
+function relatedNeighbor(
+  relationship: ReturnType<typeof createRelationship>,
+  direction: "inbound" | "outbound",
+  neighbor: Resource | null,
+): InvestigationContext["related"][number] {
+  return {
+    relationship,
+    direction,
+    resource: neighbor,
+    changes: [],
+    deployments: NA_DEPLOYMENTS,
+    workflowRuns: NA_RUNS,
+    operations: NA_OPERATIONS,
+    releases: { kind: "not_applicable" as const },
+    issues: { kind: "not_applicable" as const },
+  };
+}
+
+const REL_VERIFIED_AT = "2026-08-19T12:00:00.000Z";
+const REL_ATTEMPT_AT = "2026-08-19T12:30:00.000Z";
+
 describe("composeMissingContext", () => {
   test("is pure, deterministic, and input-order independent for related neighbors", () => {
     const repo = resource("github", "repository", "101");
@@ -885,6 +906,161 @@ describe("composeMissingContext", () => {
     expect(
       kinds(composeMissingContext(context())),
     ).not.toContain("unknown_provider_sync_authority");
+  });
+
+  test("unknown_relationship_authority is emitted only when a required-provider attempt is after last verified (Sprint 084)", () => {
+    const repo = resource("github", "repository", "101");
+    const project = resource("vercel", "project", "prj_app");
+    const edge = createRelationship({
+      sourceResourceId: repo.id,
+      targetResourceId: project.id,
+      kind: "source_for",
+      evidence: { source: "vercel", mechanism: "git_repository_reference" },
+      createdAt: REL_VERIFIED_AT,
+      updatedAt: REL_VERIFIED_AT,
+    });
+    const items = composeMissingContext(
+      context({
+        subject: project,
+        related: [relatedNeighbor(edge, "inbound", repo)],
+        providerLastAttemptAt: { github: REL_ATTEMPT_AT, vercel: REL_VERIFIED_AT },
+      }),
+    );
+    expect(kinds(items)).toContain("unknown_relationship_authority");
+    const item = items.find(
+      (entry) => entry.kind === "unknown_relationship_authority",
+    );
+    expect(item).toMatchObject({
+      kind: "unknown_relationship_authority",
+      scope: {
+        resourceId: project.id,
+        role: "subject",
+        relationships: [
+          {
+            relationshipId: edge.id,
+            kind: "source_for",
+            direction: "inbound",
+            sourceResourceId: repo.id,
+            targetResourceId: project.id,
+          },
+        ],
+      },
+      relationshipId: edge.id,
+      lastVerifiedAt: REL_VERIFIED_AT,
+      lastRequiredProviderAttemptAt: REL_ATTEMPT_AT,
+    });
+    expect(formatMissingContextItem(item!)).toBe(
+      `Relationship authority is currently unknown for ${edge.id}; ` +
+        `last verified at ${REL_VERIFIED_AT}; ` +
+        `last required-provider sync attempt at ${REL_ATTEMPT_AT}; ` +
+        `the retained Relationship must not be treated as current provider topology.`,
+    );
+    expect(formatMissingContextItem(item!).toLowerCase()).not.toContain("re-sync");
+    expect(formatMissingContextItem(item!)).not.toContain("currently exists");
+    expect(formatMissingContextItem(item!)).not.toContain("no longer exists");
+  });
+
+  test("equal clocks and null attempts do not emit unknown_relationship_authority", () => {
+    const repo = resource("github", "repository", "101");
+    const project = resource("vercel", "project", "prj_app");
+    const edge = createRelationship({
+      sourceResourceId: repo.id,
+      targetResourceId: project.id,
+      kind: "source_for",
+      evidence: { source: "vercel", mechanism: "git" },
+      createdAt: REL_VERIFIED_AT,
+      updatedAt: REL_VERIFIED_AT,
+    });
+    const related = [relatedNeighbor(edge, "inbound", repo)];
+    expect(
+      kinds(
+        composeMissingContext(
+          context({
+            subject: project,
+            related,
+            providerLastAttemptAt: {
+              github: REL_VERIFIED_AT,
+              vercel: REL_VERIFIED_AT,
+            },
+          }),
+        ),
+      ),
+    ).not.toContain("unknown_relationship_authority");
+    expect(
+      kinds(
+        composeMissingContext(
+          context({
+            subject: project,
+            related,
+            providerLastAttemptAt: { github: "2026-08-19T11:00:00.000Z" },
+          }),
+        ),
+      ),
+    ).not.toContain("unknown_relationship_authority");
+    const omittedAttempts: Array<Record<string, string | null> | undefined> = [
+      undefined,
+      {},
+      { github: null, vercel: null },
+    ];
+    for (const providerLastAttemptAt of omittedAttempts) {
+      expect(
+        kinds(
+          composeMissingContext(
+            context({ subject: project, related, providerLastAttemptAt }),
+          ),
+        ),
+      ).not.toContain("unknown_relationship_authority");
+    }
+  });
+
+  test("two unknown edges emit two items sorted by relationshipId (Sprint 084)", () => {
+    const repo = resource("github", "repository", "101");
+    const project = resource("vercel", "project", "prj_app");
+    const zone = resource("cloudflare", "zone", "example.com");
+    const sourceFor = createRelationship({
+      sourceResourceId: repo.id,
+      targetResourceId: project.id,
+      kind: "source_for",
+      evidence: { source: "vercel", mechanism: "git" },
+      createdAt: REL_VERIFIED_AT,
+      updatedAt: REL_VERIFIED_AT,
+    });
+    const usesDomain = createRelationship({
+      sourceResourceId: project.id,
+      targetResourceId: zone.id,
+      kind: "uses_domain_in",
+      evidence: { source: "vercel", mechanism: "custom_domain_apex" },
+      createdAt: REL_VERIFIED_AT,
+      updatedAt: REL_VERIFIED_AT,
+    });
+    const items = composeMissingContext(
+      context({
+        subject: project,
+        related: [
+          relatedNeighbor(usesDomain, "outbound", zone),
+          relatedNeighbor(sourceFor, "inbound", repo),
+        ],
+        providerLastAttemptAt: { vercel: REL_ATTEMPT_AT },
+        providerSyncClocks: {
+          lastSuccessfulSyncAt: REL_VERIFIED_AT,
+          lastAttemptAt: REL_ATTEMPT_AT,
+        },
+      }),
+    );
+    const unknown = items.filter(
+      (entry) => entry.kind === "unknown_relationship_authority",
+    );
+    expect(unknown).toHaveLength(2);
+    expect(unknown.map((entry) => entry.relationshipId)).toEqual(
+      [sourceFor.id, usesDomain.id].sort(),
+    );
+    expect(items.map((entry) => entry.kind).indexOf("unknown_provider_sync_authority")).toBeLessThan(
+      items.map((entry) => entry.kind).indexOf("unknown_relationship_authority"),
+    );
+    expect(unknown.every((entry) => entry.scope.role === "subject")).toBe(true);
+    expect(unknown.every((entry) => entry.scope.resourceId === project.id)).toBe(
+      true,
+    );
   });
 });
 

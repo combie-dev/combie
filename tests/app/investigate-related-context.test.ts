@@ -7,6 +7,7 @@ import {
   formatInvestigationContext,
   getInvestigationContext,
 } from "../../src/app/investigate.ts";
+import { composeMissingContext } from "../../src/app/missing-context.ts";
 import { initCombie } from "../../src/app/init.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
@@ -580,3 +581,259 @@ describe("investigate RELATED CONTEXT compact one-hop index (Sprint 036)", () =>
     expect(dbHash()).toBe(before);
   });
 });
+
+describe("investigate RELATED CONTEXT relationship verification clocks (Sprint 084)", () => {
+  const VERIFIED_AT = "2026-08-19T12:00:00.000Z";
+  const ATTEMPT_AT = "2026-08-19T12:30:00.000Z";
+  const LATER_VERIFY_AT = "2026-08-19T13:00:00.000Z";
+  const VERCEL_ATTEMPT_AT = "2026-08-19T12:45:00.000Z";
+
+  function seedPinnedSourceFor(store: Store, updatedAt = VERIFIED_AT) {
+    const repository = repo();
+    const vercelProject = project();
+    store.applyResource(repository, {
+      id: "repo-base",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.applyResource(vercelProject, {
+      id: "proj-base",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    const relationship = createRelationship({
+      sourceResourceId: repository.id,
+      targetResourceId: vercelProject.id,
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "sgr0691/demo-hub",
+        githubRepoId: "915052094",
+        vercelLinkType: "github",
+      },
+      createdAt: VERIFIED_AT,
+      updatedAt,
+    });
+    store.upsertRelationship(relationship);
+    return { repository, project: vercelProject, relationship };
+  }
+
+  test("after pair-shaped seed, RELATED CONTEXT shows last verified = pinned updatedAt", () => {
+    const store = openStore();
+    const { project: vercelProject } = seedPinnedSourceFor(store);
+    store.close();
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: vercelProject.id,
+    });
+    const related = relatedSlice(formatInvestigationContext(ctx));
+    expect(related).toContain(`last verified by Combie at: ${VERIFIED_AT}`);
+    expect(related).not.toContain("last required-provider sync attempt");
+    expect(
+      kindsFor(ctx).includes("unknown_relationship_authority"),
+    ).toBe(false);
+  });
+
+  test("later required-provider attempt shows the attempt line and unknown authority", () => {
+    const store = openStore();
+    const { project: vercelProject, relationship } = seedPinnedSourceFor(store);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: VERIFIED_AT,
+      lastAttemptAt: ATTEMPT_AT,
+    });
+    store.close();
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: vercelProject.id,
+    });
+    const output = formatInvestigationContext(ctx);
+    const related = relatedSlice(output);
+    expect(related).toContain(`last verified by Combie at: ${VERIFIED_AT}`);
+    expect(related).toContain(
+      `last required-provider sync attempt: ${ATTEMPT_AT}`,
+    );
+    const unknown = composeMissingContext(ctx).filter(
+      (item) => item.kind === "unknown_relationship_authority",
+    );
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]!.relationshipId).toBe(relationship.id);
+    expect(output).toContain("Relationship authority is currently unknown");
+    expect(output).toContain(
+      "must not be treated as current provider topology",
+    );
+    expect(output.toLowerCase()).not.toContain("re-sync");
+  });
+
+  test("later successful verify past the attempt clears unknown", () => {
+    const store = openStore();
+    const seeded = seedPinnedSourceFor(store);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: VERIFIED_AT,
+      lastAttemptAt: ATTEMPT_AT,
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: seeded.relationship.sourceResourceId,
+        targetResourceId: seeded.relationship.targetResourceId,
+        kind: seeded.relationship.kind,
+        evidence: seeded.relationship.evidence,
+        createdAt: VERIFIED_AT,
+        updatedAt: LATER_VERIFY_AT,
+      }),
+    );
+    store.close();
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: seeded.project.id,
+    });
+    const output = formatInvestigationContext(ctx);
+    expect(relatedSlice(output)).toContain(
+      `last verified by Combie at: ${LATER_VERIFY_AT}`,
+    );
+    expect(relatedSlice(output)).toContain(
+      `last required-provider sync attempt: ${ATTEMPT_AT}`,
+    );
+    expect(
+      composeMissingContext(ctx).some(
+        (item) => item.kind === "unknown_relationship_authority",
+      ),
+    ).toBe(false);
+    expect(output).not.toContain(
+      "must not be treated as current provider topology",
+    );
+    const check = openStore();
+    expect(check.listRelationships()).toHaveLength(1);
+    expect(check.listRelationships()[0]!.updatedAt).toBe(LATER_VERIFY_AT);
+    check.close();
+  });
+
+  test("separate github then vercel attempts without bumping updatedAt stay unknown", () => {
+    const store = openStore();
+    const { project: vercelProject, relationship } = seedPinnedSourceFor(store);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: ATTEMPT_AT,
+      lastAttemptAt: ATTEMPT_AT,
+    });
+    store.close();
+
+    expect(
+      composeMissingContext(
+        getInvestigationContext({
+          baseDir: dir,
+          resourceRef: vercelProject.id,
+        }),
+      ).some((item) => item.kind === "unknown_relationship_authority"),
+    ).toBe(true);
+
+    const second = openStore();
+    second.upsertProvider({
+      id: "vercel",
+      name: "Vercel",
+      status: "connected",
+      lastSyncAt: VERCEL_ATTEMPT_AT,
+      lastAttemptAt: VERCEL_ATTEMPT_AT,
+    });
+    expect(second.getRelationship(relationship.id)?.updatedAt).toBe(VERIFIED_AT);
+    second.close();
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: vercelProject.id,
+    });
+    expect(ctx.related[0]!.relationship.updatedAt).toBe(VERIFIED_AT);
+    expect(
+      composeMissingContext(ctx).some(
+        (item) => item.kind === "unknown_relationship_authority",
+      ),
+    ).toBe(true);
+    const related = relatedSlice(formatInvestigationContext(ctx));
+    expect(related).toContain(`last verified by Combie at: ${VERIFIED_AT}`);
+    expect(related).toContain(
+      `last required-provider sync attempt: ${VERCEL_ATTEMPT_AT}`,
+    );
+  });
+
+  test("omitted providerLastAttemptAt on reopen still shows last verified", () => {
+    const store = openStore();
+    const { project: vercelProject } = seedPinnedSourceFor(store);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastAttemptAt: ATTEMPT_AT,
+    });
+    store.close();
+
+    const live = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: vercelProject.id,
+    });
+    expect(live.providerLastAttemptAt).toBeDefined();
+    const { providerLastAttemptAt: _attempts, ...reopened } = live;
+    const related = relatedSlice(formatInvestigationContext(reopened));
+    expect(related).toContain(`last verified by Combie at: ${VERIFIED_AT}`);
+    expect(related).not.toContain("last required-provider sync attempt");
+  });
+
+  test("clocks are per canonical edge immediately after Evidence", () => {
+    const store = openStore();
+    const { repository, project: vercelProject } = seedPinnedSourceFor(store);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: vercelProject.id,
+        kind: "uses_domain_in",
+        evidence: {
+          source: "vercel",
+          mechanism: "custom_domain_apex",
+          apexName: "demo-hub.example.com",
+        },
+        createdAt: VERIFIED_AT,
+        updatedAt: VERIFIED_AT,
+      }),
+    );
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastAttemptAt: ATTEMPT_AT,
+    });
+    store.close();
+
+    const related = relatedSlice(
+      formatInvestigationContext(
+        getInvestigationContext({
+          baseDir: dir,
+          resourceRef: vercelProject.id,
+        }),
+      ),
+    );
+    const sourceIdx = related.indexOf("← source_for");
+    const usesIdx = related.indexOf("← uses_domain_in");
+    expect(sourceIdx).toBeGreaterThan(-1);
+    expect(usesIdx).toBeGreaterThan(sourceIdx);
+    const sourceBlock = related.slice(sourceIdx, usesIdx);
+    const usesBlock = related.slice(usesIdx);
+    expect(sourceBlock.indexOf("Evidence:")).toBeLessThan(
+      sourceBlock.indexOf("last verified by Combie at:"),
+    );
+    expect(usesBlock.indexOf("Evidence:")).toBeLessThan(
+      usesBlock.indexOf("last verified by Combie at:"),
+    );
+  });
+});
+
+function kindsFor(ctx: Parameters<typeof composeMissingContext>[0]): string[] {
+  return composeMissingContext(ctx).map((item) => item.kind);
+}

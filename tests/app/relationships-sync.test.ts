@@ -212,6 +212,39 @@ describe("GitHub↔Vercel relationship sync", () => {
     expect(relationships[0]!.evidence.githubRepoId).toBe("1001");
   });
 
+  test("successful pair refresh bumps stored updatedAt", async () => {
+    await connectBoth();
+    await syncProviders({ baseDir: dir });
+    const first = listRelationships(dir).relationships[0]!;
+    const pinned = "2026-08-19T12:00:00.000Z";
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: first.sourceResourceId,
+        targetResourceId: first.targetResourceId,
+        kind: first.kind,
+        evidence: first.evidence,
+        updatedAt: pinned,
+      }),
+    );
+    store.close();
+    expect(listRelationships(dir).relationships[0]!.updatedAt).toBe(pinned);
+
+    const before = new Date().toISOString();
+    const sync = await syncProviders({ baseDir: dir });
+    const after = new Date().toISOString();
+    expect(sync.ok).toBe(true);
+    expect(sync.relationships?.refreshed).toBe(true);
+    expect(sync.relationships?.inferred).toBe(1);
+
+    const again = listRelationships(dir).relationships[0]!;
+    expect(again.id).toBe(first.id);
+    expect(again.updatedAt).not.toBe(pinned);
+    expect(again.updatedAt >= before).toBe(true);
+    expect(again.updatedAt <= after).toBe(true);
+  });
+
   test("does not invent Relationship from name collision alone", async () => {
     await connectBoth();
     await syncProviders({ baseDir: dir });
@@ -272,6 +305,7 @@ describe("GitHub↔Vercel relationship sync", () => {
     await connectBoth();
     await syncProviders({ baseDir: dir });
     expect(listRelationships(dir).relationships).toHaveLength(1);
+    const verifiedAt = listRelationships(dir).relationships[0]!.updatedAt;
 
     // Vercel fails — must not delete existing relationship
     globalThis.fetch = mockGitHubVercelFetch({ vercelFail: true });
@@ -279,6 +313,7 @@ describe("GitHub↔Vercel relationship sync", () => {
     expect(sync.ok).toBe(false);
     expect(sync.relationships?.refreshed).toBe(false);
     expect(listRelationships(dir).relationships).toHaveLength(1);
+    expect(listRelationships(dir).relationships[0]!.updatedAt).toBe(verifiedAt);
 
     // GitHub fails — same
     globalThis.fetch = mockGitHubVercelFetch({ githubFail: true });
@@ -286,12 +321,17 @@ describe("GitHub↔Vercel relationship sync", () => {
     expect(sync2.ok).toBe(false);
     expect(sync2.relationships?.refreshed).toBe(false);
     expect(listRelationships(dir).relationships).toHaveLength(1);
+    expect(listRelationships(dir).relationships[0]!.updatedAt).toBe(verifiedAt);
   });
 
   test("single-provider sync does not refresh relationships", async () => {
     await connectBoth();
     await syncProviders({ baseDir: dir });
     expect(listRelationships(dir).relationships).toHaveLength(1);
+    const original = listRelationships(dir).relationships.find(
+      (r) => r.sourceResourceId === "github:repository:1001",
+    )!;
+    const verifiedAt = original.updatedAt;
 
     // Inject a stale manual relationship of this path — single-provider sync
     // must not wipe it when the other side is not re-synced this run.
@@ -316,6 +356,10 @@ describe("GitHub↔Vercel relationship sync", () => {
     const syncGh = await syncProviders({ baseDir: dir, providerId: "github" });
     expect(syncGh.relationships?.refreshed).toBe(false);
     expect(listRelationships(dir).relationships).toHaveLength(2);
+    const still = listRelationships(dir).relationships.find(
+      (r) => r.sourceResourceId === "github:repository:1001",
+    )!;
+    expect(still.updatedAt).toBe(verifiedAt);
   });
 
   test("Resources and Relationships coexist", async () => {

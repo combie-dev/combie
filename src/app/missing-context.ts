@@ -11,6 +11,10 @@ import {
 import type { InvestigationContext } from "./investigate.ts";
 import { providerSyncIsUnknown } from "./provider-sync-clocks.ts";
 import {
+  lastRequiredProviderAttemptAt,
+  relationshipAuthorityIsUnknown,
+} from "./relationship-verification-clocks.ts";
+import {
   composeSharedCommitContext,
   composeSharedCommitCorrespondences,
 } from "./shared-commit-context.ts";
@@ -142,6 +146,17 @@ export type MissingContextItem =
       provider: string;
       lastSuccessfulSyncAt: string;
       lastAttemptAt: string;
+    }
+  | {
+      kind: "unknown_relationship_authority";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [MissingContextRelationshipRef];
+      };
+      relationshipId: string;
+      lastVerifiedAt: string;
+      lastRequiredProviderAttemptAt: string;
     };
 
 interface MutableRelatedSource {
@@ -208,16 +223,27 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
   const category = (item: MissingContextItem): number => {
     if (item.kind === "never_successfully_refreshed") return 0;
     if (item.kind === "unknown_provider_sync_authority") return 1;
-    if (item.kind === "unknown_current_authority") return 2;
-    if (item.kind === "code_mapping_refresh_unknown") return 3;
-    if (item.kind === "no_deterministic_release_issue_linkage") return 4;
-    if (item.kind === "code_mapped_to_without_shared_commit") return 5;
-    if (item.kind === "shared_commit_correspondence_missing") return 6;
-    if (item.kind === "code_mapping_unmatched_repository") return 7;
-    return 8; // no_known_relationships last among implemented categories
+    if (item.kind === "unknown_relationship_authority") return 2;
+    if (item.kind === "unknown_current_authority") return 3;
+    if (item.kind === "code_mapping_refresh_unknown") return 4;
+    if (item.kind === "no_deterministic_release_issue_linkage") return 5;
+    if (item.kind === "code_mapped_to_without_shared_commit") return 6;
+    if (item.kind === "shared_commit_correspondence_missing") return 7;
+    if (item.kind === "code_mapping_unmatched_repository") return 8;
+    return 9; // no_known_relationships last among implemented categories
   };
   const byCategory = category(left) - category(right);
   if (byCategory !== 0) return byCategory;
+
+  if (
+    left.kind === "unknown_relationship_authority" &&
+    right.kind === "unknown_relationship_authority"
+  ) {
+    return (
+      compareAscending(left.relationshipId, right.relationshipId) ||
+      compareAscending(left.scope.resourceId, right.scope.resourceId)
+    );
+  }
 
   if (
     left.kind === "no_known_relationships" ||
@@ -253,6 +279,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapped_to_without_shared_commit" }
           | { kind: "shared_commit_correspondence_missing" }
           | { kind: "unknown_provider_sync_authority" }
+          | { kind: "unknown_relationship_authority" }
         >
       ).family,
     ) -
@@ -267,6 +294,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapped_to_without_shared_commit" }
           | { kind: "shared_commit_correspondence_missing" }
           | { kind: "unknown_provider_sync_authority" }
+          | { kind: "unknown_relationship_authority" }
         >
       ).family,
     );
@@ -573,6 +601,34 @@ export function composeMissingContext(
     });
   }
 
+  const seenRelationshipIds = new Set<string>();
+  for (const neighbor of context.related) {
+    const rel = neighbor.relationship;
+    if (seenRelationshipIds.has(rel.id)) continue;
+    seenRelationshipIds.add(rel.id);
+    const attempt = lastRequiredProviderAttemptAt(
+      rel.kind,
+      context.providerLastAttemptAt ?? {},
+    );
+    if (
+      attempt == null ||
+      !relationshipAuthorityIsUnknown(rel.updatedAt, attempt)
+    ) {
+      continue;
+    }
+    items.push({
+      kind: "unknown_relationship_authority",
+      scope: {
+        resourceId: context.subject.id,
+        role: "subject",
+        relationships: [relationshipRef(rel, neighbor.direction)],
+      },
+      relationshipId: rel.id,
+      lastVerifiedAt: rel.updatedAt,
+      lastRequiredProviderAttemptAt: attempt,
+    });
+  }
+
   const relatedById = new Map<string, MutableRelatedSource>();
   for (const neighbor of context.related) {
     if (!neighbor.resource || neighbor.resource.id === context.subject.id) {
@@ -787,6 +843,15 @@ export function formatMissingContextItem(item: MissingContextItem): string {
       `last attempt at ${item.lastAttemptAt}; ` +
       `the retained Resource snapshot must not be treated as current ` +
       `provider inventory.`
+    );
+  }
+
+  if (item.kind === "unknown_relationship_authority") {
+    return (
+      `Relationship authority is currently unknown for ${item.relationshipId}; ` +
+      `last verified at ${item.lastVerifiedAt}; ` +
+      `last required-provider sync attempt at ${item.lastRequiredProviderAttemptAt}; ` +
+      `the retained Relationship must not be treated as current provider topology.`
     );
   }
 

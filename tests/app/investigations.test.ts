@@ -139,6 +139,7 @@ describe("investigation snapshots", () => {
     });
     const json = serializeInvestigationSnapshot(saved.record.snapshot);
     expect(json).not.toContain("providerSyncClocks");
+    expect(json).not.toContain("providerLastAttemptAt");
     expect(json).not.toContain("lastAttemptAt");
     expect(json).not.toContain("lastSuccessfulSyncAt");
 
@@ -154,6 +155,7 @@ describe("investigation snapshots", () => {
 
     const reopened = getSavedInvestigation(dir, saved.record.id);
     expect(reopened.snapshot.providerSyncClocks).toBeUndefined();
+    expect(reopened.snapshot.providerLastAttemptAt).toBeUndefined();
     const reopenedOut = formatInvestigationContext(reopened.snapshot);
     expect(reopenedOut).toContain("observed by Combie at:");
     expect(reopenedOut).not.toContain("last successful provider sync");

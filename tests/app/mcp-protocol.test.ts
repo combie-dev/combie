@@ -5309,3 +5309,368 @@ describe("MCP stdio contract (Sprint 082)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 });
+
+describe("MCP stdio contract (Sprint 084)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("get_related_context includes lastVerifiedAt and omits lastRequiredProviderAttemptAt when attempts are null", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-084-"));
+    dirs.push(dir);
+    const verifiedAt = "2026-08-19T12:00:00.000Z";
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "084",
+      kind: "repository",
+      name: "acme/web",
+      metadata: { fullName: "acme/web" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_web",
+      kind: "project",
+      name: "web",
+      metadata: {},
+    });
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: verifiedAt,
+      config: { accountId: "123" },
+    });
+    store.upsertProvider({
+      id: "vercel",
+      name: "Vercel",
+      status: "connected",
+      lastSyncAt: verifiedAt,
+      config: { accountId: "team_1" },
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/web",
+        },
+        createdAt: verifiedAt,
+        updatedAt: verifiedAt,
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-084", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: repository.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const related = (
+        result.structuredContent as {
+          related?: Array<{ relationship?: Record<string, unknown> }>;
+        }
+      )?.related;
+      expect(related).toHaveLength(1);
+      const relationship = related![0]?.relationship;
+      expect(relationship?.createdAt).toBe(verifiedAt);
+      expect(relationship?.lastVerifiedAt).toBe(verifiedAt);
+      expect(relationship).not.toHaveProperty("lastRequiredProviderAttemptAt");
+      expect(relationship).not.toHaveProperty("updatedAt");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("get_related_context includes lastRequiredProviderAttemptAt after a later required-provider attempt", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-084b-"));
+    dirs.push(dir);
+    const verifiedAt = "2026-08-19T12:00:00.000Z";
+    const attemptAt = "2026-08-19T12:30:00.000Z";
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "084b",
+      kind: "repository",
+      name: "acme/web",
+      metadata: { fullName: "acme/web" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_web_b",
+      kind: "project",
+      name: "web",
+      metadata: {},
+    });
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: verifiedAt,
+      lastAttemptAt: attemptAt,
+      config: { accountId: "123" },
+    });
+    store.upsertProvider({
+      id: "vercel",
+      name: "Vercel",
+      status: "connected",
+      lastSyncAt: verifiedAt,
+      config: { accountId: "team_1" },
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/web",
+        },
+        createdAt: verifiedAt,
+        updatedAt: verifiedAt,
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-084b", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: repository.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const related = (
+        result.structuredContent as {
+          related?: Array<{ relationship?: Record<string, unknown> }>;
+        }
+      )?.related;
+      expect(related).toHaveLength(1);
+      const relationship = related![0]?.relationship;
+      expect(relationship?.lastVerifiedAt).toBe(verifiedAt);
+      expect(relationship?.lastRequiredProviderAttemptAt).toBe(attemptAt);
+      expect(relationship).not.toHaveProperty("updatedAt");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("investigate_resource related includes lastVerifiedAt and attempt when present; omitted investigationId still works", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-084c-"));
+    dirs.push(dir);
+    const verifiedAt = "2026-08-19T12:00:00.000Z";
+    const attemptAt = "2026-08-19T12:30:00.000Z";
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "084c",
+      kind: "repository",
+      name: "acme/web",
+      metadata: { fullName: "acme/web" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_web_c",
+      kind: "project",
+      name: "web",
+      metadata: {},
+    });
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: verifiedAt,
+      lastAttemptAt: attemptAt,
+      config: { accountId: "123" },
+    });
+    store.upsertProvider({
+      id: "vercel",
+      name: "Vercel",
+      status: "connected",
+      lastSyncAt: verifiedAt,
+      config: { accountId: "team_1" },
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/web",
+        },
+        createdAt: verifiedAt,
+        updatedAt: verifiedAt,
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-084c", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: repository.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        subject?: Record<string, unknown>;
+        related?: Array<{ relationship?: Record<string, unknown> }>;
+        investigationSnapshot?: unknown;
+      };
+      expect(content.subject).toBeDefined();
+      expect(content.subject?.id).toBe(repository.id);
+      expect(content).not.toHaveProperty("investigationSnapshot");
+      expect(content.related).toHaveLength(1);
+      const relationship = content.related![0]?.relationship;
+      expect(relationship?.lastVerifiedAt).toBe(verifiedAt);
+      expect(relationship?.lastRequiredProviderAttemptAt).toBe(attemptAt);
+      expect(relationship).not.toHaveProperty("createdAt");
+      expect(relationship).not.toHaveProperty("updatedAt");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("four tools and read-only: database bytes unchanged across a Sprint 084 call", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-084d-"));
+    dirs.push(dir);
+    const verifiedAt = "2026-08-19T12:00:00.000Z";
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "084d",
+      kind: "repository",
+      name: "acme/web",
+      metadata: { fullName: "acme/web" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_web_d",
+      kind: "project",
+      name: "web",
+      metadata: {},
+    });
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: verifiedAt,
+      lastAttemptAt: "2026-08-19T12:30:00.000Z",
+      config: { accountId: "123" },
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/web",
+        },
+        createdAt: verifiedAt,
+        updatedAt: verifiedAt,
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-084d", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const related = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: repository.id },
+      });
+      expect(related.isError).not.toBe(true);
+      const investigate = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: repository.id },
+      });
+      expect(investigate.isError).not.toBe(true);
+      expect(
+        (investigate.structuredContent as {
+          related?: Array<{ relationship?: Record<string, unknown> }>;
+        })?.related?.[0]?.relationship?.lastVerifiedAt,
+      ).toBe(verifiedAt);
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});

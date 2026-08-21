@@ -695,4 +695,79 @@ describe("Investigation context composition", () => {
     expect(outbound.direction).toBe("outbound");
     expect(outbound.relationship.id).toBe(inbound.relationship.id);
   });
+
+  test("live investigate shows relationship verification clocks without investigationId (Sprint 084)", () => {
+    const VERIFIED_AT = "2026-08-19T12:00:00.000Z";
+    const ATTEMPT_AT = "2026-08-19T12:30:00.000Z";
+    const store = openStore(dir);
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "915052094",
+      kind: "repository",
+      name: "demo-hub",
+      metadata: { fullName: "sgr0691/demo-hub" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_demo_hub",
+      kind: "project",
+      name: "demo-hub",
+      metadata: {},
+    });
+    store.applyResource(repository, {
+      id: "repo-baseline",
+      observedAt: "2026-08-08T08:00:00.000Z",
+    });
+    store.applyResource(project, {
+      id: "project-baseline",
+      observedAt: "2026-08-08T08:00:00.000Z",
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "sgr0691/demo-hub",
+        },
+        createdAt: VERIFIED_AT,
+        updatedAt: VERIFIED_AT,
+      }),
+    );
+    store.close();
+
+    const live = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: project.id,
+    });
+    expect(live.subject.id).toBe(project.id);
+    const liveOut = formatInvestigationContext(live);
+    expect(liveOut).toContain(`last verified by Combie at: ${VERIFIED_AT}`);
+
+    const later = openStore(dir);
+    later.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: VERIFIED_AT,
+      lastAttemptAt: ATTEMPT_AT,
+    });
+    later.close();
+
+    const unknown = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: project.id,
+    });
+    expect(unknown.providerLastAttemptAt?.github).toBe(ATTEMPT_AT);
+    const unknownOut = formatInvestigationContext(unknown);
+    expect(unknownOut).toContain(
+      `last required-provider sync attempt: ${ATTEMPT_AT}`,
+    );
+    expect(unknownOut).toContain("Relationship authority is currently unknown");
+    expect(unknownOut).toContain(
+      "must not be treated as current provider topology",
+    );
+  });
 });

@@ -68,6 +68,41 @@ function seedGraph(dir: string) {
   return { gh, vercel, lonely, sentry };
 }
 
+function pinSourceForClocks(
+  dir: string,
+  options: {
+    updatedAt: string;
+    githubLastAttemptAt?: string | null;
+    vercelLastAttemptAt?: string | null;
+  },
+) {
+  const store = new Store(dir);
+  store.isInitialized();
+  const existing = store.listRelationships()[0]!;
+  store.upsertRelationship(
+    createRelationship({
+      sourceResourceId: existing.sourceResourceId,
+      targetResourceId: existing.targetResourceId,
+      kind: existing.kind,
+      evidence: existing.evidence,
+      updatedAt: options.updatedAt,
+    }),
+  );
+  store.upsertProvider({
+    id: "github",
+    name: "GitHub",
+    status: "connected",
+    lastAttemptAt: options.githubLastAttemptAt ?? null,
+  });
+  store.upsertProvider({
+    id: "vercel",
+    name: "Vercel",
+    status: "connected",
+    lastAttemptAt: options.vercelLastAttemptAt ?? null,
+  });
+  store.close();
+}
+
 describe("getRelatedContext", () => {
   let dir: string;
 
@@ -379,5 +414,78 @@ describe("getRelatedContext", () => {
         .filter((r) => r.kind === "uses_domain_in"),
     ).toHaveLength(1);
     check.close();
+  });
+
+  test("RELATED shows last verified and last required-provider attempt even when equal", () => {
+    const { gh } = seedGraph(dir);
+    const at = "2026-08-19T12:00:00.000Z";
+    pinSourceForClocks(dir, {
+      updatedAt: at,
+      githubLastAttemptAt: at,
+      vercelLastAttemptAt: at,
+    });
+
+    const text = formatRelatedContext(
+      getRelatedContext({ baseDir: dir, resourceRef: gh.id }),
+    );
+    expect(text).toContain(
+      "last verified by Combie at: 2026-08-19T12:00:00.000Z\n" +
+        "last required-provider sync attempt: 2026-08-19T12:00:00.000Z",
+    );
+  });
+
+  test("RELATED uses a later required-provider attempt without deleting the edge", () => {
+    const { gh } = seedGraph(dir);
+    const verified = "2026-08-19T12:00:00.000Z";
+    pinSourceForClocks(dir, {
+      updatedAt: verified,
+      githubLastAttemptAt: verified,
+      vercelLastAttemptAt: verified,
+    });
+
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastAttemptAt: "2026-08-19T12:30:00.000Z",
+    });
+    expect(store.listRelationships()).toHaveLength(1);
+    store.close();
+
+    const text = formatRelatedContext(
+      getRelatedContext({ baseDir: dir, resourceRef: gh.id }),
+    );
+    expect(text).toContain(
+      "last verified by Combie at: 2026-08-19T12:00:00.000Z",
+    );
+    expect(text).toContain(
+      "last required-provider sync attempt: 2026-08-19T12:30:00.000Z",
+    );
+
+    const check = new Store(dir);
+    check.isInitialized();
+    expect(check.listRelationships()).toHaveLength(1);
+    expect(check.listRelationships()[0]!.kind).toBe("source_for");
+    expect(check.listRelationships()[0]!.updatedAt).toBe(verified);
+    check.close();
+  });
+
+  test("RELATED omits the attempt line when both required providers have null lastAttemptAt", () => {
+    const { gh } = seedGraph(dir);
+    pinSourceForClocks(dir, {
+      updatedAt: "2026-08-19T12:00:00.000Z",
+      githubLastAttemptAt: null,
+      vercelLastAttemptAt: null,
+    });
+
+    const text = formatRelatedContext(
+      getRelatedContext({ baseDir: dir, resourceRef: gh.id }),
+    );
+    expect(text).toContain(
+      "last verified by Combie at: 2026-08-19T12:00:00.000Z",
+    );
+    expect(text).not.toContain("last required-provider sync attempt:");
   });
 });

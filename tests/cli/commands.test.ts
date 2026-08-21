@@ -5395,6 +5395,7 @@ describe("CLI commands", () => {
     expect(table).toContain("RELATIONSHIP");
     expect(table).toContain("TO");
     expect(table).toContain("EVIDENCE");
+    expect(table).not.toContain("last verified");
     expect(table).toContain("GitHub acme/combie");
     expect(table).toContain("source_for");
     expect(table).toContain("Vercel combie-web");

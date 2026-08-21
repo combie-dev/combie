@@ -191,8 +191,76 @@ describe("CLI MCP-parity --json", () => {
       ),
     );
 
+    const parsed = JSON.parse(result.stdout);
     expect(result.code).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual(expected);
+    expect(parsed).toEqual(expected);
+    expect(parsed.related[0].relationship.lastVerifiedAt).toBeDefined();
+    expect(parsed.related[0].relationship).not.toHaveProperty(
+      "lastRequiredProviderAttemptAt",
+    );
+    expect(parsed.related[0].relationship).not.toHaveProperty("updatedAt");
+  });
+
+  test("investigate live projection includes lastRequiredProviderAttemptAt when context supplies attempts", async () => {
+    const verifiedAt = "2026-08-19T12:00:00.000Z";
+    const attemptAt = "2026-08-19T12:30:00.000Z";
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "investigate-clocks",
+      kind: "repository",
+      name: "investigate-clocks",
+      metadata: {},
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj-clocks",
+      kind: "project",
+      name: "prj-clocks",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/investigate-clocks",
+        },
+        createdAt: verifiedAt,
+        updatedAt: verifiedAt,
+      }),
+    );
+    store.close();
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: repository.id,
+    });
+    const projected = projectInvestigateResourceLive({
+      ctx: {
+        ...ctx,
+        providerLastAttemptAt: { github: attemptAt, vercel: null },
+      } as typeof ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+    const relationship = projected.related[0]?.relationship as {
+      lastVerifiedAt?: string;
+      lastRequiredProviderAttemptAt?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    };
+    expect(relationship.lastVerifiedAt).toBe(verifiedAt);
+    expect(relationship.lastRequiredProviderAttemptAt).toBe(attemptAt);
+    expect(relationship).not.toHaveProperty("createdAt");
+    expect(relationship).not.toHaveProperty("updatedAt");
   });
 
   test("investigate shares the live MCP projection and omits empty memory", async () => {
@@ -260,7 +328,7 @@ describe("CLI MCP-parity --json", () => {
   });
 
   test("--json rejects unsupported commands without a JSON document", async () => {
-    for (const command of ["history", "sync", "investigation"]) {
+    for (const command of ["history", "sync", "investigation", "relationships"]) {
       const result = await capture(() =>
         main([command, "--json", "--dir", dir]),
       );

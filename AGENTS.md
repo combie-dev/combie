@@ -241,6 +241,32 @@ unchanged; complete retrieve stays CLI `investigation <id>`;
 persisted preview columns, not a fifth tool, not `--json` on
 `investigation`, not `skills/combie`, not 078 leftovers, not the
 Investigation Engine).
+Sprint 083 shipped
+the Composition-Oriented Agent Skill (ROADMAP Next Work Sequence
+item 4; `skills/combie/SKILL.md` teaching the six-step shipped
+composition loop — compact investigation, freshness / Missing
+Context, scoped `sync [provider]` refresh, local `--json` filtering,
+deeper evidence on demand, cite exact evidence; YAML `name: combie`
+with a third-person description and no `disable-model-invocation`;
+content-contract tests under `tests/skills/`; Constitution
+`skills/build-combie/SKILL.md` byte-identical; not a fifth tool,
+not MCP writes, not `--json` on `investigation`, not `agent setup`
+install, not `npx skills add`, not unshipped commands (`timeline` /
+`memory` / `ask`, `--refresh`, `--limit`, `--offline`,
+`list_investigations`, `get_investigation`), not 078 leftovers,
+not the Investigation Engine).
+Sprint 084 shipped
+Relationship verification clocks (ROADMAP v0.3 remaining Source
+Authority; founder override 2026-08-20; last verified is
+`Relationship.updatedAt` after a successful same-run pair refresh;
+RELATED / investigate show that clock plus required-provider
+last-attempt; Missing Context `unknown_relationship_authority`
+when a required provider was attempted after last verified; MCP
+`get_related_context` / `investigate_resource` related observe
+`lastVerifiedAt` and `lastRequiredProviderAttemptAt`; not a new
+Relationship kind, not edge deletion on incomplete pair, not
+`--json` on `relationships`, not skill install, not populated-
+membership, not 078 leftovers, not the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -262,7 +288,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–082 complete
+## Current baseline: Sprints 001–084 complete
 
 Multi-provider connection loop:
 
@@ -570,6 +596,18 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   remain stderr with existing exit codes; no persistence; no
   `--json` on writes or non-MCP commands; no fifth tool, artifact
   handles, `skills/combie`, or 078 leftover thaw).
+- **Sprint 084 shipped:** Relationship verification clocks
+  (ROADMAP v0.3 remaining Source Authority; founder override
+  2026-08-20; last verified is `Relationship.updatedAt` after a
+  successful same-run pair refresh; RELATED / investigate show
+  that clock plus required-provider last-attempt; Missing Context
+  `unknown_relationship_authority` when a required provider was
+  attempted after last verified; MCP `get_related_context` /
+  `investigate_resource` related observe `lastVerifiedAt` and
+  `lastRequiredProviderAttemptAt`; no new Relationship kind, no
+  edge deletion on incomplete pair, no `--json` on
+  `relationships`, no skill install, no populated-membership, no
+  078 leftover thaw).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -864,8 +902,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   using shared projections. It did not authorize `--json` on
   writes or non-MCP commands, `--limit`, `--offline`, `--refresh`,
   a fifth MCP tool, artifact handles, `skills/combie`, or 078
-  leftover thaw. Artifact-backed investigation and
-  `skills/combie/SKILL.md` remain later sequence items.
+  leftover thaw. Artifact-backed investigation shipped Sprints
+  081–082. `skills/combie/SKILL.md` shipped Sprint 083. On
+  2026-08-20 a founder override started Sprint 084 as the
+  smallest remaining Source Authority slice (Relationship
+  verification clocks). Sprint 084 shipped that slice. Sprint
+  084 leftover is not a sequence; skill install, extra `--json`,
+  populated-membership id sets, a generic Observation type, and
+  078 leftovers stay frozen.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md`
   remains the learning ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP
