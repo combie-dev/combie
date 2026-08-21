@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { parse } from "yaml";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.dir));
 
@@ -44,6 +45,22 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(descriptionLine).toBeDefined();
     const description = descriptionLine!.slice(descriptionLine!.indexOf("description:") + "description:".length).trim();
     expect(description.length).toBeGreaterThan(0);
+  });
+
+  test("frontmatter parses as YAML with name combie and quoted description", () => {
+    if (skillText === null) return;
+    const parsed = parse(frontmatterBlock(skillText)) as { name: string; description: string };
+    expect(parsed.name).toBe("combie");
+    expect(typeof parsed.description).toBe("string");
+    expect(parsed.description.length).toBeGreaterThan(0);
+  });
+
+  test("frontmatter description value is a quoted scalar", () => {
+    if (skillText === null) return;
+    const descriptionLine = frontmatterBlock(skillText).split("\n").find((line) => line.trimStart().startsWith("description:"));
+    expect(descriptionLine).toBeDefined();
+    const value = descriptionLine!.slice(descriptionLine!.indexOf("description:") + "description:".length).trim();
+    expect(value.startsWith('"')).toBe(true);
   });
 
   test("frontmatter omits disable-model-invocation", () => {

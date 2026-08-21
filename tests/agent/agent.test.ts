@@ -33,7 +33,9 @@ import {
   setupCursor,
 } from "../../src/agent/cursor.ts";
 import {
+  SKILL_INSTALL_COMMAND,
   formatAgentStatusTable,
+  formatSkillInstallHint,
   inspectAgents,
   removeAgents,
   setupAgents,
@@ -511,6 +513,45 @@ describe("CLI agent commands", () => {
     expect(result.stdout).toContain("All requested agents are already configured.");
   });
 
+  test("agent setup prints the optional skill install hint", async () => {
+    const result = await capture(() =>
+      main(["agent", "setup", "--yes", "--dir", home + "/.combie"]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Skill (optional):");
+    expect(result.stdout).toContain(SKILL_INSTALL_COMMAND);
+  });
+
+  test("agent setup no-op keeps printing the skill install hint", async () => {
+    await capture(() =>
+      main(["agent", "setup", "--yes", "--dir", home + "/.combie"]),
+    );
+    const result = await capture(() =>
+      main(["agent", "setup", "--yes", "--dir", home + "/.combie"]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("All requested agents are already configured.");
+    expect(result.stdout).toContain(SKILL_INSTALL_COMMAND);
+  });
+
+  test("agent status omits the skill install hint", async () => {
+    const result = await capture(() => main(["agent", "status"]));
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain("Skill (optional):");
+  });
+
+  test("agent remove omits the skill install hint", async () => {
+    await capture(() =>
+      main(["agent", "setup", "--yes", "--dir", home + "/.combie"]),
+    );
+    const result = await capture(() =>
+      main(["agent", "remove", "claude", "--yes"]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("removed");
+    expect(result.stdout).not.toContain("Skill (optional):");
+  });
+
   test("agent setup rejects unknown agents", async () => {
     const result = await capture(() =>
       main(["agent", "setup", "gemini", "--dir", home + "/.combie"]),
@@ -553,5 +594,16 @@ describe("CLI agent commands", () => {
     expect(result.stdout).toContain("agent status");
     expect(result.stdout).toContain("agent setup");
     expect(result.stdout).toContain("agent remove");
+  });
+});
+
+describe("skill install hint", () => {
+  test("exports the pinned command and two-line hint format", () => {
+    expect(SKILL_INSTALL_COMMAND).toBe(
+      "npx skills add combie-dev/combie --skill combie -a cursor -a claude-code -a codex",
+    );
+    expect(formatSkillInstallHint()).toBe(
+      "Skill (optional):\n  npx skills add combie-dev/combie --skill combie -a cursor -a claude-code -a codex",
+    );
   });
 });

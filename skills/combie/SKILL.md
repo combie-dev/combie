@@ -1,6 +1,6 @@
 ---
 name: combie
-description: Use Combie to investigate engineering context across connected providers (Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale): run a compact investigation, inspect freshness and missing context, sync only the necessary providers, filter structured results locally, retrieve deeper evidence only when necessary, and cite exact evidence in conclusions. Use when investigating a resource, checking whether observed evidence is fresh, or comparing live observation against retained snapshots.
+description: "Use Combie to investigate engineering context across connected providers (Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale): run a compact investigation, inspect freshness and missing context, sync only the necessary providers, filter structured results locally, retrieve deeper evidence only when necessary, and cite exact evidence in conclusions. Use when investigating a resource, checking whether observed evidence is fresh, or comparing live observation against retained snapshots."
 ---
 
 # Combie

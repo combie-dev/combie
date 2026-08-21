@@ -45,12 +45,22 @@ correct entry as-is, updates a stale entry in place, and refuses to edit a
 configuration it cannot safely read. To use a non-default state directory,
 pass `--dir` (the same value is embedded via `COMBIE_HOME`).
 
-The manual instructions below remain available as a fallback.
+### Optional: install the composition skill
 
 Agents that want the shipped six-step investigation loop (compact
 investigation → freshness / Missing Context → scoped `combie sync [provider]`
 refresh → local `--json` filtering → deeper evidence on demand → cite exact
-evidence) can follow the in-repo skill at `skills/combie/SKILL.md`.
+evidence) can install it as a skill:
+
+```bash
+npx skills add combie-dev/combie --skill combie -a cursor -a claude-code -a codex
+```
+
+Installation is optional; Combie MCP and the CLI work without it. If you are
+working inside the repository, you can instead follow `skills/combie/SKILL.md`
+directly.
+
+The manual instructions below remain available as a fallback.
 
 ## Frozen beta contract
 

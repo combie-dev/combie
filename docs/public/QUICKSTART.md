@@ -268,7 +268,8 @@ credentials or the network.
 
 To give a local agent the same read-only context, follow
 [MCP.md](MCP.md). The MCP server exposes exactly four read-only stdio tools and
-still requires a prior manual sync.
+still requires a prior manual sync. MCP.md also documents an optional
+installable composition skill for agents.
 
 Reset everything (including stored credentials):
 

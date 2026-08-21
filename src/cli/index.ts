@@ -17,6 +17,7 @@ import {
 } from "../app/list.ts";
 import {
   formatAgentStatusTable,
+  formatSkillInstallHint,
   inspectAgents,
   removeAgents,
   resolveAgentBackends,
@@ -1196,6 +1197,7 @@ async function main(argv: string[]): Promise<number> {
           const toConfigure = planned.filter((b) => !configured.has(b.kind));
           if (toConfigure.length === 0) {
             console.log("All requested agents are already configured.");
+            console.log(formatSkillInstallHint());
             return 0;
           }
           const ok = await confirmAction(
@@ -1210,6 +1212,7 @@ async function main(argv: string[]): Promise<number> {
           for (const result of results) {
             console.log(result.message);
           }
+          console.log(formatSkillInstallHint());
           return 0;
         }
         if (sub === "remove") {

@@ -275,9 +275,19 @@ ids from the last successful `discoverResources` as
 included vs not-in-last-successful-discovery; Missing Context
 `not_in_last_successful_discovery` when the subject id is not
 in that set; MCP `investigate_resource` subject observes
-`lastSuccessfulDiscovery`; not Resource deletion, not clock
-derivation, not `--json` on `relationships`, not skill install,
-not 078 leftovers, not the Investigation Engine).
+  `lastSuccessfulDiscovery`; not Resource deletion, not clock
+  derivation, not `--json` on `relationships`, not skill install,
+  not 078 leftovers, not the Investigation Engine).
+Sprint 086 shipped
+skill install delivery / discovery for `skills/combie` under founder
+override 2026-08-21 (quoted YAML `description` so the skills CLI
+discovers `combie`; `docs/public/MCP.md` documents the optional
+`npx skills add combie-dev/combie --skill combie -a cursor -a
+claude-code -a codex` path; `agent setup` prints that command as an
+optional hint after MCP configure or when already configured, never
+shelling out; skill body and denylist unchanged; no Combie skill
+registry, no checkout copy, no fifth tool, no MCP writes, no extra
+`--json`, no RELATED clock thaw, no 078 leftover thaw).
 
 ## Mandatory reading order before any substantive change
 
@@ -299,7 +309,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–085 complete
+## Current baseline: Sprints 001–086 complete
 
 Multi-provider connection loop:
 
@@ -629,6 +639,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `lastSuccessfulDiscovery`; no Resource deletion, no clock
   derivation, no `--json` on `relationships`, no skill install,
   no 078 leftover thaw).
+- **Sprint 086 shipped:** skill install delivery / discovery for
+  `skills/combie` under founder override 2026-08-21 (quoted YAML
+  `description` so the skills CLI discovers `combie`;
+  `docs/public/MCP.md` documents the optional `npx skills add
+  combie-dev/combie --skill combie -a cursor -a claude-code -a
+  codex` path; `agent setup` prints that command as an optional
+  hint after MCP configure or when already configured, never
+  shelling out; skill body and denylist unchanged; no Combie skill
+  registry, no checkout copy, no fifth tool, no MCP writes, no
+  extra `--json`, no RELATED clock thaw, no 078 leftover thaw).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
