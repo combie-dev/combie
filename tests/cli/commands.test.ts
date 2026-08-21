@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { main } from "../../src/cli/index.ts";
-import { formatRelationshipsTable } from "../../src/app/list.ts";
+import { formatRelationshipsTable, formatResourcesTable } from "../../src/app/list.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
@@ -5402,6 +5402,22 @@ describe("CLI commands", () => {
     expect(table).toContain("acme/combie");
     expect(table).not.toContain("ghp_");
     expect(table).not.toContain("secret");
+  });
+
+  test("formatResourcesTable stays identity-only (Sprint 085)", () => {
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "085-resources",
+      kind: "repository",
+      name: "combie",
+      metadata: {},
+    });
+    const table = formatResourcesTable([resource]);
+    expect(table).toContain("TYPE");
+    expect(table).toContain("NAME");
+    expect(table).toContain("ID");
+    expect(table).toContain("PROVIDER");
+    expect(table).not.toContain("last successful discovery");
   });
 
   test("connect does not leak token on auth failure", async () => {

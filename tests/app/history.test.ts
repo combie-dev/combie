@@ -219,6 +219,84 @@ describe("Resource history", () => {
     expect(output).toContain("observed by Combie at: 2026-08-18T08:00:00.000Z");
     expect(output).not.toContain("last successful provider sync");
     expect(output).not.toContain("last provider sync attempt");
+    expect(output).not.toContain("last successful discovery");
+  });
+
+  test("CURRENT last successful discovery membership (Sprint 085)", () => {
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-19T09:00:00.000Z",
+    });
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "915052094",
+      kind: "repository",
+      name: "combie",
+      metadata: {},
+      createdAt: "2026-08-18T08:00:00.000Z",
+      updatedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.applyResource(resource, {
+      id: "initial",
+      observedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.close();
+
+    const history = getResourceHistory({
+      baseDir: dir,
+      resourceRef: resource.id,
+    });
+    expect(history.lastSuccessfulDiscovery).toBeNull();
+    const omitted = formatResourceHistory(history);
+    expect(omitted).not.toContain("last successful discovery");
+
+    const included = formatResourceHistory({
+      ...history,
+      lastSuccessfulDiscovery: "included",
+    });
+    expect(included).toContain("last successful discovery: included");
+
+    const absent = formatResourceHistory({
+      ...history,
+      lastSuccessfulDiscovery: "not_in_last_successful_discovery",
+    });
+    expect(absent).toContain(
+      "last successful discovery: not in last successful discovery",
+    );
+
+    const persist = new Store(dir);
+    persist.isInitialized();
+    persist.setLastDiscoveryResourceIds("github", [resource.id]);
+    persist.close();
+    const includedLive = getResourceHistory({
+      baseDir: dir,
+      resourceRef: resource.id,
+    });
+    expect(includedLive.lastSuccessfulDiscovery).toBe("included");
+    expect(formatResourceHistory(includedLive)).toContain(
+      "last successful discovery: included",
+    );
+
+    const empty = new Store(dir);
+    empty.isInitialized();
+    empty.setLastDiscoveryResourceIds("github", []);
+    empty.close();
+    const emptyLive = getResourceHistory({
+      baseDir: dir,
+      resourceRef: resource.id,
+    });
+    expect(emptyLive.lastSuccessfulDiscovery).toBe(
+      "not_in_last_successful_discovery",
+    );
+    expect(formatResourceHistory(emptyLive)).toContain(
+      "last successful discovery: not in last successful discovery",
+    );
+    expect(emptyLive.resource.id).toBe(resource.id);
   });
 
   test("rejects blank, unknown, and uninitialized exact references", () => {

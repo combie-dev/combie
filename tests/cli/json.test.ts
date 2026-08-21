@@ -302,6 +302,59 @@ describe("CLI MCP-parity --json", () => {
     expect(parsed).not.toHaveProperty("resolutionMemory");
     expect(parsed).not.toHaveProperty("incidentMemory");
     expect(parsed).not.toHaveProperty("investigationHistory");
+    expect(parsed.subject).not.toHaveProperty("lastSuccessfulDiscovery");
+  });
+
+  test("investigate --json omits lastSuccessfulDiscovery when unset and includes it when context supplies it", async () => {
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "investigate-membership",
+      kind: "repository",
+      name: "investigate-membership",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(resource);
+    store.close();
+
+    const result = await capture(() =>
+      main(["investigate", resource.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+    expect(result.code).toBe(0);
+    expect(parsed.subject).not.toHaveProperty("lastSuccessfulDiscovery");
+    expect(parsed.subject).not.toHaveProperty("lastDiscoveryResourceIds");
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: resource.id,
+    });
+    const included = projectInvestigateResourceLive({
+      ctx: {
+        ...ctx,
+        lastSuccessfulDiscovery: "included",
+      } as typeof ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+    expect(included.subject.lastSuccessfulDiscovery).toBe("included");
+    expect(included.subject).not.toHaveProperty("lastDiscoveryResourceIds");
+
+    const absent = projectInvestigateResourceLive({
+      ctx: {
+        ...ctx,
+        lastSuccessfulDiscovery: "not_in_last_successful_discovery",
+      } as typeof ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+    expect(absent.subject.lastSuccessfulDiscovery).toBe(
+      "not_in_last_successful_discovery",
+    );
+    expect(absent.subject).not.toHaveProperty("lastDiscoveryResourceIds");
   });
 
   test("omitting --json preserves human output", async () => {

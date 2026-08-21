@@ -908,6 +908,104 @@ describe("composeMissingContext", () => {
     ).not.toContain("unknown_provider_sync_authority");
   });
 
+  test("not_in_last_successful_discovery is emitted only when membership is not-in-set (Sprint 085)", () => {
+    const subject = resource("github", "repository", "101");
+    const items = composeMissingContext(
+      context({
+        subject,
+        lastSuccessfulDiscovery: "not_in_last_successful_discovery",
+      }),
+    );
+    expect(kinds(items)).toContain("not_in_last_successful_discovery");
+    const item = items.find(
+      (entry) => entry.kind === "not_in_last_successful_discovery",
+    );
+    expect(item).toMatchObject({
+      kind: "not_in_last_successful_discovery",
+      scope: {
+        resourceId: subject.id,
+        role: "subject",
+        relationships: [],
+      },
+      provider: "github",
+    });
+    const text = formatMissingContextItem(item!);
+    expect(text).toBe(
+      `Resource ${subject.id} was not in github's last successful discovery; the retained Resource snapshot must not be treated as current provider inventory.`,
+    );
+    expect(text.toLowerCase()).not.toContain("re-sync");
+    expect(text.toLowerCase()).not.toContain("deleted");
+    expect(text).not.toContain("currently exists");
+    expect(text).not.toContain("You should");
+  });
+
+  test("included and omitted membership do not emit not_in_last_successful_discovery", () => {
+    const subject = resource("github", "repository", "101");
+    expect(
+      kinds(
+        composeMissingContext(
+          context({ subject, lastSuccessfulDiscovery: "included" }),
+        ),
+      ),
+    ).not.toContain("not_in_last_successful_discovery");
+    expect(kinds(composeMissingContext(context({ subject })))).not.toContain(
+      "not_in_last_successful_discovery",
+    );
+  });
+
+  test("079 unknown still fires together with not-in-set membership (Sprint 085)", () => {
+    const items = composeMissingContext(
+      context({
+        providerSyncClocks: {
+          lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z",
+          lastAttemptAt: "2026-08-19T09:00:00.000Z",
+        },
+        lastSuccessfulDiscovery: "not_in_last_successful_discovery",
+      }),
+    );
+    expect(kinds(items)).toContain("unknown_provider_sync_authority");
+    expect(kinds(items)).toContain("not_in_last_successful_discovery");
+    expect(
+      items
+        .map((entry) => entry.kind)
+        .indexOf("unknown_provider_sync_authority"),
+    ).toBeLessThan(
+      items
+        .map((entry) => entry.kind)
+        .indexOf("not_in_last_successful_discovery"),
+    );
+  });
+
+  test("equal/null clocks still omit 079 kind when membership is present (Sprint 085)", () => {
+    const items = composeMissingContext(
+      context({
+        providerSyncClocks: {
+          lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z",
+          lastAttemptAt: "2026-08-18T10:00:00.000Z",
+        },
+        lastSuccessfulDiscovery: "not_in_last_successful_discovery",
+      }),
+    );
+    expect(kinds(items)).not.toContain("unknown_provider_sync_authority");
+    expect(kinds(items)).toContain("not_in_last_successful_discovery");
+    for (const providerSyncClocks of [
+      { lastSuccessfulSyncAt: "2026-08-18T10:00:00.000Z", lastAttemptAt: null },
+      { lastSuccessfulSyncAt: null, lastAttemptAt: "2026-08-19T09:00:00.000Z" },
+      { lastSuccessfulSyncAt: null, lastAttemptAt: null },
+    ]) {
+      expect(
+        kinds(
+          composeMissingContext(
+            context({
+              providerSyncClocks,
+              lastSuccessfulDiscovery: "included",
+            }),
+          ),
+        ),
+      ).not.toContain("unknown_provider_sync_authority");
+    }
+  });
+
   test("unknown_relationship_authority is emitted only when a required-provider attempt is after last verified (Sprint 084)", () => {
     const repo = resource("github", "repository", "101");
     const project = resource("vercel", "project", "prj_app");
@@ -1134,6 +1232,35 @@ describe("missing context CLI formatting", () => {
     expect(output).not.toContain("Inspect GitHub");
     expect(output).not.toContain("check this first");
     expect(output).not.toContain("likely caused");
+  });
+
+  test("CURRENT membership line and not-in-set Missing Context (Sprint 085)", () => {
+    const subject = resource("github", "repository", "101");
+    const output = formatInvestigationContext(
+      context({
+        subject,
+        lastSuccessfulDiscovery: "not_in_last_successful_discovery",
+      }),
+    );
+    expect(output).toContain(
+      "last successful discovery: not in last successful discovery",
+    );
+    expect(output).toContain(
+      `Resource ${subject.id} was not in github's last successful discovery`,
+    );
+    expect(output).toContain(
+      "must not be treated as current provider inventory",
+    );
+    expect(output.toLowerCase()).not.toContain("re-sync");
+    const included = formatInvestigationContext(
+      context({ subject, lastSuccessfulDiscovery: "included" }),
+    );
+    expect(included).toContain("last successful discovery: included");
+    expect(included).not.toContain(
+      "was not in github's last successful discovery",
+    );
+    const omitted = formatInvestigationContext(context({ subject }));
+    expect(omitted).not.toContain("last successful discovery");
   });
 
   test("known empty does not appear under MISSING CONTEXT; detailed evidence preserved", () => {

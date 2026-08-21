@@ -148,6 +148,15 @@ export type MissingContextItem =
       lastAttemptAt: string;
     }
   | {
+      kind: "not_in_last_successful_discovery";
+      scope: {
+        resourceId: string;
+        role: "subject";
+        relationships: [];
+      };
+      provider: string;
+    }
+  | {
       kind: "unknown_relationship_authority";
       scope: {
         resourceId: string;
@@ -223,14 +232,15 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
   const category = (item: MissingContextItem): number => {
     if (item.kind === "never_successfully_refreshed") return 0;
     if (item.kind === "unknown_provider_sync_authority") return 1;
-    if (item.kind === "unknown_relationship_authority") return 2;
-    if (item.kind === "unknown_current_authority") return 3;
-    if (item.kind === "code_mapping_refresh_unknown") return 4;
-    if (item.kind === "no_deterministic_release_issue_linkage") return 5;
-    if (item.kind === "code_mapped_to_without_shared_commit") return 6;
-    if (item.kind === "shared_commit_correspondence_missing") return 7;
-    if (item.kind === "code_mapping_unmatched_repository") return 8;
-    return 9; // no_known_relationships last among implemented categories
+    if (item.kind === "not_in_last_successful_discovery") return 2;
+    if (item.kind === "unknown_relationship_authority") return 3;
+    if (item.kind === "unknown_current_authority") return 4;
+    if (item.kind === "code_mapping_refresh_unknown") return 5;
+    if (item.kind === "no_deterministic_release_issue_linkage") return 6;
+    if (item.kind === "code_mapped_to_without_shared_commit") return 7;
+    if (item.kind === "shared_commit_correspondence_missing") return 8;
+    if (item.kind === "code_mapping_unmatched_repository") return 9;
+    return 10; // no_known_relationships last among implemented categories
   };
   const byCategory = category(left) - category(right);
   if (byCategory !== 0) return byCategory;
@@ -259,7 +269,9 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
     left.kind === "shared_commit_correspondence_missing" ||
     right.kind === "shared_commit_correspondence_missing" ||
     left.kind === "unknown_provider_sync_authority" ||
-    right.kind === "unknown_provider_sync_authority"
+    right.kind === "unknown_provider_sync_authority" ||
+    left.kind === "not_in_last_successful_discovery" ||
+    right.kind === "not_in_last_successful_discovery"
   ) {
     return compareAscending(left.scope.resourceId, right.scope.resourceId);
   }
@@ -279,6 +291,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapped_to_without_shared_commit" }
           | { kind: "shared_commit_correspondence_missing" }
           | { kind: "unknown_provider_sync_authority" }
+          | { kind: "not_in_last_successful_discovery" }
           | { kind: "unknown_relationship_authority" }
         >
       ).family,
@@ -294,6 +307,7 @@ function compareItems(left: MissingContextItem, right: MissingContextItem): numb
           | { kind: "code_mapped_to_without_shared_commit" }
           | { kind: "shared_commit_correspondence_missing" }
           | { kind: "unknown_provider_sync_authority" }
+          | { kind: "not_in_last_successful_discovery" }
           | { kind: "unknown_relationship_authority" }
         >
       ).family,
@@ -601,6 +615,18 @@ export function composeMissingContext(
     });
   }
 
+  if (context.lastSuccessfulDiscovery === "not_in_last_successful_discovery") {
+    items.push({
+      kind: "not_in_last_successful_discovery",
+      scope: {
+        resourceId: context.subject.id,
+        role: "subject",
+        relationships: [],
+      },
+      provider: context.subject.provider,
+    });
+  }
+
   const seenRelationshipIds = new Set<string>();
   for (const neighbor of context.related) {
     const rel = neighbor.relationship;
@@ -843,6 +869,14 @@ export function formatMissingContextItem(item: MissingContextItem): string {
       `last attempt at ${item.lastAttemptAt}; ` +
       `the retained Resource snapshot must not be treated as current ` +
       `provider inventory.`
+    );
+  }
+
+  if (item.kind === "not_in_last_successful_discovery") {
+    return (
+      `Resource ${item.scope.resourceId} was not in ${item.provider}'s last ` +
+      `successful discovery; the retained Resource snapshot must not be ` +
+      `treated as current provider inventory.`
     );
   }
 

@@ -63,5 +63,23 @@ describe("provider sync clocks (Sprint 079)", () => {
     expect(output).toBe("observed by Combie at: 2026-08-18T08:00:00.000Z");
     expect(output).not.toContain("last successful provider sync");
     expect(output).not.toContain("last provider sync attempt");
+    expect(output).not.toContain("last successful discovery");
+  });
+
+  test("CURRENT membership line is omitted when never recorded and shown when set", () => {
+    const clocks = clocksFromProvider(null);
+    expect(formatCurrentClockLines(resource, clocks)).not.toContain(
+      "last successful discovery",
+    );
+    expect(formatCurrentClockLines(resource, clocks, "included")).toContain(
+      "last successful discovery: included",
+    );
+    expect(
+      formatCurrentClockLines(
+        resource,
+        clocks,
+        "not_in_last_successful_discovery",
+      ),
+    ).toContain("last successful discovery: not in last successful discovery");
   });
 });

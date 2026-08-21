@@ -41,6 +41,11 @@ export interface ProviderRecord {
   lastSyncAt: string | null;
   /** Combie time of the latest sync try (success or failure). Distinct from lastSyncAt. */
   lastAttemptAt: string | null;
+  /**
+   * Resource ids from the last successful discoverResources.
+   * null = never recorded; [] = known-empty success.
+   */
+  lastDiscoveryResourceIds: string[] | null;
   config: Record<string, unknown>;
 }
 
@@ -56,6 +61,7 @@ CREATE TABLE IF NOT EXISTS providers (
   status TEXT NOT NULL,
   last_sync_at TEXT,
   last_attempt_at TEXT,
+  last_discovery_resource_ids TEXT,
   config_json TEXT NOT NULL DEFAULT '{}'
 );
 
@@ -331,6 +337,9 @@ export class Store {
     this.ensureNullableTextColumn(db, "incidents", "occurred_at");
     // Sprint 079: pre-079 providers lack last_attempt_at.
     this.ensureProviderLastAttemptAtColumn(db);
+    // Sprint 085: pre-085 providers lack last_discovery_resource_ids.
+    // Missing column stays NULL — never backfill from clocks or Resource rows.
+    this.ensureNullableTextColumn(db, "providers", "last_discovery_resource_ids");
     // Sprint 057: pre-057 investigation_id is NOT NULL. Rebuild so Resource-
     // anchored rows can omit it. Existing rows keep their investigation ids.
     this.ensureResolutionsInvestigationIdNullable(db);
@@ -592,6 +601,7 @@ export class Store {
           status: string;
           last_sync_at: string | null;
           last_attempt_at: string | null;
+          last_discovery_resource_ids: string | null;
           config_json: string;
         }
       | null;
@@ -607,20 +617,25 @@ export class Store {
       status: string;
       last_sync_at: string | null;
       last_attempt_at: string | null;
+      last_discovery_resource_ids: string | null;
       config_json: string;
     }>;
     return rows.map(mapProvider);
   }
 
   /**
-   * Read path must not require last_attempt_at. Pre-079 DBs are migrated
-   * only on writable init(); MCP/CLI reads treat a missing column as null.
+   * Read path must not require last_attempt_at or last_discovery_resource_ids.
+   * Pre-079/085 DBs are migrated only on writable init(); MCP/CLI reads treat
+   * a missing column as null.
    */
   private providersSelectSql(): string {
     const attempt = this.hasColumn("providers", "last_attempt_at")
       ? "last_attempt_at"
       : "NULL AS last_attempt_at";
-    return `SELECT id, name, status, last_sync_at, ${attempt}, config_json FROM providers`;
+    const discovery = this.hasColumn("providers", "last_discovery_resource_ids")
+      ? "last_discovery_resource_ids"
+      : "NULL AS last_discovery_resource_ids";
+    return `SELECT id, name, status, last_sync_at, ${attempt}, ${discovery}, config_json FROM providers`;
   }
 
   private hasColumn(table: string, column: string): boolean {
@@ -830,6 +845,22 @@ export class Store {
     const result = db
       .query(`UPDATE providers SET last_attempt_at = ? WHERE id = ?`)
       .run(at, providerId);
+    if (result.changes === 0) {
+      throw new Error(
+        `Provider '${providerId}' not found. Connect the provider before syncing.`,
+      );
+    }
+  }
+
+  /**
+   * Replace the last-successful discovery Resource id set.
+   * Empty array persists [] (known-empty). Does not change lastSyncAt / lastAttemptAt.
+   */
+  setLastDiscoveryResourceIds(providerId: string, ids: readonly string[]): void {
+    const db = this.getWritableDb();
+    const result = db
+      .query(`UPDATE providers SET last_discovery_resource_ids = ? WHERE id = ?`)
+      .run(JSON.stringify(ids), providerId);
     if (result.changes === 0) {
       throw new Error(
         `Provider '${providerId}' not found. Connect the provider before syncing.`,
@@ -2112,12 +2143,31 @@ function mapResolutionRow(
   };
 }
 
+function parseLastDiscoveryResourceIds(
+  raw: string | null | undefined,
+): string[] | null {
+  if (raw == null) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((value) => typeof value === "string")
+    ) {
+      return parsed as string[];
+    }
+  } catch {
+    // Untrusted stored payload: omit membership claims; do not coerce to [].
+  }
+  return null;
+}
+
 function mapProvider(row: {
   id: string;
   name: string;
   status: string;
   last_sync_at: string | null;
   last_attempt_at: string | null;
+  last_discovery_resource_ids: string | null;
   config_json: string;
 }): ProviderRecord {
   let config: Record<string, unknown> = {};
@@ -2132,6 +2182,9 @@ function mapProvider(row: {
     status: row.status,
     lastSyncAt: row.last_sync_at,
     lastAttemptAt: row.last_attempt_at,
+    lastDiscoveryResourceIds: parseLastDiscoveryResourceIds(
+      row.last_discovery_resource_ids,
+    ),
     config,
   };
 }

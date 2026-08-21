@@ -298,6 +298,107 @@ describe("Investigation context composition", () => {
     expect(equalOutput).not.toContain(
       "must not be treated as current provider inventory",
     );
+    expect(equalOutput).not.toContain("last successful discovery");
+  });
+
+  test("CURRENT last successful discovery membership (Sprint 085)", () => {
+    const store = openStore(dir);
+    store.upsertProvider({
+      id: "sentry",
+      name: "Sentry",
+      status: "connected",
+      lastSyncAt: "2026-08-18T10:00:00.000Z",
+      lastAttemptAt: "2026-08-18T10:00:00.000Z",
+    });
+    const solo = createResource({
+      provider: "sentry",
+      providerResourceId: "membership",
+      kind: "project",
+      name: "membered",
+      metadata: {},
+      createdAt: "2026-08-18T08:00:00.000Z",
+      updatedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.applyResource(solo, {
+      id: "member-baseline",
+      observedAt: "2026-08-18T08:00:00.000Z",
+    });
+    store.close();
+
+    const live = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: solo.id,
+    });
+    expect(live.subject.id).toBe(solo.id);
+    expect(live.lastSuccessfulDiscovery).toBeUndefined();
+    const omitted = formatInvestigationContext(live);
+    expect(omitted).not.toContain("last successful discovery");
+    expect(omitted).not.toContain("not in last successful discovery");
+
+    const includedOut = formatInvestigationContext({
+      ...live,
+      lastSuccessfulDiscovery: "included",
+    });
+    expect(includedOut).toContain("last successful discovery: included");
+    expect(includedOut).not.toContain(
+      "was not in sentry's last successful discovery",
+    );
+
+    const absentOut = formatInvestigationContext({
+      ...live,
+      lastSuccessfulDiscovery: "not_in_last_successful_discovery",
+    });
+    expect(absentOut).toContain(
+      "last successful discovery: not in last successful discovery",
+    );
+    expect(absentOut).toContain(
+      `Resource ${solo.id} was not in sentry's last successful discovery`,
+    );
+    expect(absentOut).toContain(
+      "must not be treated as current provider inventory",
+    );
+    expect(absentOut.toLowerCase()).not.toContain("re-sync");
+    expect(absentOut.toLowerCase()).not.toContain("deleted");
+    expect(getInvestigationContext({ baseDir: dir, resourceRef: solo.id }).subject.id).toBe(
+      solo.id,
+    );
+
+    const persist = openStore(dir);
+    persist.setLastDiscoveryResourceIds("sentry", [solo.id]);
+    persist.close();
+    const includedLive = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: solo.id,
+    });
+    expect(includedLive.lastSuccessfulDiscovery).toBe("included");
+    expect(formatInvestigationContext(includedLive)).toContain(
+      "last successful discovery: included",
+    );
+    expect(formatInvestigationContext(includedLive)).not.toContain(
+      "was not in sentry's last successful discovery",
+    );
+
+    const empty = openStore(dir);
+    empty.setLastDiscoveryResourceIds("sentry", []);
+    empty.close();
+    const emptyLive = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: solo.id,
+    });
+    expect(emptyLive.lastSuccessfulDiscovery).toBe(
+      "not_in_last_successful_discovery",
+    );
+    const emptyOut = formatInvestigationContext(emptyLive);
+    expect(emptyOut).toContain(
+      "last successful discovery: not in last successful discovery",
+    );
+    expect(emptyOut).toContain(
+      `Resource ${solo.id} was not in sentry's last successful discovery`,
+    );
+    expect(emptyLive.subject.id).toBe(solo.id);
+    expect(
+      getInvestigationContext({ baseDir: dir, resourceRef: solo.id }).subject.id,
+    ).toBe(solo.id);
   });
 
   test("subject changes only without relationships", () => {

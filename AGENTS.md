@@ -267,6 +267,17 @@ when a required provider was attempted after last verified; MCP
 Relationship kind, not edge deletion on incomplete pair, not
 `--json` on `relationships`, not skill install, not populated-
 membership, not 078 leftovers, not the Investigation Engine).
+Sprint 085 shipped
+populated-membership discovery id sets (ROADMAP v0.3 remaining
+Source Authority; founder override 2026-08-20; persist Resource
+ids from the last successful `discoverResources` as
+`providers.last_discovery_resource_ids`; CURRENT
+included vs not-in-last-successful-discovery; Missing Context
+`not_in_last_successful_discovery` when the subject id is not
+in that set; MCP `investigate_resource` subject observes
+`lastSuccessfulDiscovery`; not Resource deletion, not clock
+derivation, not `--json` on `relationships`, not skill install,
+not 078 leftovers, not the Investigation Engine).
 
 ## Mandatory reading order before any substantive change
 
@@ -288,7 +299,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–084 complete
+## Current baseline: Sprints 001–085 complete
 
 Multi-provider connection loop:
 
@@ -608,6 +619,16 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   edge deletion on incomplete pair, no `--json` on
   `relationships`, no skill install, no populated-membership, no
   078 leftover thaw).
+- **Sprint 085 shipped:** populated-membership discovery id sets
+  (ROADMAP v0.3 remaining Source Authority; founder override
+  2026-08-20; persist Resource ids from the last successful
+  `discoverResources` as `providers.last_discovery_resource_ids`;
+  CURRENT included vs not-in-last-successful-discovery; Missing
+  Context `not_in_last_successful_discovery` when the subject id
+  is not in that set; MCP `investigate_resource` subject observes
+  `lastSuccessfulDiscovery`; no Resource deletion, no clock
+  derivation, no `--json` on `relationships`, no skill install,
+  no 078 leftover thaw).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
@@ -907,9 +928,13 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   2026-08-20 a founder override started Sprint 084 as the
   smallest remaining Source Authority slice (Relationship
   verification clocks). Sprint 084 shipped that slice. Sprint
-  084 leftover is not a sequence; skill install, extra `--json`,
-  populated-membership id sets, a generic Observation type, and
-  078 leftovers stay frozen.
+  084 leftover is not a sequence. On 2026-08-20 a founder
+  override started Sprint 085 as the smallest remaining Source
+  Authority slice (persist last-successful discovery Resource
+  ids; not deletion). Sprint 085 shipped that slice. Sprint 085
+  leftover is not a sequence; skill install, extra `--json`, a
+  generic Observation type, Resource deletion, and 078 leftovers
+  stay frozen.
   `docs/internal/beta/INVESTIGATION-DOGFOOD.md`
   remains the learning ledger for capture-shape use.
 - Explicitly out of scope until a later sprint authorizes a change: new MCP

@@ -45,6 +45,8 @@ Read the CURRENT clocks on the investigation result:
 
 Then check the Missing Context items. `unknown_provider_sync_authority` names a provider whose last attempt is after its last success: that provider may have changed since Combie last observed it. `unknown_relationship_authority` names a one-hop edge whose required-provider last attempt is after last verified: retained RELATED is not current provider topology.
 
+Also read `last successful discovery` (`included` / `not in last successful discovery`, omitted when never recorded). Do not infer membership from `updatedAt`. Missing Context `not_in_last_successful_discovery` is retained observation, not deletion.
+
 CLI: `combie providers [--json]` shows LAST SYNC (last success) and LAST ATTEMPT per provider.
 
 MCP: `list_providers` includes `lastAttemptAt`.

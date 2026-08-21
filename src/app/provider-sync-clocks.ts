@@ -1,5 +1,9 @@
 import type { Resource } from "../domain/resource.ts";
 import type { ProviderRecord } from "../storage/store.ts";
+import {
+  formatDiscoveryMembershipLine,
+  type LastSuccessfulDiscovery,
+} from "./discovery-membership.ts";
 
 /**
  * Provider discovery clocks (Sprint 079). Distinct from provider-native
@@ -37,6 +41,7 @@ export function providerSyncIsUnknown(clocks: ProviderSyncClocks): boolean {
 export function formatCurrentClockLines(
   resource: Resource,
   clocks: ProviderSyncClocks,
+  membership: LastSuccessfulDiscovery | null = null,
 ): string {
   const lines = [`observed by Combie at: ${resource.updatedAt}`];
   if (clocks.lastSuccessfulSyncAt != null) {
@@ -46,6 +51,10 @@ export function formatCurrentClockLines(
   }
   if (clocks.lastAttemptAt != null) {
     lines.push(`last provider sync attempt: ${clocks.lastAttemptAt}`);
+  }
+  const membershipLine = formatDiscoveryMembershipLine(membership);
+  if (membershipLine != null) {
+    lines.push(membershipLine);
   }
   return lines.join("\n");
 }

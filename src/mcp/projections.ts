@@ -200,6 +200,9 @@ export function projectInvestigateResourceLive({
           lastProviderSyncAttemptAt: ctx.providerSyncClocks.lastAttemptAt,
         }
       : {}),
+    ...(ctx.lastSuccessfulDiscovery != null
+      ? { lastSuccessfulDiscovery: ctx.lastSuccessfulDiscovery }
+      : {}),
   };
 
   const subjectChanges = ctx.subjectChanges.map((change) => ({

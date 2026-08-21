@@ -47,7 +47,7 @@ const SNAPSHOT_BANNER_TITLE = "INVESTIGATION SNAPSHOT";
 export function serializeInvestigationSnapshot(
   context: InvestigationContext,
 ): string {
-  const { providerSyncClocks: _clocks, providerLastAttemptAt: _attempts, ...snapshot } = context;
+  const { providerSyncClocks: _clocks, providerLastAttemptAt: _attempts, lastSuccessfulDiscovery: _membership, ...snapshot } = context;
   return JSON.stringify(snapshot);
 }
 

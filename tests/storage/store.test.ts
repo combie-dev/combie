@@ -250,6 +250,318 @@ describe("Store", () => {
     );
   });
 
+  test("providers schema includes nullable last_discovery_resource_ids", () => {
+    const { store, dir } = openStore();
+    store.init();
+    store.close();
+    const db = new Database(dbPath(dir), { readonly: true });
+    const columns = db
+      .query(`PRAGMA table_info(providers)`)
+      .all() as Array<{ name: string; type: string; notnull: number }>;
+    db.close();
+    const column = columns.find((c) => c.name === "last_discovery_resource_ids");
+    expect(column).toBeDefined();
+    expect(column!.type).toBe("TEXT");
+    expect(column!.notnull).toBe(0);
+  });
+
+  test("setLastDiscoveryResourceIds persists that page and a later call replaces the set", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toBeNull();
+
+    store.setLastDiscoveryResourceIds("github", [
+      "github:repository:1",
+      "github:repository:2",
+    ]);
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      "github:repository:1",
+      "github:repository:2",
+    ]);
+
+    store.setLastDiscoveryResourceIds("github", ["github:repository:1"]);
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      "github:repository:1",
+    ]);
+  });
+
+  test("known-empty success persists [] not null", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    store.setLastDiscoveryResourceIds("github", []);
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([]);
+    expect(store.listProviders()[0]!.lastDiscoveryResourceIds).toEqual([]);
+  });
+
+  test("setLastAttempt leaves the discovery set unchanged", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    store.setLastDiscoveryResourceIds("github", ["github:repository:1"]);
+    store.setLastAttempt("github", "2026-08-20T09:00:00.000Z");
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      "github:repository:1",
+    ]);
+  });
+
+  test("setLastDiscoveryResourceIds does not change lastSyncAt or lastAttemptAt", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    store.setLastSync("github", "2026-08-18T10:00:00.000Z");
+    store.setLastAttempt("github", "2026-08-19T09:00:00.000Z");
+    store.setLastDiscoveryResourceIds("github", ["github:repository:1"]);
+    const github = store.getProvider("github")!;
+    expect(github.lastSyncAt).toBe("2026-08-18T10:00:00.000Z");
+    expect(github.lastAttemptAt).toBe("2026-08-19T09:00:00.000Z");
+  });
+
+  test("upsertProvider does not write or clear lastDiscoveryResourceIds", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    store.setLastDiscoveryResourceIds("github", ["github:repository:1"]);
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      config: { accountId: "acc" },
+    });
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      "github:repository:1",
+    ]);
+  });
+
+  test("replaceResourceMetadata does not add or remove discovery ids", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    const kept = createResource({
+      provider: "github",
+      providerResourceId: "1",
+      kind: "repository",
+      name: "combie",
+      metadata: { language: "TypeScript" },
+    });
+    const omitted = createResource({
+      provider: "github",
+      providerResourceId: "2",
+      kind: "repository",
+      name: "rivora",
+      metadata: {},
+    });
+    store.upsertResource(kept);
+    store.upsertResource(omitted);
+    store.setLastDiscoveryResourceIds("github", [kept.id]);
+
+    store.replaceResourceMetadata(omitted.id, { language: "Go" });
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      kept.id,
+    ]);
+    expect(store.getResource(omitted.id)).not.toBeNull();
+
+    store.replaceResourceMetadata(kept.id, { language: "Rust" });
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      kept.id,
+    ]);
+  });
+
+  test("later success omitting an id replaces the set and keeps the Resource row", () => {
+    const { store } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    const first = createResource({
+      provider: "github",
+      providerResourceId: "1",
+      kind: "repository",
+      name: "combie",
+      metadata: {},
+    });
+    const second = createResource({
+      provider: "github",
+      providerResourceId: "2",
+      kind: "repository",
+      name: "rivora",
+      metadata: {},
+    });
+    store.upsertResource(first);
+    store.upsertResource(second);
+    store.setLastDiscoveryResourceIds("github", [first.id, second.id]);
+    store.setLastDiscoveryResourceIds("github", [first.id]);
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      first.id,
+    ]);
+    expect(store.getResource(second.id)?.name).toBe("rivora");
+  });
+
+  test("setLastDiscoveryResourceIds throws when the provider row is missing", () => {
+    const { store } = openStore();
+    store.init();
+    expect(() =>
+      store.setLastDiscoveryResourceIds("github", ["github:repository:1"]),
+    ).toThrow(
+      "Provider 'github' not found. Connect the provider before syncing.",
+    );
+  });
+
+  test("corrupt last_discovery_resource_ids is null, not []", () => {
+    const { store, dir } = openStore();
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+    });
+    store.upsertProvider({
+      id: "neon",
+      name: "Neon",
+      status: "connected",
+    });
+    store.close();
+
+    const raw = new Database(dbPath(dir));
+    raw
+      .query(
+        `UPDATE providers SET last_discovery_resource_ids = ? WHERE id = 'github'`,
+      )
+      .run("{not-an-array}");
+    raw
+      .query(
+        `UPDATE providers SET last_discovery_resource_ids = ? WHERE id = 'neon'`,
+      )
+      .run('{"ids":[]}');
+    raw.close();
+
+    const reopened = new Store(dir);
+    stores.push(reopened);
+    expect(reopened.isInitialized()).toBe(true);
+    expect(reopened.getProvider("github")!.lastDiscoveryResourceIds).toBeNull();
+    expect(reopened.getProvider("neon")!.lastDiscoveryResourceIds).toBeNull();
+  });
+
+  test("pre-085 providers reads without init treat missing last_discovery_resource_ids as null", () => {
+    const dir = tempDir();
+    dirs.push(dir);
+    const path = dbPath(dir);
+    const legacy = new Database(path, { create: true });
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        last_sync_at TEXT,
+        last_attempt_at TEXT,
+        config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      INSERT INTO providers (id, name, status, last_sync_at, last_attempt_at)
+      VALUES (
+        'github',
+        'GitHub',
+        'connected',
+        '2026-08-18T10:00:00.000Z',
+        '2026-08-18T10:00:00.000Z'
+      );
+    `);
+    legacy.close();
+
+    const store = new Store(dir);
+    stores.push(store);
+    expect(store.isInitialized()).toBe(true);
+    const github = store.getProvider("github");
+    expect(github?.lastSyncAt).toBe("2026-08-18T10:00:00.000Z");
+    expect(github?.lastDiscoveryResourceIds).toBeNull();
+    expect(store.listProviders().map((p) => p.lastDiscoveryResourceIds)).toEqual(
+      [null],
+    );
+
+    const probe = new Database(path, { readonly: true });
+    const columns = probe
+      .query(`PRAGMA table_info(providers)`)
+      .all() as Array<{ name: string }>;
+    probe.close();
+    expect(
+      columns.some((column) => column.name === "last_discovery_resource_ids"),
+    ).toBe(false);
+  });
+
+  test("pre-085 init adds last_discovery_resource_ids still null with no clock backfill", () => {
+    const dir = tempDir();
+    dirs.push(dir);
+    const path = dbPath(dir);
+    const legacy = new Database(path, { create: true });
+    legacy.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('initialized', 'true');
+      CREATE TABLE providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        last_sync_at TEXT,
+        last_attempt_at TEXT,
+        config_json TEXT NOT NULL DEFAULT '{}'
+      );
+      INSERT INTO providers (id, name, status, last_sync_at, last_attempt_at)
+      VALUES (
+        'github',
+        'GitHub',
+        'connected',
+        '2026-08-18T10:00:00.000Z',
+        '2026-08-18T10:00:00.000Z'
+      );
+    `);
+    legacy.close();
+
+    const store = new Store(dir);
+    stores.push(store);
+    store.init();
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toBeNull();
+    expect(store.getProvider("github")!.lastSyncAt).toBe(
+      "2026-08-18T10:00:00.000Z",
+    );
+
+    store.close();
+    const probe = new Database(path, { readonly: true });
+    const columns = probe
+      .query(`PRAGMA table_info(providers)`)
+      .all() as Array<{ name: string }>;
+    probe.close();
+    expect(
+      columns.some((column) => column.name === "last_discovery_resource_ids"),
+    ).toBe(true);
+  });
+
   test("upsertResource does not duplicate on repeated sync", () => {
     const { store } = openStore();
     store.init();

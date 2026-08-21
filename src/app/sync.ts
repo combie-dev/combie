@@ -250,6 +250,10 @@ async function syncOne(
 
   store.setLastSync(providerId, now);
   store.setLastAttempt(providerId, now);
+  store.setLastDiscoveryResourceIds(
+    providerId,
+    discovered.resources.map((r) => r.id),
+  );
 
   const counts = countByKind(discovered.resources);
   const lines = (Object.keys(counts) as ResourceKind[])

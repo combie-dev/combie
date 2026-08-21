@@ -103,6 +103,7 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(skillText.includes("Missing Context")).toBe(true);
     expect(skillText.includes("unknown_provider_sync_authority")).toBe(true);
     expect(skillText.includes("unknown_relationship_authority")).toBe(true);
+    expect(skillText.includes("not_in_last_successful_discovery")).toBe(true);
   });
 
   test("allowlist: MCP is read-only", () => {

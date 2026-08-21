@@ -35,6 +35,8 @@ function cfEnvelope<T>(result: T) {
 
 function mockMultiProviderFetch(options?: {
   githubFail?: boolean;
+  githubEmpty?: boolean;
+  githubOnlyFirst?: boolean;
   cloudflareFail?: boolean;
   vercelFail?: boolean;
   sentryFail?: boolean;
@@ -450,6 +452,9 @@ function mockMultiProviderFetch(options?: {
         if (options?.githubFail) {
           return Response.json({ message: "Bad credentials" }, { status: 401 });
         }
+        if (options?.githubEmpty) {
+          return Response.json([]);
+        }
         return Response.json([
           {
             id: 1001,
@@ -475,7 +480,7 @@ function mockMultiProviderFetch(options?: {
             visibility: "public",
             owner: { login: "test-user", id: 42 },
           },
-        ]);
+        ].slice(0, options?.githubOnlyFirst ? 1 : 2));
       }
     }
 
@@ -1381,6 +1386,12 @@ describe("multi-provider connection", () => {
     const before = new Store(dir);
     before.isInitialized();
     const lastSyncAt = before.getProvider("neon")!.lastSyncAt;
+    const lastDiscoveryResourceIds =
+      before.getProvider("neon")!.lastDiscoveryResourceIds;
+    expect(lastDiscoveryResourceIds).toEqual([
+      "neon:project:steep-moon-132241",
+      "neon:project:quiet-river-98765",
+    ]);
     const neonIdsBefore = before
       .listResources({ provider: "neon" })
       .map((resource) => resource.id)
@@ -1398,6 +1409,7 @@ describe("multi-provider connection", () => {
     expect(neon.lastAttemptAt).toBeTruthy();
     expect(neon.lastAttemptAt! > lastSyncAt!).toBe(true);
     expect(neon.lastSyncAt).toBe(lastSyncAt);
+    expect(neon.lastDiscoveryResourceIds).toEqual(lastDiscoveryResourceIds);
     expect(
       store
         .listResources({ provider: "neon" })
@@ -1430,6 +1442,58 @@ describe("multi-provider connection", () => {
     const github = store.getProvider("github")!;
     expect(github.lastAttemptAt).toBeTruthy();
     expect(github.lastAttemptAt).toBe(github.lastSyncAt);
+    expect(github.lastDiscoveryResourceIds).toEqual(
+      sync.results[0]!.discoveredResourceIds,
+    );
+    expect(github.lastDiscoveryResourceIds).toEqual([
+      "github:repository:1001",
+      "github:repository:1002",
+    ]);
+    store.close();
+  });
+
+  test("later successful discovery replaces the set and keeps omitted Resources", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "github", token: "gh" });
+    const first = await syncProviders({ baseDir: dir });
+    expect(first.ok).toBe(true);
+    expect(first.results[0]!.discoveredResourceIds).toEqual([
+      "github:repository:1001",
+      "github:repository:1002",
+    ]);
+
+    globalThis.fetch = mockMultiProviderFetch({ githubOnlyFirst: true });
+    const second = await syncProviders({ baseDir: dir });
+    expect(second.ok).toBe(true);
+    expect(second.results[0]!.discoveredResourceIds).toEqual([
+      "github:repository:1001",
+    ]);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([
+      "github:repository:1001",
+    ]);
+    expect(store.getResource("github:repository:1002")?.name).toBe("rivora");
+    store.close();
+  });
+
+  test("known-empty successful discovery persists [] and keeps Resource rows", async () => {
+    initCombie(dir);
+    await connectProvider({ baseDir: dir, providerId: "github", token: "gh" });
+    const first = await syncProviders({ baseDir: dir });
+    expect(first.ok).toBe(true);
+
+    globalThis.fetch = mockMultiProviderFetch({ githubEmpty: true });
+    const empty = await syncProviders({ baseDir: dir });
+    expect(empty.ok).toBe(true);
+    expect(empty.results[0]!.discoveredResourceIds).toEqual([]);
+
+    const store = new Store(dir);
+    store.isInitialized();
+    expect(store.getProvider("github")!.lastDiscoveryResourceIds).toEqual([]);
+    expect(store.getResource("github:repository:1001")).not.toBeNull();
+    expect(store.getResource("github:repository:1002")).not.toBeNull();
     store.close();
   });
 
@@ -1442,6 +1506,7 @@ describe("multi-provider connection", () => {
         status: "connected",
         lastSyncAt: "2026-08-19T10:00:00.000Z",
         lastAttemptAt: "2026-08-19T10:00:00.000Z",
+        lastDiscoveryResourceIds: null,
         config: {},
       },
       {
@@ -1450,6 +1515,7 @@ describe("multi-provider connection", () => {
         status: "connected",
         lastSyncAt: "2026-08-19T10:00:00.000Z",
         lastAttemptAt: "2026-08-19T11:00:00.000Z",
+        lastDiscoveryResourceIds: null,
         config: {},
       },
     ];

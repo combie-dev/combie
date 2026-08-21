@@ -5674,3 +5674,330 @@ describe("MCP stdio contract (Sprint 084)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 });
+
+describe("MCP stdio contract (Sprint 085)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  function seedLastDiscoveryResourceIds(
+    dir: string,
+    providerId: string,
+    ids: readonly string[],
+  ): void {
+    const store = new Store(dir);
+    store.init();
+    store.setLastDiscoveryResourceIds(providerId, ids);
+    store.close();
+  }
+
+  test("investigate_resource subject includes lastSuccessfulDiscovery: included when id is in the set", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-085-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-20T10:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "085a",
+      kind: "repository",
+      name: "example/included",
+      metadata: { fullName: "example/included" },
+    });
+    store.upsertResource(resource);
+    store.close();
+    seedLastDiscoveryResourceIds(dir, "github", [resource.id]);
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-085", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: resource.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const subject = (result.structuredContent as {
+        subject?: Record<string, unknown>;
+      })?.subject;
+      expect(subject).toBeDefined();
+      expect(subject?.lastSuccessfulDiscovery).toBe("included");
+      expect(subject).not.toHaveProperty("lastDiscoveryResourceIds");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("investigate_resource subject omits lastSuccessfulDiscovery when the set was never recorded", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-085b-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      config: { accountId: "12345" },
+    });
+    store.upsertResource(
+      createResource({
+        provider: "github",
+        providerResourceId: "085b",
+        kind: "repository",
+        name: "example/unset",
+        metadata: { fullName: "example/unset" },
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-085b", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: "github:repository:085b" },
+      });
+      expect(result.isError).not.toBe(true);
+      const subject = (result.structuredContent as {
+        subject?: Record<string, unknown>;
+      })?.subject;
+      expect(subject).toBeDefined();
+      expect(subject).not.toHaveProperty("lastSuccessfulDiscovery");
+      expect(subject).not.toHaveProperty("lastDiscoveryResourceIds");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("investigate_resource subject is not_in_last_successful_discovery when the set exists and id is absent; Resource still listed via list_resources", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-085c-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-20T10:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "085c",
+      kind: "repository",
+      name: "example/absent",
+      metadata: { fullName: "example/absent" },
+    });
+    store.upsertResource(resource);
+    store.close();
+    seedLastDiscoveryResourceIds(dir, "github", []);
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-085c", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.callTool({
+        name: "list_resources",
+        arguments: {},
+      });
+      expect(listed.isError).not.toBe(true);
+      const resources = (listed.structuredContent as {
+        resources?: Array<Record<string, unknown>>;
+      })?.resources;
+      expect(resources).toEqual([
+        {
+          id: resource.id,
+          provider: "github",
+          kind: "repository",
+          providerResourceId: "085c",
+          name: "example/absent",
+        },
+      ]);
+      expect(resources![0]).not.toHaveProperty("lastSuccessfulDiscovery");
+
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: resource.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const subject = (result.structuredContent as {
+        subject?: Record<string, unknown>;
+      })?.subject;
+      expect(subject).toBeDefined();
+      expect(subject?.lastSuccessfulDiscovery).toBe(
+        "not_in_last_successful_discovery",
+      );
+      expect(subject).not.toHaveProperty("lastDiscoveryResourceIds");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("four tools and read-only: database bytes unchanged across a Sprint 085 call", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-085d-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-20T10:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "085d",
+      kind: "repository",
+      name: "example/four",
+      metadata: { fullName: "example/four" },
+    });
+    store.upsertResource(resource);
+    store.close();
+    seedLastDiscoveryResourceIds(dir, "github", [resource.id]);
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-085d", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const resources = await client.callTool({
+        name: "list_resources",
+        arguments: {},
+      });
+      expect(resources.isError).not.toBe(true);
+      expect(
+        (
+          resources.structuredContent as {
+            resources?: Array<Record<string, unknown>>;
+          }
+        )?.resources?.[0],
+      ).not.toHaveProperty("lastSuccessfulDiscovery");
+      const investigate = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: resource.id },
+      });
+      expect(investigate.isError).not.toBe(true);
+      expect(
+        (investigate.structuredContent as {
+          subject?: Record<string, unknown>;
+        })?.subject?.lastSuccessfulDiscovery,
+      ).toBe("included");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("omitted investigationId still live-composes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-085e-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: "2026-08-20T10:00:00.000Z",
+      config: { accountId: "12345" },
+    });
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "085e",
+      kind: "repository",
+      name: "example/live",
+      metadata: { fullName: "example/live" },
+    });
+    store.upsertResource(resource);
+    store.close();
+    seedLastDiscoveryResourceIds(dir, "github", [resource.id]);
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-085e", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: resource.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        subject?: Record<string, unknown>;
+        investigationSnapshot?: unknown;
+      };
+      expect(content.subject).toBeDefined();
+      expect(content.subject?.id).toBe(resource.id);
+      expect(content).not.toHaveProperty("investigationSnapshot");
+      expect(content.subject?.lastSuccessfulDiscovery).toBe("included");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});

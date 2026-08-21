@@ -31,10 +31,10 @@ import {
   type SentryReleaseEvidence,
 } from "../providers/sentry/release.ts";
 import {
-  clocksFromProvider,
   formatCurrentClockLines,
   type ProviderSyncClocks,
 } from "./provider-sync-clocks.ts";
+import type { LastSuccessfulDiscovery } from "./discovery-membership.ts";
 import {
   formatRelationshipClockLines,
   lastRequiredProviderAttemptAt,
@@ -131,6 +131,11 @@ export interface InvestigationContext {
    * Stripped from 048 snapshots (not current provider truth on reopen).
    */
   providerLastAttemptAt?: Record<string, string | null>;
+  /**
+   * Live last-successful discovery membership for the subject (Sprint 085).
+   * Stripped from 048 snapshots. Omitted when the set has never been recorded.
+   */
+  lastSuccessfulDiscovery?: LastSuccessfulDiscovery;
 }
 
 export interface GetInvestigationContextOptions {
@@ -308,8 +313,9 @@ export function getInvestigationContextForResource(
     subjectOperations: loadNeonOperationAuthority(store, subject),
     subjectReleases: loadReleaseAuthority(store, subject),
     subjectIssues: loadIssueAuthority(store, subject),
-    providerSyncClocks: clocksFromProvider(store.getProvider(subject.provider)),
+    providerSyncClocks: subjectHistory.providerSyncClocks,
     providerLastAttemptAt: relatedContext.providerLastAttemptAt,
+    lastSuccessfulDiscovery: subjectHistory.lastSuccessfulDiscovery ?? undefined,
   };
 }
 
@@ -1503,6 +1509,7 @@ export function formatInvestigationContext(
         lastSuccessfulSyncAt: null,
         lastAttemptAt: null,
       },
+      context.lastSuccessfulDiscovery ?? null,
     );
 
   const subjectChanges =
