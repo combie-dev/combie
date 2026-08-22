@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–087 complete
+## Current baseline: Sprints 001–088 complete
 
 Multi-provider connection loop:
 
@@ -668,6 +668,18 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `ResourceContext`; no Missing Context on `context`, no new clock
   model, no `--json`, no checkout skill copy, no fifth tool, no MCP
   writes, no 078 leftover thaw).
+- **Sprint 088 shipped** CLI `--json` on `combie context` under
+  founder override 2026-08-21 (`projectResourceContext` over the
+  existing `getResourceContext` compose plus `"context"` in
+  `JSON_COMMANDS`; subject identity + `updatedAt` with 079
+  `lastSuccessfulProviderSyncAt` / `lastProviderSyncAttemptAt` and
+  085 `lastSuccessfulDiscovery` omitted when null; `related[]`
+  reuses the `related --json` neighbor shape including 084
+  verification clocks; `changes` as investigate-style Change rows;
+  human output and error exit codes unchanged; no Missing Context on
+  `context`, no fifth tool / `get_context`, no other `--json` thaw,
+  no `investigation --json`, no checkout skill copy, no 078 leftover
+  thaw, no Resource deletion, no generic Observation type).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →

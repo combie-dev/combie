@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getResourceContext } from "../../src/app/context.ts";
 import { getInvestigationContext } from "../../src/app/investigate.ts";
 import { listIncidentsForSubject } from "../../src/app/incidents.ts";
 import { listInvestigations } from "../../src/app/investigations.ts";
@@ -16,6 +17,7 @@ import {
   projectListProviders,
   projectListResources,
   projectRelatedContext,
+  projectResourceContext,
 } from "../../src/mcp/projections.ts";
 import { safeJson } from "../../src/mcp/serialization.ts";
 import { Store } from "../../src/storage/store.ts";
@@ -201,6 +203,148 @@ describe("CLI MCP-parity --json", () => {
     expect(parsed.related[0].relationship).not.toHaveProperty("updatedAt");
   });
 
+  test("context shares the MCP-parity projection and omits null clocks", async () => {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "context-repo",
+      kind: "repository",
+      name: "context-repo",
+      metadata: { fullName: "acme/context-repo" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "context-project",
+      kind: "project",
+      name: "context-project",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/context-repo",
+        },
+      }),
+    );
+    store.close();
+
+    const result = await capture(() =>
+      main(["context", repository.id, "--json", "--dir", dir]),
+    );
+    const expected = safeJson(
+      projectResourceContext(
+        getResourceContext({ baseDir: dir, resourceRef: repository.id }),
+      ),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(parsed).toEqual(expected);
+    expect(parsed.subject.updatedAt).toBeDefined();
+    expect(parsed.subject).not.toHaveProperty("lastSuccessfulProviderSyncAt");
+    expect(parsed.subject).not.toHaveProperty("lastProviderSyncAttemptAt");
+    expect(parsed.subject).not.toHaveProperty("lastSuccessfulDiscovery");
+    expect(parsed.subject).not.toHaveProperty("lastDiscoveryResourceIds");
+    expect(parsed.subject).not.toHaveProperty("metadata");
+    expect(parsed.subject).not.toHaveProperty("createdAt");
+    expect(parsed).not.toHaveProperty("missingContext");
+    expect(parsed).not.toHaveProperty("knownFacts");
+    expect(parsed.related[0].relationship.lastVerifiedAt).toBeDefined();
+    expect(parsed.changes).toEqual([]);
+  });
+
+  test("context --json includes clocks and membership when recorded and matches related --json neighbors", async () => {
+    const syncedAt = "2026-08-21T10:00:00.000Z";
+    const attemptedAt = "2026-08-21T10:30:00.000Z";
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "context-clocks",
+      kind: "repository",
+      name: "context-clocks",
+      metadata: {},
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "context-clocks-prj",
+      kind: "project",
+      name: "context-clocks-prj",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/context-clocks",
+        },
+      }),
+    );
+    store.upsertProvider({
+      id: "github",
+      name: "GitHub",
+      status: "connected",
+      lastSyncAt: syncedAt,
+      lastAttemptAt: attemptedAt,
+      config: { accountId: "123", accountName: "acme" },
+    });
+    store.setLastDiscoveryResourceIds("github", [repository.id]);
+    store.close();
+
+    const result = await capture(() =>
+      main(["context", repository.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+    const relatedResult = await capture(() =>
+      main(["related", repository.id, "--json", "--dir", dir]),
+    );
+    const relatedParsed = JSON.parse(relatedResult.stdout);
+
+    expect(result.code).toBe(0);
+    expect(parsed.subject.lastSuccessfulProviderSyncAt).toBe(syncedAt);
+    expect(parsed.subject.lastProviderSyncAttemptAt).toBe(attemptedAt);
+    expect(parsed.subject.lastSuccessfulDiscovery).toBe("included");
+    expect(parsed.subject).not.toHaveProperty("lastDiscoveryResourceIds");
+    expect(parsed.related).toEqual(relatedParsed.related);
+  });
+
+  test("omitting --json keeps human context output", async () => {
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "human-context",
+      kind: "repository",
+      name: "human-context",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(resource);
+    store.close();
+
+    const result = await capture(() =>
+      main(["context", resource.id, "--dir", dir]),
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("CURRENT");
+    expect(result.stdout).toContain("RELATED");
+    expect(result.stdout).toContain("CHANGES");
+  });
+
   test("investigate live projection includes lastRequiredProviderAttemptAt when context supplies attempts", async () => {
     const verifiedAt = "2026-08-19T12:00:00.000Z";
     const attemptAt = "2026-08-19T12:30:00.000Z";
@@ -381,12 +525,20 @@ describe("CLI MCP-parity --json", () => {
   });
 
   test("--json rejects unsupported commands without a JSON document", async () => {
-    for (const command of ["history", "sync", "investigation", "relationships"]) {
+    for (const command of [
+      "history",
+      "sync",
+      "investigation",
+      "relationships",
+      "changes",
+    ]) {
       const result = await capture(() =>
         main([command, "--json", "--dir", dir]),
       );
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("providers, resources, related, investigate");
+      expect(result.stderr).toContain(
+        "providers, resources, related, investigate, context",
+      );
       expect(result.stdout).toBe("");
     }
   });
@@ -427,7 +579,9 @@ describe("CLI MCP-parity --json", () => {
     );
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("--json does not take a value");
-    expect(result.stderr).toContain("providers, resources, related, investigate");
+    expect(result.stderr).toContain(
+      "providers, resources, related, investigate, context",
+    );
     expect(result.stdout).toBe("");
   });
 

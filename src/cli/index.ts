@@ -84,14 +84,21 @@ import {
   projectListProviders,
   projectListResources,
   projectRelatedContext,
+  projectResourceContext,
 } from "../mcp/projections.ts";
 import { safeJson } from "../mcp/serialization.ts";
 import { serveMcp } from "../mcp/server.ts";
 import { BINARY_NAME, VERSION } from "./constants.ts";
 
-const JSON_COMMANDS = ["providers", "resources", "related", "investigate"] as const;
+const JSON_COMMANDS = [
+  "providers",
+  "resources",
+  "related",
+  "investigate",
+  "context",
+] as const;
 const JSON_USAGE =
-  "--json is only available for: providers, resources, related, investigate.";
+  "--json is only available for: providers, resources, related, investigate, context.";
 
 const HELP = `combie — engineering context layer
 
@@ -144,7 +151,7 @@ Resources options:
 
 Read options:
   --json                       Emit structured JSON for providers, resources,
-                               related, or investigate
+                               related, investigate, or context
 
 Investigate options:
   --save                       Persist a retained investigation snapshot
@@ -476,7 +483,13 @@ async function main(argv: string[]): Promise<number> {
           return 1;
         }
         const context = getResourceContext({ baseDir, resourceRef });
-        console.log(formatResourceContext(context));
+        if (flags.json === true) {
+          console.log(
+            JSON.stringify(safeJson(projectResourceContext(context)), null, 2),
+          );
+        } else {
+          console.log(formatResourceContext(context));
+        }
         return 0;
       }
       case "investigate": {

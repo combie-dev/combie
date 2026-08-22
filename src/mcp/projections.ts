@@ -1,6 +1,7 @@
 import {
   composeInvestigationFacts,
 } from "../app/investigation-facts.ts";
+import type { ResourceContext } from "../app/context.ts";
 import type { InvestigationContext } from "../app/investigate.ts";
 import type { SavedInvestigation } from "../app/investigations.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
@@ -161,6 +162,41 @@ export function projectRelatedContext(ctx: RelatedResourceContext) {
             name: neighbor.resource.name,
           }
         : null,
+    })),
+  };
+}
+
+export function projectResourceContext(context: ResourceContext) {
+  const { related } = projectRelatedContext(context);
+  return {
+    subject: {
+      id: context.resource.id,
+      provider: context.resource.provider,
+      kind: context.resource.kind,
+      providerResourceId: context.resource.providerResourceId,
+      name: context.resource.name,
+      updatedAt: context.resource.updatedAt,
+      ...(context.providerSyncClocks.lastSuccessfulSyncAt != null
+        ? {
+            lastSuccessfulProviderSyncAt:
+              context.providerSyncClocks.lastSuccessfulSyncAt,
+          }
+        : {}),
+      ...(context.providerSyncClocks.lastAttemptAt != null
+        ? {
+            lastProviderSyncAttemptAt: context.providerSyncClocks.lastAttemptAt,
+          }
+        : {}),
+      ...(context.lastSuccessfulDiscovery != null
+        ? { lastSuccessfulDiscovery: context.lastSuccessfulDiscovery }
+        : {}),
+    },
+    related,
+    changes: context.changes.map((change) => ({
+      id: change.id,
+      kind: change.kind,
+      observedAt: change.observedAt,
+      fields: change.fields,
     })),
   };
 }
