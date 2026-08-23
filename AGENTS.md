@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–090 complete
+## Current baseline: Sprints 001–091 complete
 
 Multi-provider connection loop:
 
@@ -701,6 +701,18 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   unchanged; empty stays `[]`; no schema, no fifth tool, no MCP
   writes, no other `--json` thaw (`providerActivity` / `timeline`
   cycles stay frozen), no skill change.
+- **Sprint 091 shipped** cycle-free `providerActivity` / `timeline`
+  on existing `investigate --json` / MCP `investigate_resource` under
+  founder override 2026-08-23 (the adjacent 090 leftover). The shared
+  `deepCopyProjectionValue` helper (renamed from 090's
+  `deepCopyKnownFactValue`) feeds `projectProviderActivity` /
+  `projectTimeline` at the `projectInvestigateResourceLive` boundary,
+  so shared `relationships` arrays / `Resource` / nested activity
+  edges serialize as ordinary value copies — no `"[Circular]"`.
+  Compose identity, human investigate prose, `safeJson` generic
+  Circular, `knownFacts` (090), `context --json`, and empty shapes
+  unchanged; no schema, no fifth tool, no MCP writes, no
+  `investigation --json`, no other `--json` thaw, no skill change.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →

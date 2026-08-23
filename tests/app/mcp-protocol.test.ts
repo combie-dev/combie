@@ -6124,3 +6124,202 @@ describe("MCP stdio contract (Sprint 090)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 });
+
+describe("MCP stdio contract (Sprint 091)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  function spawnClient(dir: string) {
+    const client = new Client({ name: "combie-test-091", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    return { client, transport };
+  }
+
+  test("investigate_resource returns cycle-free providerActivity and timeline with no state mutation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-091-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "facts-mcp-091",
+      kind: "repository",
+      name: "acme/facts-mcp-091",
+      metadata: { fullName: "acme/facts-mcp-091" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj-091",
+      kind: "project",
+      name: "facts-mcp-091",
+      metadata: {},
+    });
+    store.applyResource(repository, {
+      id: "baseline-repo",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.applyResource(project, {
+      id: "baseline-project",
+      observedAt: "2026-08-09T08:00:00.000Z",
+    });
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/facts-mcp-091",
+          githubRepoId: "facts-mcp-091",
+        },
+      }),
+    );
+    for (const run of [
+      {
+        provider: "github" as const,
+        runId: 9101,
+        resourceId: repository.id,
+        repositoryId: "facts-mcp-091",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 12,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        headBranch: "main",
+        headSha: "abc123",
+        createdAt: "2026-08-09T09:00:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+      {
+        provider: "github" as const,
+        runId: 9102,
+        resourceId: repository.id,
+        repositoryId: "facts-mcp-091",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 13,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "failure",
+        headBranch: "main",
+        headSha: "def456",
+        createdAt: "2026-08-09T09:30:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+    ]) {
+      store.upsertGitHubWorkflowRun(run);
+    }
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: repository.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 2,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.applyResource(
+      {
+        ...repository,
+        name: "acme/facts-mcp-091-renamed",
+        metadata: { fullName: "acme/facts-mcp-091", private: true },
+      },
+      { id: "repo-change-1", observedAt: "2026-08-09T09:00:00.000Z" },
+    );
+    store.applyResource(
+      {
+        ...repository,
+        metadata: {
+          fullName: "acme/facts-mcp-091",
+          private: true,
+          archived: false,
+        },
+      },
+      { id: "repo-change-2", observedAt: "2026-08-09T10:00:00.000Z" },
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: repository.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        providerActivity?: {
+          entries?: Array<{ relationships?: unknown; evidence?: unknown }>;
+        };
+        timeline?: {
+          entries?: Array<{
+            resource?: unknown;
+            change?: { fields?: unknown };
+          }>;
+        };
+      };
+      expect(content.providerActivity).toBeDefined();
+      expect(content.providerActivity!.entries).toBeDefined();
+      expect(content.providerActivity!.entries!.length).toBeGreaterThanOrEqual(2);
+      const providerSerialized = JSON.stringify(content.providerActivity);
+      expect(providerSerialized).not.toContain("Circular");
+      expect(
+        content.providerActivity!.entries!.every(
+          (entry) =>
+            Array.isArray(entry.relationships) &&
+            typeof entry.evidence === "object" &&
+            entry.evidence !== null,
+        ),
+      ).toBe(true);
+      expect(content.timeline).toBeDefined();
+      expect(content.timeline!.entries).toBeDefined();
+      expect(content.timeline!.entries!.length).toBeGreaterThanOrEqual(2);
+      const timelineSerialized = JSON.stringify(content.timeline);
+      expect(timelineSerialized).not.toContain("Circular");
+      expect(
+        content.timeline!.entries!.every(
+          (entry) =>
+            typeof entry.resource === "object" &&
+            entry.resource !== null &&
+            !Array.isArray(entry.resource) &&
+            (entry.resource as { id?: string }).id === repository.id &&
+            typeof entry.change === "object" &&
+            entry.change !== null &&
+            Array.isArray(entry.change.fields),
+        ),
+      ).toBe(true);
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});

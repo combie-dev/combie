@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { initCombie } from "../../src/app/init";
 import type { InvestigationContext } from "../../src/app/investigate";
 import { Store } from "../../src/storage/store";
+import { createChange, type Change } from "../../src/domain/change";
 import { createResource } from "../../src/domain/resource";
 import { createRelationship } from "../../src/domain/relationship";
 import { projectInvestigateResourceLive } from "../../src/mcp/projections";
@@ -348,5 +349,292 @@ describe("mcp unit tests", () => {
   test("default getCombieRoot returns cwd/.combie", () => {
     const result = getCombieRoot();
     expect(result).toBe(resolve(process.cwd(), ".combie"));
+  });
+});
+
+describe("cycle-free providerActivity / timeline projection", () => {
+  const ACTIVITY_OBSERVED_AT = KNOWN_FACTS_OBSERVED_AT;
+
+  function activityChange(id: string, observedAt: string): Change {
+    return createChange({
+      id,
+      resourceId: "github:repository:101",
+      kind: "updated",
+      observedAt,
+      fields: [{ path: "name", before: "old", after: "new" }],
+    });
+  }
+
+  test("rich provider activity with ≥2 subject entries serializes without Circular", () => {
+    const projected = projectInvestigateResourceLive({
+      ctx: knownFactsContext({
+        kind: "populated",
+        observedAt: ACTIVITY_OBSERVED_AT,
+        resultCount: 2,
+        runs: [
+          knownFactsWorkflowRun({
+            runId: 9002,
+            createdAt: "2026-08-09T09:30:00.000Z",
+          }),
+          knownFactsWorkflowRun({ runId: 9001 }),
+        ],
+      }),
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+
+    const serialized = JSON.stringify(safeJson(projected.providerActivity));
+    expect(serialized).not.toContain("Circular");
+    expect(projected.providerActivity.entries.length).toBeGreaterThanOrEqual(2);
+    for (const entry of projected.providerActivity.entries) {
+      expect(Array.isArray(entry.relationships)).toBe(true);
+      expect(
+        typeof entry.evidence === "object" &&
+          entry.evidence !== null &&
+          !Array.isArray(entry.evidence),
+      ).toBe(true);
+      expect(entry.evidence).not.toBe("[Circular]");
+    }
+  });
+
+  test("related multi-entry shared relationships serialize without Circular", () => {
+    const subject = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_abc",
+      kind: "project",
+      name: "site",
+      metadata: {},
+      createdAt: ACTIVITY_OBSERVED_AT,
+      updatedAt: ACTIVITY_OBSERVED_AT,
+    });
+    const neighbor = createResource({
+      provider: "github",
+      providerResourceId: "202",
+      kind: "repository",
+      name: "site-repo",
+      metadata: {},
+      createdAt: ACTIVITY_OBSERVED_AT,
+      updatedAt: ACTIVITY_OBSERVED_AT,
+    });
+    const relationship = createRelationship({
+      sourceResourceId: neighbor.id,
+      targetResourceId: subject.id,
+      kind: "source_for",
+      evidence: { source: "vercel", mechanism: "git_repository_reference" },
+      createdAt: ACTIVITY_OBSERVED_AT,
+      updatedAt: ACTIVITY_OBSERVED_AT,
+    });
+    const ctx: InvestigationContext = {
+      subject,
+      subjectChanges: [],
+      related: [
+        {
+          relationship,
+          direction: "inbound",
+          resource: neighbor,
+          changes: [],
+          deployments: { kind: "not_applicable" },
+          workflowRuns: {
+            kind: "populated",
+            observedAt: ACTIVITY_OBSERVED_AT,
+            resultCount: 2,
+            runs: [
+              knownFactsWorkflowRun({
+                resourceId: neighbor.id,
+                repositoryId: "202",
+                runId: 9004,
+                createdAt: "2026-08-09T09:45:00.000Z",
+              }),
+              knownFactsWorkflowRun({
+                resourceId: neighbor.id,
+                repositoryId: "202",
+                runId: 9003,
+                createdAt: "2026-08-09T09:15:00.000Z",
+              }),
+            ],
+          },
+          operations: { kind: "not_applicable" },
+          releases: { kind: "not_applicable" },
+          issues: { kind: "not_applicable" },
+        },
+      ],
+      subjectDeployments: { kind: "not_applicable" },
+      subjectWorkflowRuns: { kind: "not_applicable" },
+      subjectOperations: { kind: "not_applicable" },
+      subjectReleases: { kind: "not_applicable" },
+      subjectIssues: { kind: "not_applicable" },
+    };
+
+    const projected = projectInvestigateResourceLive({
+      ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+
+    const serialized = JSON.stringify(safeJson(projected.providerActivity));
+    expect(serialized).not.toContain("Circular");
+
+    const relatedEntries = projected.providerActivity.entries.filter(
+      (entry) => entry.role === "related",
+    );
+    expect(relatedEntries.length).toBeGreaterThanOrEqual(2);
+    for (const entry of relatedEntries) {
+      expect(Array.isArray(entry.relationships)).toBe(true);
+      expect(entry.relationships.length).toBeGreaterThanOrEqual(1);
+      const rel = entry.relationships[0]!;
+      expect(rel.direction).toBe("inbound");
+      expect(
+        typeof rel.relationship === "object" &&
+          rel.relationship !== null &&
+          !Array.isArray(rel.relationship),
+      ).toBe(true);
+    }
+  });
+
+  test("rich timeline with ≥2 subject changes serializes without Circular", () => {
+    const ctx = knownFactsContext({ kind: "not_applicable" });
+    ctx.subjectChanges = [
+      activityChange("chg-1", "2026-08-09T08:00:00.000Z"),
+      activityChange("chg-2", "2026-08-09T09:00:00.000Z"),
+    ];
+
+    const projected = projectInvestigateResourceLive({
+      ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+
+    const serialized = JSON.stringify(safeJson(projected.timeline));
+    expect(serialized).not.toContain("Circular");
+    expect(projected.timeline.entries.length).toBeGreaterThanOrEqual(2);
+    for (const entry of projected.timeline.entries) {
+      expect(
+        typeof entry.resource === "object" &&
+          entry.resource !== null &&
+          !Array.isArray(entry.resource),
+      ).toBe(true);
+      expect(entry.resource.id).toBe(ctx.subject.id);
+      expect(Array.isArray(entry.change.fields)).toBe(true);
+    }
+  });
+
+  test("related multi-change timeline serializes shared relationships without Circular", () => {
+    const subject = createResource({
+      provider: "github",
+      providerResourceId: "101",
+      kind: "repository",
+      name: "repo",
+      metadata: {},
+      createdAt: ACTIVITY_OBSERVED_AT,
+      updatedAt: ACTIVITY_OBSERVED_AT,
+    });
+    const neighbor = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_xyz",
+      kind: "project",
+      name: "site",
+      metadata: {},
+      createdAt: ACTIVITY_OBSERVED_AT,
+      updatedAt: ACTIVITY_OBSERVED_AT,
+    });
+    const relationship = createRelationship({
+      sourceResourceId: subject.id,
+      targetResourceId: neighbor.id,
+      kind: "source_for",
+      evidence: {
+        source: "vercel",
+        mechanism: "git_repository_reference",
+        repository: "org/repo",
+      },
+      createdAt: ACTIVITY_OBSERVED_AT,
+      updatedAt: ACTIVITY_OBSERVED_AT,
+    });
+    const ctx: InvestigationContext = {
+      subject,
+      subjectChanges: [],
+      related: [
+        {
+          relationship,
+          direction: "outbound",
+          resource: neighbor,
+          changes: [
+            createChange({
+              id: "chg-r1",
+              resourceId: neighbor.id,
+              kind: "updated",
+              observedAt: "2026-08-09T08:30:00.000Z",
+              fields: [{ path: "name", before: "a", after: "b" }],
+            }),
+            createChange({
+              id: "chg-r2",
+              resourceId: neighbor.id,
+              kind: "updated",
+              observedAt: "2026-08-09T08:45:00.000Z",
+              fields: [{ path: "name", before: "b", after: "c" }],
+            }),
+          ],
+          deployments: { kind: "not_applicable" },
+          workflowRuns: { kind: "not_applicable" },
+          operations: { kind: "not_applicable" },
+          releases: { kind: "not_applicable" },
+          issues: { kind: "not_applicable" },
+        },
+      ],
+      subjectDeployments: { kind: "not_applicable" },
+      subjectWorkflowRuns: { kind: "not_applicable" },
+      subjectOperations: { kind: "not_applicable" },
+      subjectReleases: { kind: "not_applicable" },
+      subjectIssues: { kind: "not_applicable" },
+    };
+
+    const projected = projectInvestigateResourceLive({
+      ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+
+    const serialized = JSON.stringify(safeJson(projected.timeline));
+    expect(serialized).not.toContain("Circular");
+
+    const relatedEntries = projected.timeline.entries.filter(
+      (entry) => entry.role === "related",
+    );
+    expect(relatedEntries.length).toBeGreaterThanOrEqual(2);
+    for (const entry of relatedEntries) {
+      expect(Array.isArray(entry.relationships)).toBe(true);
+      expect(entry.relationships.length).toBeGreaterThanOrEqual(1);
+      const rel = entry.relationships[0]!;
+      expect(
+        typeof rel.relationship === "object" &&
+          rel.relationship !== null &&
+          !Array.isArray(rel.relationship),
+      ).toBe(true);
+      expect(
+        typeof rel.relationship.evidence === "object" &&
+          rel.relationship.evidence !== null &&
+          !Array.isArray(rel.relationship.evidence),
+      ).toBe(true);
+    }
+  });
+
+  test("minimal context projects empty providerActivity and timeline entries", () => {
+    const projected = projectInvestigateResourceLive({
+      ctx: knownFactsContext({ kind: "not_applicable" }),
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+    expect(projected.providerActivity.entries).toEqual([]);
+    expect(projected.timeline.entries).toEqual([]);
+    expect(
+      JSON.stringify(safeJson(projected.providerActivity)),
+    ).not.toContain("Circular");
+    expect(
+      JSON.stringify(safeJson(projected.timeline)),
+    ).not.toContain("Circular");
   });
 });

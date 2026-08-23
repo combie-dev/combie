@@ -444,6 +444,8 @@ describe("CLI MCP-parity --json", () => {
     expect(result.code).toBe(0);
     expect(parsed).toEqual(expected);
     expect(JSON.stringify(parsed.knownFacts)).not.toContain("Circular");
+    expect(JSON.stringify(parsed.providerActivity)).not.toContain("Circular");
+    expect(JSON.stringify(parsed.timeline)).not.toContain("Circular");
     expect(parsed).not.toHaveProperty("resolutionMemory");
     expect(parsed).not.toHaveProperty("incidentMemory");
     expect(parsed).not.toHaveProperty("investigationHistory");
@@ -565,6 +567,165 @@ describe("CLI MCP-parity --json", () => {
       baseDir: dir,
       resourceRef: repository.id,
     });
+    const expected = safeJson(
+      projectInvestigateResourceLive({
+        ctx,
+        resolutionRows: listResolutions(dir, {
+          subjectResourceId: repository.id,
+        }),
+        incidentRows: listIncidentsForSubject(dir, repository.id),
+        investigationRows: listInvestigations(dir, {
+          subjectResourceId: repository.id,
+        }),
+      }),
+    );
+    expect(parsed).toEqual(expected);
+  });
+
+  test("investigate --json serializes rich providerActivity and timeline without Circular placeholders", async () => {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "activity-json",
+      kind: "repository",
+      name: "acme/activity-json",
+      metadata: { fullName: "acme/activity-json" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj-activity-json",
+      kind: "project",
+      name: "activity-json",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/activity-json",
+          githubRepoId: "activity-json",
+        },
+      }),
+    );
+    for (const run of [
+      {
+        provider: "github" as const,
+        runId: 9101,
+        resourceId: repository.id,
+        repositoryId: "activity-json",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 12,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        headBranch: "main",
+        headSha: "abc123",
+        createdAt: "2026-08-09T09:00:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+      {
+        provider: "github" as const,
+        runId: 9102,
+        resourceId: repository.id,
+        repositoryId: "activity-json",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 13,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "failure",
+        headBranch: "main",
+        headSha: "def456",
+        createdAt: "2026-08-09T09:30:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+    ]) {
+      store.upsertGitHubWorkflowRun(run);
+    }
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: repository.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 2,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.applyResource(repository, {
+      id: "repo-baseline",
+      observedAt: "2026-08-08T08:00:00.000Z",
+    });
+    store.applyResource(
+      {
+        ...repository,
+        name: "acme/activity-json-renamed",
+        metadata: { fullName: "acme/activity-json", private: true },
+      },
+      { id: "repo-change-1", observedAt: "2026-08-08T09:00:00.000Z" },
+    );
+    store.applyResource(
+      {
+        ...repository,
+        metadata: {
+          fullName: "acme/activity-json",
+          private: true,
+          archived: false,
+        },
+      },
+      { id: "repo-change-2", observedAt: "2026-08-08T10:00:00.000Z" },
+    );
+    store.close();
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: repository.id,
+    });
+    expect(ctx.subjectChanges.length).toBeGreaterThanOrEqual(2);
+
+    const result = await capture(() =>
+      main(["investigate", repository.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(JSON.stringify(parsed.providerActivity)).not.toContain("Circular");
+    expect(parsed.providerActivity.entries.length).toBeGreaterThanOrEqual(2);
+    expect(
+      parsed.providerActivity.entries.every(
+        (entry: { relationships: unknown; evidence: unknown }) =>
+          Array.isArray(entry.relationships) &&
+          typeof entry.evidence === "object" &&
+          entry.evidence !== null,
+      ),
+    ).toBe(true);
+
+    expect(JSON.stringify(parsed.timeline)).not.toContain("Circular");
+    expect(parsed.timeline.entries.length).toBeGreaterThanOrEqual(2);
+    expect(
+      parsed.timeline.entries.every(
+        (entry: { resource: { id: string }; change: { fields: unknown } }) =>
+          typeof entry.resource === "object" &&
+          entry.resource !== null &&
+          entry.resource.id === repository.id &&
+          typeof entry.change === "object" &&
+          entry.change !== null &&
+          Array.isArray(entry.change.fields),
+      ),
+    ).toBe(true);
+
     const expected = safeJson(
       projectInvestigateResourceLive({
         ctx,

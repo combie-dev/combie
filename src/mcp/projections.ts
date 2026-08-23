@@ -6,14 +6,20 @@ import type { ResourceContext } from "../app/context.ts";
 import type { InvestigationContext } from "../app/investigate.ts";
 import type { SavedInvestigation } from "../app/investigations.ts";
 import { composeMissingContext } from "../app/missing-context.ts";
-import { composeProviderActivityChronology } from "../app/provider-activity.ts";
+import {
+  composeProviderActivityChronology,
+  type ProviderActivityChronology,
+} from "../app/provider-activity.ts";
 import type { RelatedResourceContext } from "../app/related.ts";
 import { lastRequiredProviderAttemptAt } from "../app/relationship-verification-clocks.ts";
 import {
   composeSharedCommitContext,
   composeSharedCommitCorrespondences,
 } from "../app/shared-commit-context.ts";
-import { composeInvestigationTimeline } from "../app/timeline.ts";
+import {
+  composeInvestigationTimeline,
+  type InvestigationTimeline,
+} from "../app/timeline.ts";
 import type { IncidentRecord } from "../domain/incident.ts";
 import type { InvestigationRecord } from "../domain/investigation.ts";
 import type { RelationshipKind } from "../domain/relationship.ts";
@@ -209,18 +215,28 @@ export interface ProjectInvestigateResourceLiveOptions {
   investigationRows: InvestigationRecord[];
 }
 
-function deepCopyKnownFactValue(value: unknown): unknown {
+function deepCopyProjectionValue(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map(deepCopyKnownFactValue);
+  if (Array.isArray(value)) return value.map(deepCopyProjectionValue);
   const copy: Record<string, unknown> = {};
   for (const key of Object.keys(value)) {
-    copy[key] = deepCopyKnownFactValue((value as Record<string, unknown>)[key]);
+    copy[key] = deepCopyProjectionValue((value as Record<string, unknown>)[key]);
   }
   return copy;
 }
 
 function projectKnownFacts(facts: InvestigationFact[]): InvestigationFact[] {
-  return facts.map((fact) => deepCopyKnownFactValue(fact) as InvestigationFact);
+  return facts.map((fact) => deepCopyProjectionValue(fact) as InvestigationFact);
+}
+
+function projectProviderActivity(
+  chronology: ProviderActivityChronology,
+): ProviderActivityChronology {
+  return deepCopyProjectionValue(chronology) as ProviderActivityChronology;
+}
+
+function projectTimeline(timeline: InvestigationTimeline): InvestigationTimeline {
+  return deepCopyProjectionValue(timeline) as InvestigationTimeline;
 }
 
 export function projectInvestigateResourceLive({
@@ -312,8 +328,8 @@ export function projectInvestigateResourceLive({
     related,
     knownFacts: projectKnownFacts(composeInvestigationFacts(ctx)),
     missingContext: composeMissingContext(ctx),
-    providerActivity: composeProviderActivityChronology(ctx),
-    timeline: composeInvestigationTimeline(ctx),
+    providerActivity: projectProviderActivity(composeProviderActivityChronology(ctx)),
+    timeline: projectTimeline(composeInvestigationTimeline(ctx)),
     sharedCommitContext: sharedCommitGroups,
     sharedCommitCorrespondences:
       composeSharedCommitCorrespondences(sharedCommitGroups),
