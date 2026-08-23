@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–088 complete
+## Current baseline: Sprints 001–090 complete
 
 Multi-provider connection loop:
 
@@ -680,6 +680,27 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `context`, no fifth tool / `get_context`, no other `--json` thaw,
   no `investigation --json`, no checkout skill copy, no 078 leftover
   thaw, no Resource deletion, no generic Observation type).
+- **Sprint 089 shipped** the post-088 dogfood / evidence pass under
+  founder override 2026-08-21 (research only; isolated `--dir`; CLI +
+  four-tool MCP + `skills/combie` inspect; no `src/` / `tests/` /
+  `package.json` edits). Decision: **NO-GO / defer**. One session; no
+  blocker; leftover order did not authorize a slice. Listed leftovers
+  stay frozen. Leading uneared candidate if a later session repeats
+  it: cycle-free `investigate --json` / `investigate_resource` Known
+  Facts (not a fifth tool, not `investigation --json`, not Missing
+  Context on `context`, not implemented here). Sprint 090 was not
+  started.
+- **Sprint 090 shipped** cycle-free Investigate Known Facts JSON under
+  founder override 2026-08-22 over Sprint 089 dogfood evidence
+  (bucket H). `projectKnownFacts` in `src/mcp/projections.ts` copies
+  composed facts by value at the boundary so CLI `investigate --json`
+  and MCP `investigate_resource` structured `knownFacts` serialize
+  shared authority / nested evidence as ordinary objects — no
+  `"[Circular]"`. Compose semantics, human Known Facts prose,
+  `safeJson` generic cycle marking, and `context --json` compactness
+  unchanged; empty stays `[]`; no schema, no fifth tool, no MCP
+  writes, no other `--json` thaw (`providerActivity` / `timeline`
+  cycles stay frozen), no skill change.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →

@@ -6001,3 +6001,126 @@ describe("MCP stdio contract (Sprint 085)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 });
+
+describe("MCP stdio contract (Sprint 090)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  test("investigate_resource serializes knownFacts without Circular placeholders", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-090-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "facts-mcp",
+      kind: "repository",
+      name: "acme/facts-mcp",
+      metadata: { fullName: "acme/facts-mcp" },
+    });
+    store.upsertResource(repository);
+    for (const run of [
+      {
+        provider: "github" as const,
+        runId: 9001,
+        resourceId: repository.id,
+        repositoryId: "facts-mcp",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 12,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        headBranch: "main",
+        headSha: "abc123",
+        createdAt: "2026-08-09T09:00:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+      {
+        provider: "github" as const,
+        runId: 9002,
+        resourceId: repository.id,
+        repositoryId: "facts-mcp",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 13,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "failure",
+        headBranch: "main",
+        headSha: "def456",
+        createdAt: "2026-08-09T09:30:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+    ]) {
+      store.upsertGitHubWorkflowRun(run);
+    }
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: repository.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 2,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const client = new Client({ name: "combie-test-090", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: repository.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        knownFacts?: Array<Record<string, unknown>>;
+      };
+      expect(Array.isArray(content.knownFacts)).toBe(true);
+      expect(content.knownFacts!.length).toBeGreaterThan(0);
+      const serialized = JSON.stringify(content.knownFacts);
+      expect(serialized).not.toContain("Circular");
+
+      const stateFact = content.knownFacts!.find(
+        (fact) => fact.kind === "provider_state_summary",
+      );
+      expect(stateFact).toBeDefined();
+      const groupedRows = [
+        ...(stateFact!.evidence as Array<{ authority?: unknown }>),
+        ...(
+          stateFact!.groups as Array<{ evidence: Array<{ authority?: unknown }> }>
+        ).flatMap((group) => group.evidence),
+      ];
+      expect(groupedRows.length).toBeGreaterThanOrEqual(2);
+      expect(
+        groupedRows.every((row) => (row.authority as { kind: string })?.kind === "populated"),
+      ).toBe(true);
+    } finally {
+      await client.close();
+    }
+
+    expect(digest()).toBe(before);
+  }, 15_000);
+});

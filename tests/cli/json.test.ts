@@ -443,10 +443,141 @@ describe("CLI MCP-parity --json", () => {
 
     expect(result.code).toBe(0);
     expect(parsed).toEqual(expected);
+    expect(JSON.stringify(parsed.knownFacts)).not.toContain("Circular");
     expect(parsed).not.toHaveProperty("resolutionMemory");
     expect(parsed).not.toHaveProperty("incidentMemory");
     expect(parsed).not.toHaveProperty("investigationHistory");
     expect(parsed.subject).not.toHaveProperty("lastSuccessfulDiscovery");
+  });
+
+  test("investigate --json projects empty knownFacts when no activity family applies", async () => {
+    const resource = createResource({
+      provider: "cloudflare",
+      providerResourceId: "worker-facts-empty",
+      kind: "worker",
+      name: "worker-facts-empty",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(resource);
+    store.close();
+
+    const result = await capture(() =>
+      main(["investigate", resource.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(parsed.knownFacts).toEqual([]);
+  });
+
+  test("investigate --json serializes rich knownFacts without Circular placeholders", async () => {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "facts-json",
+      kind: "repository",
+      name: "acme/facts-json",
+      metadata: { fullName: "acme/facts-json" },
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    for (const run of [
+      {
+        provider: "github" as const,
+        runId: 9001,
+        resourceId: repository.id,
+        repositoryId: "facts-json",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 12,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        headBranch: "main",
+        headSha: "abc123",
+        createdAt: "2026-08-09T09:00:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+      {
+        provider: "github" as const,
+        runId: 9002,
+        resourceId: repository.id,
+        repositoryId: "facts-json",
+        workflowId: 55,
+        name: "ci",
+        runNumber: 13,
+        runAttempt: 1,
+        event: "push",
+        status: "completed",
+        conclusion: "failure",
+        headBranch: "main",
+        headSha: "def456",
+        createdAt: "2026-08-09T09:30:00.000Z",
+        runStartedAt: null,
+        updatedAt: null,
+        observedAt: "2026-08-09T12:00:00.000Z",
+      },
+    ]) {
+      store.upsertGitHubWorkflowRun(run);
+    }
+    store.setGitHubWorkflowRunRefresh({
+      resourceId: repository.id,
+      status: "success",
+      observedAt: "2026-08-09T12:00:00.000Z",
+      message: null,
+      resultCount: 2,
+      lastSuccessfulObservedAt: "2026-08-09T12:00:00.000Z",
+    });
+    store.close();
+
+    const result = await capture(() =>
+      main(["investigate", repository.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(parsed.knownFacts.length).toBeGreaterThan(0);
+    expect(JSON.stringify(parsed.knownFacts)).not.toContain("Circular");
+
+    const stateFact = parsed.knownFacts.find(
+      (fact: { kind: string }) => fact.kind === "provider_state_summary",
+    );
+    expect(stateFact).toBeDefined();
+    const groupedRows = [
+      ...stateFact.evidence,
+      ...stateFact.groups.flatMap((group: { evidence: unknown[] }) => group.evidence),
+    ];
+    expect(groupedRows.length).toBeGreaterThanOrEqual(2);
+    expect(
+      groupedRows.every(
+        (row: { authority: { kind: string } }) =>
+          typeof row.authority === "object" &&
+          row.authority.kind === "populated",
+      ),
+    ).toBe(true);
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: repository.id,
+    });
+    const expected = safeJson(
+      projectInvestigateResourceLive({
+        ctx,
+        resolutionRows: listResolutions(dir, {
+          subjectResourceId: repository.id,
+        }),
+        incidentRows: listIncidentsForSubject(dir, repository.id),
+        investigationRows: listInvestigations(dir, {
+          subjectResourceId: repository.id,
+        }),
+      }),
+    );
+    expect(parsed).toEqual(expected);
   });
 
   test("investigate --json omits lastSuccessfulDiscovery when unset and includes it when context supplies it", async () => {

@@ -1,5 +1,6 @@
 import {
   composeInvestigationFacts,
+  type InvestigationFact,
 } from "../app/investigation-facts.ts";
 import type { ResourceContext } from "../app/context.ts";
 import type { InvestigationContext } from "../app/investigate.ts";
@@ -208,6 +209,20 @@ export interface ProjectInvestigateResourceLiveOptions {
   investigationRows: InvestigationRecord[];
 }
 
+function deepCopyKnownFactValue(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(deepCopyKnownFactValue);
+  const copy: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    copy[key] = deepCopyKnownFactValue((value as Record<string, unknown>)[key]);
+  }
+  return copy;
+}
+
+function projectKnownFacts(facts: InvestigationFact[]): InvestigationFact[] {
+  return facts.map((fact) => deepCopyKnownFactValue(fact) as InvestigationFact);
+}
+
 export function projectInvestigateResourceLive({
   ctx,
   resolutionRows,
@@ -295,7 +310,7 @@ export function projectInvestigateResourceLive({
     subjectReleases: ctx.subjectReleases,
     subjectIssues: ctx.subjectIssues,
     related,
-    knownFacts: composeInvestigationFacts(ctx),
+    knownFacts: projectKnownFacts(composeInvestigationFacts(ctx)),
     missingContext: composeMissingContext(ctx),
     providerActivity: composeProviderActivityChronology(ctx),
     timeline: composeInvestigationTimeline(ctx),

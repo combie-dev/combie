@@ -3,11 +3,67 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { initCombie } from "../../src/app/init";
+import type { InvestigationContext } from "../../src/app/investigate";
 import { Store } from "../../src/storage/store";
 import { createResource } from "../../src/domain/resource";
 import { createRelationship } from "../../src/domain/relationship";
+import { projectInvestigateResourceLive } from "../../src/mcp/projections";
 import { safeJson } from "../../src/mcp/serialization";
 import { getCombieRoot } from "../../src/storage/paths";
+import type {
+  GitHubWorkflowRunEvidence,
+  WorkflowRunEvidenceAuthority,
+} from "../../src/providers/github/workflow-run";
+
+const KNOWN_FACTS_OBSERVED_AT = "2026-08-09T12:00:00.000Z";
+
+function knownFactsWorkflowRun(
+  overrides: Partial<GitHubWorkflowRunEvidence> = {},
+): GitHubWorkflowRunEvidence {
+  return {
+    provider: "github",
+    runId: 9001,
+    resourceId: "github:repository:101",
+    repositoryId: "101",
+    workflowId: 55,
+    name: "ci",
+    runNumber: 12,
+    runAttempt: 1,
+    event: "push",
+    status: "completed",
+    conclusion: "success",
+    headBranch: "main",
+    headSha: "abc123",
+    createdAt: "2026-08-09T09:00:00.000Z",
+    runStartedAt: null,
+    updatedAt: null,
+    observedAt: KNOWN_FACTS_OBSERVED_AT,
+    ...overrides,
+  };
+}
+
+function knownFactsContext(
+  workflowRuns: WorkflowRunEvidenceAuthority,
+): InvestigationContext {
+  return {
+    subject: createResource({
+      provider: "github",
+      providerResourceId: "101",
+      kind: "repository",
+      name: "facts-repo",
+      metadata: {},
+      createdAt: KNOWN_FACTS_OBSERVED_AT,
+      updatedAt: KNOWN_FACTS_OBSERVED_AT,
+    }),
+    subjectChanges: [],
+    related: [],
+    subjectDeployments: { kind: "not_applicable" },
+    subjectWorkflowRuns: workflowRuns,
+    subjectOperations: { kind: "not_applicable" },
+    subjectReleases: { kind: "not_applicable" },
+    subjectIssues: { kind: "not_applicable" },
+  };
+}
 
 describe("mcp unit tests", () => {
   test("in-memory serialization of Resource preserves identity", () => {
@@ -222,6 +278,61 @@ describe("mcp unit tests", () => {
     const d = new Date("2024-01-15T12:00:00Z");
     const result = safeJson({ when: d }) as Record<string, unknown>;
     expect(result.when).toBe("2024-01-15T12:00:00.000Z");
+  });
+
+  test("investigate knownFacts projection serializes shared authority without Circular placeholders", () => {
+    const projected = projectInvestigateResourceLive({
+      ctx: knownFactsContext({
+        kind: "populated",
+        observedAt: KNOWN_FACTS_OBSERVED_AT,
+        resultCount: 2,
+        runs: [
+          knownFactsWorkflowRun({
+            runId: 9002,
+            conclusion: "failure",
+            createdAt: "2026-08-09T09:30:00.000Z",
+          }),
+          knownFactsWorkflowRun({ runId: 9001, conclusion: "success" }),
+        ],
+      }),
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+
+    const serialized = JSON.stringify(safeJson(projected.knownFacts));
+    expect(serialized).not.toContain("Circular");
+
+    const stateFact = projected.knownFacts.find(
+      (fact) => fact.kind === "provider_state_summary",
+    );
+    expect(stateFact).toBeDefined();
+    if (!stateFact || stateFact.kind !== "provider_state_summary") return;
+    const groupedRows = [
+      ...stateFact.evidence,
+      ...stateFact.groups.flatMap((group) => group.evidence),
+    ];
+    expect(groupedRows.length).toBeGreaterThanOrEqual(2);
+    expect(
+      groupedRows.every(
+        (row) =>
+          typeof row.authority === "object" &&
+          row.authority !== null &&
+          !Array.isArray(row.authority) &&
+          row.authority.kind === "populated" &&
+          typeof row.authority.refreshObservedAt === "string",
+      ),
+    ).toBe(true);
+  });
+
+  test("minimal investigate context projects empty knownFacts", () => {
+    const projected = projectInvestigateResourceLive({
+      ctx: knownFactsContext({ kind: "not_applicable" }),
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+    expect(projected.knownFacts).toEqual([]);
   });
 
   test("getCombieRoot normalizes relative paths", () => {
