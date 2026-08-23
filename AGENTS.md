@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–091 complete
+## Current baseline: Sprints 001–092 complete
 
 Multi-provider connection loop:
 
@@ -713,6 +713,27 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   Circular, `knownFacts` (090), `context --json`, and empty shapes
   unchanged; no schema, no fifth tool, no MCP writes, no
   `investigation --json`, no other `--json` thaw, no skill change.
+- **Sprint 092 shipped** the post-090/091 dogfood / evidence pass
+  under founder override 2026-08-23 (research / dogfood only; zero
+  product code). Re-verified the 090/091 regression claim (0
+  `"[Circular]"` in `knownFacts` / `providerActivity` / `timeline` on
+  CLI `investigate --json` and MCP `investigate_resource`); the only
+  remaining Circular field on the deep document is
+  `missingContext[].scope` (shared subject scope across ≥2
+  `never_successfully_refreshed` families; `major`; observed on CLI +
+  MCP on `sentry:project:450`; not a 090/091 regression). Exactly one
+  earned next-work decision: **cycle-free `missingContext` projection
+  on existing `investigate --json` / MCP `investigate_resource`**
+  (same by-value class as 090/091; reuse `deepCopyProjectionValue`;
+  not implemented in 092; founder override required for 093+).
+  Secondary minor observations: `skills/combie` still omits
+  `context --json` (recurrence 2), MCP still cannot list snapshots
+  (recurrence 2), `.timeline` empty while `.providerActivity` /
+  `.knownFacts` populated (nit). Leftovers stay frozen (additional
+  `--json` reads, checkout skill copy, 078 leftovers, fifth MCP tool,
+  `investigation --json`, Resource deletion, generic Observation type,
+  Missing Context on `context`, skill-body rewrite). No schema, no
+  fifth tool, no MCP writes, no `--json` thaw.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
