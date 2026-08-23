@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–094 complete
+## Current baseline: Sprints 001–095 complete
 
 Multi-provider connection loop:
 
@@ -771,6 +771,23 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   Resource deletion, generic Observation type, Missing Context on
   `context`, skill-body rewrite). No schema, no fifth tool, no MCP
   writes, no `--json` thaw.
+- **Sprint 095 shipped** the `skills/combie` `context --json`
+  documentation slice under founder override 2026-08-23 (docs/skill
+  only; zero product code). `skills/combie` step 4 now teaches the
+  already-shipped `combie context <id> --json` surface (088): the
+  `--json` reads list names all five shipped commands (`providers`,
+  `resources`, `related`, `context`, live `investigate`); `combie
+  context <id> --json` is taught as the compact CURRENT + RELATED +
+  CHANGES local-filter document with deep investigation fields (Known
+  Facts, provider activity, timeline, Missing Context, memory
+  sidecars) staying on `investigate --json` / MCP
+  `investigate_resource` — context does not replace investigate.
+  Six-step loop, four-tool MCP list, 083 denylist, and Constitution
+  guard all unchanged and green; content-contract allowlist extended
+  (+1 test: `combie context` / `combie context <id> --json`). No
+  `src/` / `package.json` diffs, no CLI flag change, no MCP change, no
+  Missing Context on `context`, no skill install change, no checkout
+  copy, no additional `--json` thaw, no 078 leftover thaw.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →

@@ -109,6 +109,12 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(skillText.includes("--json")).toBe(true);
   });
 
+  test("allowlist: context --json local-filter surface (Sprint 095)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("combie context")).toBe(true);
+    expect(skillText.includes("combie context <id> --json")).toBe(true);
+  });
+
   test("allowlist: complete snapshot retrieve surface", () => {
     if (skillText === null) return;
     expect(skillText.includes("combie investigation")).toBe(true);

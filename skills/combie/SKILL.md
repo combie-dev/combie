@@ -65,12 +65,15 @@ Bare `combie sync` syncs all connected providers; prefer scoping to the authorit
 
 ## 4. Filter structured results locally
 
-`--json` is available on `providers`, `resources`, `related`, and live `investigate`. Pipe to jq or rg to select the fields you need instead of dumping the whole compose:
+`--json` is available on `providers`, `resources`, `related`, `context`, and live `investigate`. Pipe to jq or rg to select the fields you need instead of dumping the whole compose:
 
 ```bash
 combie investigate <id> --json | jq '.knownFacts'
+combie context <id> --json | jq '.related'
 combie providers --json | jq '.providers[] | {name, lastSyncAt, lastAttemptAt}'
 ```
+
+`combie context <id> --json` is the compact local-filter document for CURRENT + RELATED + CHANGES. Deep investigation fields — Known Facts, provider activity, timeline, Missing Context, memory sidecars — stay on `combie investigate --json` and MCP `investigate_resource`; context does not replace investigate.
 
 Filter locally with jq; do not invent new flags.
 
