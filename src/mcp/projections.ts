@@ -5,7 +5,7 @@ import {
 import type { ResourceContext } from "../app/context.ts";
 import type { InvestigationContext } from "../app/investigate.ts";
 import type { SavedInvestigation } from "../app/investigations.ts";
-import { composeMissingContext } from "../app/missing-context.ts";
+import { composeMissingContext, type MissingContextItem } from "../app/missing-context.ts";
 import {
   composeProviderActivityChronology,
   type ProviderActivityChronology,
@@ -239,6 +239,10 @@ function projectTimeline(timeline: InvestigationTimeline): InvestigationTimeline
   return deepCopyProjectionValue(timeline) as InvestigationTimeline;
 }
 
+function projectMissingContext(items: MissingContextItem[]): MissingContextItem[] {
+  return items.map((item) => deepCopyProjectionValue(item) as MissingContextItem);
+}
+
 export function projectInvestigateResourceLive({
   ctx,
   resolutionRows,
@@ -327,7 +331,7 @@ export function projectInvestigateResourceLive({
     subjectIssues: ctx.subjectIssues,
     related,
     knownFacts: projectKnownFacts(composeInvestigationFacts(ctx)),
-    missingContext: composeMissingContext(ctx),
+    missingContext: projectMissingContext(composeMissingContext(ctx)),
     providerActivity: projectProviderActivity(composeProviderActivityChronology(ctx)),
     timeline: projectTimeline(composeInvestigationTimeline(ctx)),
     sharedCommitContext: sharedCommitGroups,

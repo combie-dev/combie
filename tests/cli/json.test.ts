@@ -741,6 +741,61 @@ describe("CLI MCP-parity --json", () => {
     expect(parsed).toEqual(expected);
   });
 
+  test("investigate --json serializes cycle-free missingContext without Circular placeholders", async () => {
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "missing-ctx-cli",
+      kind: "project",
+      name: "missing-ctx-cli",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(project);
+    store.close();
+
+    const result = await capture(() =>
+      main(["investigate", project.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(JSON.stringify(parsed.missingContext)).not.toContain("Circular");
+    const refreshed = parsed.missingContext.filter(
+      (item: { kind: string }) => item.kind === "never_successfully_refreshed",
+    );
+    expect(refreshed.length).toBeGreaterThanOrEqual(2);
+    for (const item of refreshed) {
+      expect(typeof item.scope === "object" && item.scope !== null).toBe(true);
+      expect(item.scope.resourceId).toBe(project.id);
+      expect(item.scope.role).toBe("subject");
+      expect(Array.isArray(item.scope.relationships)).toBe(true);
+    }
+    const scopes = refreshed.map(
+      (item: { scope: unknown }) => item.scope as Record<string, unknown>,
+    );
+    expect(scopes[0]).toEqual(scopes[1]);
+    expect(scopes[0]).not.toBe(scopes[1]);
+
+    const ctx = getInvestigationContext({
+      baseDir: dir,
+      resourceRef: project.id,
+    });
+    const expected = safeJson(
+      projectInvestigateResourceLive({
+        ctx,
+        resolutionRows: listResolutions(dir, {
+          subjectResourceId: project.id,
+        }),
+        incidentRows: listIncidentsForSubject(dir, project.id),
+        investigationRows: listInvestigations(dir, {
+          subjectResourceId: project.id,
+        }),
+      }),
+    );
+    expect(parsed).toEqual(expected);
+  });
+
   test("investigate --json omits lastSuccessfulDiscovery when unset and includes it when context supplies it", async () => {
     const resource = createResource({
       provider: "github",

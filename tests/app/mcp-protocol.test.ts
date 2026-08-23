@@ -6323,3 +6323,92 @@ describe("MCP stdio contract (Sprint 091)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 });
+
+describe("MCP stdio contract (Sprint 093)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  function spawnClient(dir: string) {
+    const client = new Client({ name: "combie-test-093", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    return { client, transport };
+  }
+
+  test("investigate_resource returns cycle-free missingContext with no state mutation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-093-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "missing-ctx-mcp",
+      kind: "project",
+      name: "missing-ctx-mcp",
+      metadata: {},
+    });
+    store.upsertResource(project);
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "get_related_context",
+        "investigate_resource",
+        "list_providers",
+        "list_resources",
+      ]);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: project.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        missingContext?: Array<{
+          kind?: string;
+          scope?: {
+            resourceId?: string;
+            role?: string;
+            relationships?: unknown;
+          };
+        }>;
+      };
+      expect(content.missingContext).toBeDefined();
+      const serialized = JSON.stringify(content.missingContext);
+      expect(serialized).not.toContain("Circular");
+      const refreshed = content.missingContext!.filter(
+        (item) => item.kind === "never_successfully_refreshed",
+      );
+      expect(refreshed.length).toBeGreaterThanOrEqual(2);
+      for (const item of refreshed) {
+        expect(
+          typeof item.scope === "object" && item.scope !== null,
+        ).toBe(true);
+        expect(item.scope!.resourceId).toBe(project.id);
+        expect(item.scope!.role).toBe("subject");
+        expect(Array.isArray(item.scope!.relationships)).toBe(true);
+      }
+      const scopes = refreshed.map((item) => item.scope);
+      expect(scopes[0]).toEqual(scopes[1]);
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});

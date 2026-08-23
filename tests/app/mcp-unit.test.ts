@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { initCombie } from "../../src/app/init";
 import type { InvestigationContext } from "../../src/app/investigate";
+import { composeMissingContext } from "../../src/app/missing-context";
 import { Store } from "../../src/storage/store";
 import { createChange, type Change } from "../../src/domain/change";
 import { createResource } from "../../src/domain/resource";
@@ -334,6 +335,133 @@ describe("mcp unit tests", () => {
       investigationRows: [],
     });
     expect(projected.knownFacts).toEqual([]);
+  });
+
+  test("investigate missingContext projection serializes shared subject scope without Circular placeholders", () => {
+    const ctx: InvestigationContext = {
+      subject: createResource({
+        provider: "github",
+        providerResourceId: "missing-ctx-unit",
+        kind: "repository",
+        name: "missing-ctx-unit",
+        metadata: {},
+        createdAt: "2026-08-09T12:00:00.000Z",
+        updatedAt: "2026-08-09T12:00:00.000Z",
+      }),
+      subjectChanges: [],
+      related: [],
+      subjectDeployments: {
+        kind: "unknown",
+        deployments: [],
+        latestAttemptObservedAt: null,
+        lastSuccessAt: null,
+        resultCount: null,
+        message: null,
+      },
+      subjectWorkflowRuns: {
+        kind: "unknown",
+        runs: [],
+        latestAttemptObservedAt: null,
+        lastSuccessAt: null,
+        resultCount: null,
+        message: null,
+      },
+      subjectOperations: { kind: "not_applicable" },
+      subjectReleases: { kind: "not_applicable" },
+      subjectIssues: { kind: "not_applicable" },
+    };
+
+    const projected = projectInvestigateResourceLive({
+      ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+    const serialized = JSON.stringify(safeJson(projected.missingContext));
+    expect(serialized).not.toContain("Circular");
+
+    expect(projected.missingContext.length).toBeGreaterThanOrEqual(2);
+    const refreshed = projected.missingContext.filter(
+      (item) => item.kind === "never_successfully_refreshed",
+    );
+    expect(refreshed.length).toBeGreaterThanOrEqual(2);
+    for (const item of refreshed) {
+      expect(
+        typeof item.scope === "object" &&
+          item.scope !== null &&
+          !Array.isArray(item.scope),
+      ).toBe(true);
+      expect(item.scope.resourceId).toBe(ctx.subject.id);
+      expect(item.scope.role).toBe("subject");
+      expect(Array.isArray(item.scope.relationships)).toBe(true);
+    }
+    const scopes = refreshed.map((item) => item.scope);
+    expect(scopes[0]).toEqual(scopes[1]);
+    expect(scopes[0]).not.toBe(scopes[1]);
+
+    expect(projected.missingContext).toEqual(composeMissingContext(ctx));
+  });
+
+  test("minimal investigate context projects empty missingContext", () => {
+    const subject = createResource({
+      provider: "vercel",
+      providerResourceId: "missing-ctx-empty",
+      kind: "project",
+      name: "missing-ctx-empty",
+      metadata: {},
+      createdAt: "2026-08-09T12:00:00.000Z",
+      updatedAt: "2026-08-09T12:00:00.000Z",
+    });
+    const neighbor = createResource({
+      provider: "github",
+      providerResourceId: "missing-ctx-empty-repo",
+      kind: "repository",
+      name: "missing-ctx-empty-repo",
+      metadata: {},
+      createdAt: "2026-08-09T12:00:00.000Z",
+      updatedAt: "2026-08-09T12:00:00.000Z",
+    });
+    const ctx: InvestigationContext = {
+      subject,
+      subjectChanges: [],
+      related: [
+        {
+          relationship: createRelationship({
+            sourceResourceId: subject.id,
+            targetResourceId: neighbor.id,
+            kind: "source_for",
+            evidence: {
+              source: "vercel",
+              mechanism: "git_repository_reference",
+            },
+          }),
+          direction: "outbound",
+          resource: null,
+          changes: [],
+          deployments: { kind: "not_applicable" },
+          workflowRuns: { kind: "not_applicable" },
+          operations: { kind: "not_applicable" },
+          releases: { kind: "not_applicable" },
+          issues: { kind: "not_applicable" },
+        },
+      ],
+      subjectDeployments: { kind: "not_applicable" },
+      subjectWorkflowRuns: { kind: "not_applicable" },
+      subjectOperations: { kind: "not_applicable" },
+      subjectReleases: { kind: "not_applicable" },
+      subjectIssues: { kind: "not_applicable" },
+    };
+
+    const projected = projectInvestigateResourceLive({
+      ctx,
+      resolutionRows: [],
+      incidentRows: [],
+      investigationRows: [],
+    });
+    expect(projected.missingContext).toEqual([]);
+    expect(
+      JSON.stringify(safeJson(projected.missingContext)),
+    ).not.toContain("Circular");
   });
 
   test("getCombieRoot normalizes relative paths", () => {

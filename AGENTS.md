@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–092 complete
+## Current baseline: Sprints 001–093 complete
 
 Multi-provider connection loop:
 
@@ -734,6 +734,20 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `investigation --json`, Resource deletion, generic Observation type,
   Missing Context on `context`, skill-body rewrite). No schema, no
   fifth tool, no MCP writes, no `--json` thaw.
+- **Sprint 093 shipped** cycle-free `missingContext` on existing
+  `investigate --json` / MCP `investigate_resource` under founder
+  override 2026-08-23 (the 092-earned slice; same by-value class as
+  090/091). A thin `projectMissingContext` wrapper reuses the shared
+  `deepCopyProjectionValue` helper at the `projectInvestigateResourceLive`
+  boundary, so `missingContext[].scope` (shared subject scope across
+  ≥2 `never_successfully_refreshed` families) serializes as ordinary
+  objects on every item — no `"[Circular]"`. Compose scope sharing,
+  human Missing Context prose, `safeJson` generic Circular,
+  `knownFacts` (090) / `providerActivity` / `timeline` (091),
+  `context --json` (still omits `missingContext`), and empty shapes
+  unchanged; no schema, no fifth tool, no MCP writes, no
+  `investigation --json`, no other `--json` thaw, no Missing Context
+  on `context`, no skill change.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
