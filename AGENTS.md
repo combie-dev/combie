@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–093 complete
+## Current baseline: Sprints 001–094 complete
 
 Multi-provider connection loop:
 
@@ -748,6 +748,29 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   unchanged; no schema, no fifth tool, no MCP writes, no
   `investigation --json`, no other `--json` thaw, no Missing Context
   on `context`, no skill change.
+- **Sprint 094 shipped** the post-093 dogfood / evidence pass under
+  founder override 2026-08-23 (research / dogfood only; zero product
+  code). Mandatory **whole-document** deep JSON Circular scan run on
+  every exercised surface: CLI `investigate --json` (4 offline
+  subjects + live GitHub combie repo), MCP `investigate_resource`
+  live (3 subjects) and named-id — **0 `"[Circular]"` anywhere in the
+  entire documents**, not just the four fixed fields. The 090/091/093
+  regression claim is verified and `missingContext[].scope` (092) is
+  fixed; the shared-reference / `"[Circular]"` defect class is
+  **CLOSED** on the existing `investigate --json` / MCP
+  `investigate_resource` surfaces. Decision: **NO-GO / defer** — no
+  remaining friction meets the ledger threshold (no blocker; no
+  `major`+ recurrence without a sufficient workaround). Secondary
+  observations: `skills/combie` still omits `context --json`
+  (recurrence 3, minor, record-only — not auto-authorized), MCP
+  list-history residual (recurrence 3, minor, narrowed by 070
+  `investigationHistory`), `.timeline` empty while
+  `.providerActivity` / `.knownFacts` populated (nit, recurrence 2).
+  Leftovers stay frozen (additional `--json` reads, checkout skill
+  copy, 078 leftovers, fifth MCP tool, `investigation --json`,
+  Resource deletion, generic Observation type, Missing Context on
+  `context`, skill-body rewrite). No schema, no fifth tool, no MCP
+  writes, no `--json` thaw.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
