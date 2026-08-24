@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–095 complete
+## Current baseline: Sprints 001–096 complete
 
 Multi-provider connection loop:
 
@@ -788,6 +788,37 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `src/` / `package.json` diffs, no CLI flag change, no MCP change, no
   Missing Context on `context`, no skill install change, no checkout
   copy, no additional `--json` thaw, no 078 leftover thaw.
+- **Sprint 096 shipped** the post-095 context-quality / task-success
+  dogfood / evidence pass under founder override 2026-08-23 (research
+  only; zero product code). Three surfaces (human CLI + `skills/combie`
+  six-step loop, MCP-only four-tool, offline reads) exercised the
+  post-095 loop against **five distinct real engineering questions**
+  (release-workflow success/commit/freshness; save→resolution→incident
+  memory follow-up; open GitHub issue count; Vercel deployment
+  currentness + stale authority; Sentry release/issue depth + telemetry
+  gap), each scored Q1–Q5. **Q1 correct retrieval / Q2 provenance /
+  authority / uncertainty / Q4 parsimony PASS on every run; Q3
+  sufficiency and Q5 gap exposure PASS except the evidence-absent
+  GitHub-issues question** where the gap is unnamed
+  (`.subjectIssues: not_applicable` is ambiguous; missingContext names
+  only `no_known_relationships`) — the same evidence-family-absent
+  situation that Sentry names precisely ("no absence can be inferred").
+  **0 `"[Circular]"` whole-document** on every exercised surface
+  (regression PASS; class stays CLOSED). **Bucket I skill-doc lag is
+  CLOSED** — the 095 `context --json` teach was present and followed; a
+  literal skill walk correctly chose **not** to sync when clocks were
+  fresh. Decision: **NO-GO / defer** — no friction meets the ledger
+  threshold (no blocker; no `major`+ recurrence with no sufficient
+  workaround). Leading record-only candidate: bucket F GitHub-issue-
+  family gap-naming asymmetry (minor, recurrence 1). Secondary record-
+  only: bucket C MCP list-history residual (recurrence 4, minor, CLI
+  workaround), bucket K structured `get_related_context` silent empty
+  (minor), bucket L `context --json` omits deployment depth (minor,
+  by-design), timeline-vs-activity (nit, recurrence 3), and two JSON
+  shape nits. No `src/` / `package.json` diffs, no fifth tool, no MCP
+  change, no `--json` thaw, no Missing Context on `context`, no skill
+  change, no checkout copy, no 078 leftover thaw. Sprint 097 is not
+  started.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
