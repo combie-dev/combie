@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–097 complete
+## Current baseline: Sprints 001–098 complete
 
 Multi-provider connection loop:
 
@@ -848,6 +848,27 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   change, no `--json` thaw, no Missing Context on `context`, no skill
   change, no checkout copy, no 078 leftover thaw, no memory model.
   Sprint 098 is not started.
+- **Sprint 098 shipped** the cross-provider X2 re-run dogfood / evidence
+  pass under founder override 2026-08-23 (research only; zero product
+  code). Preferred store `/tmp/combie-fresh-20260823` confirmed **6 live
+  `source_for`** (GitHub→Vercel); `uses_domain_in` / `code_mapped_to`
+  still 0 (honest). Scenarios A (Vercel→GitHub demo-hub), B (GitHub→
+  Vercel demo-hub + Forest-Echo-Chat), C (four-tool MCP edged + 0-edge),
+  E (Circular smoke) scored X1–X5. **X2 PASS** (097 deferred claim
+  completed): verified edges traversed both directions; neighbor
+  deployments assembled into RELATED / Known Facts / `context --json` /
+  MCP; empty workflow authority named; verification clocks honest;
+  evidence≠interpretation and causal-claim avoidance held. **Evidence-
+  exists vs relationship-verified friction: none material** on verified
+  edges (097 latent-edge observation superseded by re-auth + dual-
+  provider sync — visibility product not earned). Record-only: bucket K
+  `get_related_context` silent empty on 0-edge (recurrence 3, minor);
+  timeline-vs-activity nit. **0 `"[Circular]"` whole-document**
+  (regression PASS). Decision: **NO-GO / defer** — no bucket meets the
+  ledger threshold. No `src/` / `package.json` diffs, no fifth tool, no
+  MCP change, no `--json` thaw, no Missing Context on `context`, no
+  skill change, no checkout copy, no 078 leftover thaw, no latent-edge
+  visibility surface. Sprint 099 is not started.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
