@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–096 complete
+## Current baseline: Sprints 001–097 complete
 
 Multi-provider connection loop:
 
@@ -819,6 +819,35 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   change, no `--json` thaw, no Missing Context on `context`, no skill
   change, no checkout copy, no 078 leftover thaw. Sprint 097 is not
   started.
+- **Sprint 097 shipped** the cross-provider / memory-boundary dogfood /
+  evidence pass under founder override 2026-08-23 (research only; zero
+  product code). Three real operational signals (GitHub Release workflow
+  failure→success exercised end-to-end; Vercel→GitHub and Sentry→repo
+  deferred on expired maintainer credentials), each scored X1–X5 + M1.
+  GitHub live sync succeeded (`--use-gh`; 313 repos / 638 workflow runs);
+  Cloudflare / Sentry / Vercel live sync **failed** (expired/invalid
+  tokens), so **0 Relationships derived** — but **6 Vercel projects
+  retain `git.repoId` values that exactly match GitHub repositories** in
+  the same store (latent `source_for` edges, e.g. `demo-hub` →
+  `github:repository:915052094`), yet every surface reports an empty
+  graph (`no_known_relationships` / `related: []`). Authority honesty,
+  evidence≠interpretation, and causal-claim avoidance **PASS** everywhere
+  (no stale/inferred Relationship asserted; sync failures named);
+  X2 cross-provider assemble **deferred**; **M1 no gap** (shipped
+  Resolution / Incident capture sufficed — save → resolution → incident →
+  reopen recall worked end-to-end). **0 `"[Circular]"` whole-document**
+  (regression PASS; class stays CLOSED). Decision: **NO-GO / defer** —
+  no bucket meets the ledger threshold (no blocker; no `major`+
+  recurrence ≥3 with no sufficient workaround). Leading record-only:
+  bucket L cross-provider latent-edge invisibility (089 bucket-H,
+  recurrence 2 with 6 concrete exact matches; root cause = credential
+  expiry + authority-honest sync-only derivation) and bucket K
+  `get_related_context` silent empty (recurrence 2, minor). The 096
+  GitHub-issue gap-naming (bucket F) was not re-exercised and stays
+  record-only. No `src/` / `package.json` diffs, no fifth tool, no MCP
+  change, no `--json` thaw, no Missing Context on `context`, no skill
+  change, no checkout copy, no 078 leftover thaw, no memory model.
+  Sprint 098 is not started.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
