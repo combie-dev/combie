@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 import { createInterface } from "node:readline/promises";
-import { resolveBaseDir } from "../storage/paths.ts";
+import {
+  resolveAgentCombieHome,
+  resolveBaseDir,
+} from "../storage/paths.ts";
 import { CombieError } from "../app/errors.ts";
 import { initCombie } from "../app/init.ts";
 import { connectProvider } from "../app/connect.ts";
@@ -298,6 +301,10 @@ function baseDirFromFlags(flags: Record<string, string | boolean>): string {
     return resolveBaseDir(dir);
   }
   return resolveBaseDir();
+}
+
+function formatAgentHomeFallbackDisclosure(home: string): string {
+  return `Combie home: ${home}. Run \`${BINARY_NAME} init --dir ${home}\` to create a store there.`;
 }
 
 async function confirmAction(prompt: string, yes: boolean): Promise<boolean> {
@@ -1188,6 +1195,8 @@ async function main(argv: string[]): Promise<number> {
         return 0;
       }
       case "agent": {
+        const agentHome = resolveAgentCombieHome(flags);
+        const agentBaseDir = agentHome.baseDir;
         const sub = positionals[0];
         const usage = `Usage: ${BINARY_NAME} agent <setup|status|remove> [agent...]\nAgents: claude, codex, cursor`;
         if (!sub) {
@@ -1195,7 +1204,7 @@ async function main(argv: string[]): Promise<number> {
           return 1;
         }
         if (sub === "status") {
-          const statuses = inspectAgents(baseDir);
+          const statuses = inspectAgents(agentBaseDir);
           console.log(formatAgentStatusTable(statuses));
           return 0;
         }
@@ -1203,7 +1212,7 @@ async function main(argv: string[]): Promise<number> {
           const names = positionals.length > 1 ? positionals.slice(1) : null;
           const planned = resolveAgentBackends(names);
           const configured = new Set(
-            inspectAgents(baseDir)
+            inspectAgents(agentBaseDir)
               .filter((s) => s.status === "configured")
               .map((s) => s.kind),
           );
@@ -1221,7 +1230,10 @@ async function main(argv: string[]): Promise<number> {
             console.log("Skipped. No changes made.");
             return 0;
           }
-          const results = setupAgents(names, baseDir);
+          if (agentHome.usedHomeFallback) {
+            console.log(formatAgentHomeFallbackDisclosure(agentBaseDir));
+          }
+          const results = setupAgents(names, agentBaseDir);
           for (const result of results) {
             console.log(result.message);
           }

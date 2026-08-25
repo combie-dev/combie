@@ -175,7 +175,7 @@ case ":${PATH}:" in
   *)
     printf "Add %s to your PATH:\n" "${INSTALL_DIR}"
     printf '  export PATH="%s:$PATH"\n' "${INSTALL_DIR}"
-    printf "Then restart your shell or run:\n  source ~/.profile\n"
+    printf "To make this permanent, add that line to ~/.bashrc, ~/.zshrc, or ~/.profile.\n"
     ;;
 esac
 

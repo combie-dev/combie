@@ -42,6 +42,9 @@ import {
 } from "../../src/app/agent.ts";
 import { main } from "../../src/cli/index.ts";
 import { BINARY_NAME } from "../../src/cli/constants.ts";
+import { initCombie } from "../../src/app/init.ts";
+import { resolveAgentCombieHome } from "../../src/storage/paths.ts";
+import { resolve } from "node:path";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.dir));
 
@@ -454,6 +457,7 @@ describe("CLI agent commands", () => {
   let binDir: string;
   const origHome = process.env.HOME;
   const origPath = process.env.PATH;
+  const origCombieHome = process.env.COMBIE_HOME;
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "combie-cli-agent-"));
@@ -465,6 +469,7 @@ describe("CLI agent commands", () => {
     }
     process.env.HOME = home;
     process.env.PATH = binDir;
+    delete process.env.COMBIE_HOME;
   });
 
   afterEach(() => {
@@ -477,6 +482,11 @@ describe("CLI agent commands", () => {
       delete process.env.PATH;
     } else {
       process.env.PATH = origPath;
+    }
+    if (origCombieHome === undefined) {
+      delete process.env.COMBIE_HOME;
+    } else {
+      process.env.COMBIE_HOME = origCombieHome;
     }
     rmSync(home, { recursive: true, force: true });
     rmSync(binDir, { recursive: true, force: true });
@@ -594,6 +604,193 @@ describe("CLI agent commands", () => {
     expect(result.stdout).toContain("agent status");
     expect(result.stdout).toContain("agent setup");
     expect(result.stdout).toContain("agent remove");
+  });
+
+  test("agent setup without --dir embeds $HOME/.combie when cwd has no store", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "combie-cli-agent-cwd-"));
+    const origCwd = process.cwd();
+    process.chdir(cwd);
+    try {
+      const result = await capture(() => main(["agent", "setup", "--yes"]));
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(`Combie home: ${join(home, ".combie")}`);
+      expect(readCursorEntry()?.env.COMBIE_HOME).toBe(join(home, ".combie"));
+    } finally {
+      process.chdir(origCwd);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("agent setup without --dir embeds initialized cwd store", async () => {
+    const project = mkdtempSync(join(tmpdir(), "combie-cli-agent-project-"));
+    const origCwd = process.cwd();
+    process.chdir(project);
+    try {
+      initCombie(join(project, ".combie"));
+      const result = await capture(() => main(["agent", "setup", "--yes"]));
+      expect(result.code).toBe(0);
+      expect(result.stdout).not.toContain("Combie home:");
+      expect(readCursorEntry()?.env.COMBIE_HOME).toBe(
+        resolve(process.cwd(), ".combie"),
+      );
+    } finally {
+      process.chdir(origCwd);
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test("agent setup prefers COMBIE_HOME over initialized cwd store", async () => {
+    const project = mkdtempSync(join(tmpdir(), "combie-cli-agent-project-"));
+    const envStore = join(home, "env-store");
+    const origCwd = process.cwd();
+    const origCombieHome = process.env.COMBIE_HOME;
+    process.chdir(project);
+    process.env.COMBIE_HOME = envStore;
+    try {
+      initCombie(envStore);
+      initCombie(join(project, ".combie"));
+      const result = await capture(() => main(["agent", "setup", "--yes"]));
+      expect(result.code).toBe(0);
+      expect(readCursorEntry()?.env.COMBIE_HOME).toBe(resolve(envStore));
+    } finally {
+      process.chdir(origCwd);
+      if (origCombieHome === undefined) {
+        delete process.env.COMBIE_HOME;
+      } else {
+        process.env.COMBIE_HOME = origCombieHome;
+      }
+      rmSync(project, { recursive: true, force: true });
+      rmSync(envStore, { recursive: true, force: true });
+    }
+  });
+
+  test("agent setup prefers --dir over COMBIE_HOME and cwd store", async () => {
+    const project = mkdtempSync(join(tmpdir(), "combie-cli-agent-project-"));
+    const explicit = join(home, "explicit-store");
+    const envStore = join(home, "env-store");
+    const origCwd = process.cwd();
+    const origCombieHome = process.env.COMBIE_HOME;
+    process.chdir(project);
+    process.env.COMBIE_HOME = envStore;
+    try {
+      initCombie(explicit);
+      initCombie(envStore);
+      initCombie(join(project, ".combie"));
+      const result = await capture(() =>
+        main(["agent", "setup", "--yes", "--dir", explicit]),
+      );
+      expect(result.code).toBe(0);
+      expect(readCursorEntry()?.env.COMBIE_HOME).toBe(resolve(explicit));
+    } finally {
+      process.chdir(origCwd);
+      if (origCombieHome === undefined) {
+        delete process.env.COMBIE_HOME;
+      } else {
+        process.env.COMBIE_HOME = origCombieHome;
+      }
+      rmSync(project, { recursive: true, force: true });
+      rmSync(explicit, { recursive: true, force: true });
+      rmSync(envStore, { recursive: true, force: true });
+    }
+  });
+
+  test("agent setup rewrites a stale pre-103 CWD-dependent entry", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "combie-cli-agent-cwd-"));
+    const staleHome = join(cwd, ".combie");
+    const origCwd = process.cwd();
+    process.chdir(cwd);
+    writeFileSync(
+      join(home, ".claude.json"),
+      JSON.stringify({
+        mcpServers: {
+          combie: {
+            type: "stdio",
+            command: process.execPath,
+            args: ["mcp"],
+            env: { COMBIE_HOME: staleHome },
+          },
+        },
+      }),
+    );
+    try {
+      const result = await capture(() => main(["agent", "setup", "--yes"]));
+      expect(result.code).toBe(0);
+      expect(readClaudeEntry()?.env.COMBIE_HOME).toBe(join(home, ".combie"));
+      expect(result.stdout).toContain("Claude Code configured");
+    } finally {
+      process.chdir(origCwd);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("resolveAgentCombieHome", () => {
+  let home: string;
+  const origHome = process.env.HOME;
+  const origCombieHome = process.env.COMBIE_HOME;
+  const origCwd = process.cwd();
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "combie-agent-home-"));
+    process.env.HOME = home;
+    delete process.env.COMBIE_HOME;
+  });
+
+  afterEach(() => {
+    process.chdir(origCwd);
+    if (origHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = origHome;
+    }
+    if (origCombieHome === undefined) {
+      delete process.env.COMBIE_HOME;
+    } else {
+      process.env.COMBIE_HOME = origCombieHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("uses explicit --dir", () => {
+    const resolution = resolveAgentCombieHome({ dir: "/tmp/explicit" });
+    expect(resolution.baseDir).toBe(resolve("/tmp/explicit"));
+    expect(resolution.usedHomeFallback).toBe(false);
+  });
+
+  test("uses COMBIE_HOME when set", () => {
+    process.env.COMBIE_HOME = "/tmp/env-home";
+    const resolution = resolveAgentCombieHome({});
+    expect(resolution.baseDir).toBe(resolve("/tmp/env-home"));
+    expect(resolution.usedHomeFallback).toBe(false);
+  });
+
+  test("uses initialized cwd store when combie.db exists", () => {
+    const project = mkdtempSync(join(tmpdir(), "combie-agent-project-"));
+    process.chdir(project);
+    initCombie(join(project, ".combie"));
+    const resolution = resolveAgentCombieHome({});
+    expect(resolution.baseDir).toBe(resolve(process.cwd(), ".combie"));
+    expect(resolution.usedHomeFallback).toBe(false);
+    rmSync(project, { recursive: true, force: true });
+  });
+
+  test("falls back to $HOME/.combie when no store exists", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "combie-agent-cwd-"));
+    process.chdir(cwd);
+    const resolution = resolveAgentCombieHome({});
+    expect(resolution.baseDir).toBe(join(home, ".combie"));
+    expect(resolution.usedHomeFallback).toBe(true);
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  test("falls through a cwd .combie directory that has no combie.db", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "combie-agent-junk-"));
+    process.chdir(cwd);
+    mkdirSync(join(cwd, ".combie"));
+    const resolution = resolveAgentCombieHome({});
+    expect(resolution.baseDir).toBe(join(home, ".combie"));
+    expect(resolution.usedHomeFallback).toBe(true);
+    rmSync(cwd, { recursive: true, force: true });
   });
 });
 

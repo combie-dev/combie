@@ -42,8 +42,13 @@ combie agent remove claude   # remove only the Combie MCP entry
 It works without any agent installed (the entry is written for when the agent
 is installed later), never touches unrelated configuration, keeps an existing
 correct entry as-is, updates a stale entry in place, and refuses to edit a
-configuration it cannot safely read. To use a non-default state directory,
-pass `--dir` (the same value is embedded via `COMBIE_HOME`).
+configuration it cannot safely read. When no `--dir` is passed, `agent setup`
+and `agent status` resolve one deterministic home in this order: explicit
+`--dir` (same value embedded via `COMBIE_HOME`), else `COMBIE_HOME` when set,
+else an initialized store at `./.combie` in the current working directory
+(when `combie.db` is present), else `$HOME/.combie` (with a one-line disclosure
+on setup when that fallback is used). All other CLI commands keep the documented
+`./.combie` default. To name a non-default store explicitly, pass `--dir`.
 
 ### Optional: install the composition skill
 
@@ -86,7 +91,9 @@ provider calls, deploys, restarts, rollbacks, or any other write.
 
 The default is `./.combie`. Agent processes often start elsewhere, so either
 set `COMBIE_HOME` to the absolute state-directory path or pass `--dir` to the
-server command. The examples below use `COMBIE_HOME`.
+server command. `combie agent setup` embeds the resolved home using the
+deterministic order in **Automatic setup** above (not the raw current-working-
+directory default). The examples below use `COMBIE_HOME`.
 
 ## Codex
 
