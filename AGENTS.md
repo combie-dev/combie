@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–100 complete
+## Current baseline: Sprints 001–101 complete
 
 Multi-provider connection loop:
 
@@ -909,6 +909,40 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   a new founder override. No `src/` / `package.json` diffs, no fifth
   tool, no MCP change, no `--json` thaw, no Missing Context on
   `context`, no skill change, no checkout copy, no 078 leftover thaw.
+- **Sprint 101 shipped** the curl-installer / binary-distribution
+  evidence pass under founder override 2026-08-24 (research only; zero
+  product code). **Primary entry exercised for the first time**:
+  `curl -fsSL https://combie.dev/install | sh` (isolated HOME
+  `/tmp/combie-101-fresh-20260824/home`; real `$HOME` untouched;
+  post-install smoke on fresh isolated `--dir
+  /tmp/combie-101-fresh-20260824/store`). Installer mechanism PASS:
+  URL 200, served script byte-identical to `install.sh`, darwin-arm64
+  selection correct, checksum verified, installed binary sha matches
+  published `combie-darwin-arm64`, `combie --version` == `0.1.1`
+  (exact QUICKSTART match). **D1–D7 PASS (with friction); D8 FAIL —
+  one blocker: release lag vs docs.** The only published release
+  (v0.1.1, 2026-08-13, commit `1643252`) is **177 commits / 11 days
+  behind HEAD**; Sprints 048–100 unreleased; public docs (MCP.md +
+  `skills/combie`) describe the HEAD surface. Manifestations: `--json`
+  / `--save` silent no-ops (exit 0), unknown commands
+  `investigation(s)` / `resolution` / `incident`, MCP
+  `investigate_resource` missing `investigationId` and all sidecar
+  fields, `list_providers` lacking `lastAttemptAt`, pre-090
+  `"[Circular]"` defect class shipping in MCP results (CLOSED on HEAD
+  since 094). Minor/nit: no skill hint (086 absent), `source
+  ~/.profile` hint errors on fresh HOME, stale-binary PATH shadow,
+  `npx skills add` CWD-write isolation surprise, opaque checksum
+  verification, flag-position inconsistency. **Earned next-work
+  recommendation for Sprint 102+ (not leftover-order; freezes stay
+  frozen): cut and publish a release of current HEAD via the existing
+  pipeline (tag push → release.yml matrix + checksums), then re-run
+  the D1–D8 smoke against the fresh release** — semantic claim: the
+  documented `curl -fsSL https://combie.dev/install | sh` path
+  distributes a binary whose behavior matches the public docs and
+  `skills/combie`. `bun test` 1286/0 + typecheck PASS; no `src/` /
+  `tests/` / `package.json` diffs; no fifth tool, no MCP change, no
+  `--json` thaw, no skill change, no checkout copy, no 078 leftover
+  thaw.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
