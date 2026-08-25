@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–104 complete
+## Current baseline: Sprints 001–105 complete
 
 Multi-provider connection loop:
 
@@ -1015,6 +1015,42 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   blocker. No 103 regression. Ledger threshold not met.
   Decision: **NO-GO / defer** — no earned 105 slice. Leftovers
   stay frozen. Sprint 105 not started. No `src/` / `tests/` /
+  `package.json` diffs; no fifth tool; no MCP change; no
+  `--json` thaw; no skill change; no checkout copy; no 078
+  leftover thaw.
+- **Sprint 105 shipped** the multi-provider / R6 evidence pass
+  on the served+released binary under founder override
+  2026-08-25 (research only; zero product code). Isolated
+  sandbox `/tmp/combie-105-fresh-20260825` (never founder store;
+  never real `$HOME` as a Combie-state write). PRIMARY
+  curl-installed v0.2.1: `--version` `combie 0.2.1`; sha
+  `339371c211a1a8f35bca77b0ec243d48ca4b9e2ae7bc395b66a70bb0c6502058`;
+  served sha `79765825…` PARITY-OK; PATH rc-file hint; **no**
+  `source ~/.profile`. **104 D/V HOLD.** GitHub `--use-gh`
+  connected (sgr0691) via host HOME + `--dir` harness. Vercel
+  `--use-env` FAILED: `VERCEL_TOKEN is not set. Export a token
+  and run: combie connect vercel --use-env` (exit 1). Vercel CLI
+  `vercel whoami` shows sgr0691 (capability detected); Combie
+  has no `--use-vercel-cli`; token not harvested. Scenario H.
+  GitHub sync exit 0; 313 repos; 177 refreshed / 136 family
+  failures disclosed; 641 workflow runs; relationships 0
+  honest. Investigate `github:repository:1331212396`: CURRENT
+  clocks; discovery included; Known Facts workflow; Missing
+  Context `no_known_relationships`; 0 Circular; `related []`.
+  Init+setup same dir; 4 readOnly tools; `serverInfo.version`
+  0.2.1; DB unchanged; skill hint printed. **R1 PASS; R2 PASS**
+  (GitHub connected; Vercel failed with actionable next step);
+  **R3 PASS** for GitHub-only; **R4 PASS; R5 PASS; R6 EXACT
+  DEFERRAL; R7 PASS; R8 PASS.** Do not mark R6 PASS. Do not use
+  the 100 store. Friction record-only (VERCEL_TOKEN unset while
+  Vercel CLI logged in — R6 deferral prerequisite; sync
+  exit-code recurrence; bucket K silent empty recurrence **7**).
+  No blocker. Ledger threshold not met. Decision: **NO-GO /
+  defer** for leftover thaw. **R6 remains unowned** until Vercel
+  is authorized to Combie on this binary. No product slice
+  earned. Sprint 106 not started. Do not authorize v0.8 or
+  leftover thaw from a "faster MVP" desire — that is a separate
+  founder override after 105. No `src/` / `tests/` /
   `package.json` diffs; no fifth tool; no MCP change; no
   `--json` thaw; no skill change; no checkout copy; no 078
   leftover thaw.
