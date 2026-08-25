@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–103 complete
+## Current baseline: Sprints 001–104 complete
 
 Multi-provider connection loop:
 
@@ -989,6 +989,35 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   threshold not met, **NO-GO / defer**. `getCombieRoot` untouched;
   four-tool MCP untouched; no pipeline edit; no fifth tool; leftovers
   stay frozen. Sprint 104 requires a new founder override.
+- **Sprint 104 shipped** the post-103 served+released fresh-user
+  evidence pass under founder override 2026-08-25 (research only;
+  zero product code). Isolated sandbox
+  `/tmp/combie-104-fresh-20260825` (never real `$HOME` as a
+  Combie-state write; never founder store); primary binary =
+  curl-installed v0.2.1. Served installer sha `79765825…` == repo
+  `install.sh` (PARITY-OK); latest `v0.2.1`; 6 assets; installed
+  sha `339371c2…` == published; PATH hint names rc-files; **no**
+  `source ~/.profile`. GitHub live (`--use-gh`, account sgr0691)
+  after host-HOME retry for gh + `--dir` store; 313 repositories /
+  641 workflow runs (177 refreshed / 136 failed disclosed
+  inline); relationships 0 (honest GitHub-only). Investigate
+  `github:repository:1331212396`: CURRENT clocks equal; last
+  successful discovery included; Missing Context
+  `no_known_relationships`; 0 `"[Circular]"` on
+  `investigate --json` (29391 bytes) and `context --json`. V4 a–d
+  + V5 on the **installed** 0.2.1 binary; four readOnly tools;
+  `serverInfo.version` 0.2.1; DB sha unchanged; 086 skill hint
+  printed. **D1–D8 PASS; V1–V6 PASS (103-regression HOLD);
+  J1–J5 PASS.** R6 not scored (GitHub-only honest empty graph
+  PASS). Friction record-only (sync exit-code recurrence of 102
+  #3; bucket K silent empty recurrence **6**; `/private/tmp`
+  realpath nit 102 #7; isolated-HOME `--use-gh` harness nit). No
+  blocker. No 103 regression. Ledger threshold not met.
+  Decision: **NO-GO / defer** — no earned 105 slice. Leftovers
+  stay frozen. Sprint 105 not started. No `src/` / `tests/` /
+  `package.json` diffs; no fifth tool; no MCP change; no
+  `--json` thaw; no skill change; no checkout copy; no 078
+  leftover thaw.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
