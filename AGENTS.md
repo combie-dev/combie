@@ -1028,32 +1028,23 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   served sha `79765825…` PARITY-OK; PATH rc-file hint; **no**
   `source ~/.profile`. **104 D/V HOLD.** GitHub `--use-gh`
   connected (sgr0691) via host HOME + `--dir` harness. Vercel
-  `--use-env` FAILED: `VERCEL_TOKEN is not set. Export a token
-  and run: combie connect vercel --use-env` (exit 1). Vercel CLI
-  `vercel whoami` shows sgr0691 (capability detected); Combie
-  has no `--use-vercel-cli`; token not harvested. Scenario H.
-  GitHub sync exit 0; 313 repos; 177 refreshed / 136 family
-  failures disclosed; 641 workflow runs; relationships 0
-  honest. Investigate `github:repository:1331212396`: CURRENT
-  clocks; discovery included; Known Facts workflow; Missing
-  Context `no_known_relationships`; 0 Circular; `related []`.
-  Init+setup same dir; 4 readOnly tools; `serverInfo.version`
-  0.2.1; DB unchanged; skill hint printed. **R1 PASS; R2 PASS**
-  (GitHub connected; Vercel failed with actionable next step);
-  **R3 PASS** for GitHub-only; **R4 PASS; R5 PASS; R6 EXACT
-  DEFERRAL; R7 PASS; R8 PASS.** Do not mark R6 PASS. Do not use
-  the 100 store. Friction record-only (VERCEL_TOKEN unset while
-  Vercel CLI logged in — R6 deferral prerequisite; sync
-  exit-code recurrence; bucket K silent empty recurrence **7**).
-  No blocker. Ledger threshold not met. Decision: **NO-GO /
-  defer** for leftover thaw. **R6 remains unowned** until Vercel
-  is authorized to Combie on this binary. No product slice
-  earned. Sprint 106 not started. Do not authorize v0.8 or
-  leftover thaw from a "faster MVP" desire — that is a separate
-  founder override after 105. No `src/` / `tests/` /
-  `package.json` diffs; no fifth tool; no MCP change; no
-  `--json` thaw; no skill change; no checkout copy; no 078
-  leftover thaw.
+  `--use-env` first failed (`VERCEL_TOKEN is not set`; Scenario H
+  historical). Same-day founder-authorized `--use-env`: Connected
+  Vercel (sgr0691); token not logged or committed. Dual sync:
+  313 GitHub repositories + 44 Vercel projects; **6 `source_for`**.
+  R6 driver `demo-hub` (`github:repository:915052094` ↔
+  `vercel:project:prj_W7Eweo0ep9oKSczjgdJSZGeSeBvu`): GitHub
+  investigate shows 4 neighbor Vercel deployments via the edge;
+  Vercel investigate shows inbound GitHub source (workflow
+  known-empty honest); verification clocks; MCP related=1;
+  `serverInfo.version` 0.2.1; DB unchanged; 0 `"[Circular]"`;
+  not the 100 store. **R1–R8 PASS including R6 PRIMARY.**
+  Friction record-only (sync exit-code recurrence; bucket K on
+  0-edge). Leftover thaw **NO-GO / defer**. Sprint 106 not
+  started. A faster-MVP product program remains a separate
+  founder override. No `src/` / `tests/` / `package.json` diffs;
+  no fifth tool; no MCP change; no `--json` thaw; no skill
+  change; no checkout copy; no 078 leftover thaw.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
