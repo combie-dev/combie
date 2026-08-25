@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–098 complete
+## Current baseline: Sprints 001–099 complete
 
 Multi-provider connection loop:
 
@@ -866,9 +866,37 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   timeline-vs-activity nit. **0 `"[Circular]"` whole-document**
   (regression PASS). Decision: **NO-GO / defer** — no bucket meets the
   ledger threshold. No `src/` / `package.json` diffs, no fifth tool, no
-  MCP change, no `--json` thaw, no Missing Context on `context`, no
-  skill change, no checkout copy, no 078 leftover thaw, no latent-edge
-  visibility surface. Sprint 099 is not started.
+   MCP change, no `--json` thaw, no Missing Context on `context`, no
+   skill change, no checkout copy, no 078 leftover thaw, no latent-edge
+   visibility surface. Sprint 099 is not started.
+- **Sprint 099 shipped** the closed-beta / release-readiness fresh-user
+  journey dogfood / evidence pass under founder override 2026-08-24
+  (research only; zero product code). Fresh local clone + isolated store
+  `/tmp/combie-099-fresh-20260824/store` (NOT the 098 store); public
+  QUICKSTART / MCP.md as primary guide. GitHub live (`--use-gh`, 313
+  repos / 638 workflow runs, family refresh 177 ok / 136 failed
+  disclosed inline); Vercel / Cloudflare / Sentry / Neon / PlanetScale
+  deferred (env unset) with distinct actionable errors — honest empty
+  graph by design. Scenarios A–E scored **PASS** (install/init;
+  connect/auth; sync clarity; discovery; first investigate incl.
+  `--json` offline proof), F **PASS as read-only contrast** on the 098
+  store (proven `source_for` traversed with both verification clocks;
+  neighbor deployment depth absent from `context --json` — known
+  by-design minor, recurrence 2), G Circular smoke **0** (class stays
+  CLOSED). D: isolated-HOME `agent setup --yes` wrote correct
+  Claude/Codex/Cursor entries + skill hint; raw stdio handshake OK;
+  exactly four readOnly tools; DB sha256 unchanged across the smoke. E:
+  six-step loop steps 1–4 ran on skill text alone with an honest
+  sync-skip decision. R1–R8 all PASS (R6 deferred-primary / PASS
+  contrast). Friction all minor/nit with workarounds: sync exit code vs
+  family-level failure (new, minor); bucket K `get_related_context`
+  silent empty recurrence **4** (frozen, record-only); skill does not
+  name the subject-workflow-runs JSON field (new, minor). Ledger
+  threshold not met. Decision: **NO-GO / defer** — none earned; Sprint
+  100 requires a new founder override. No `src/` / `package.json`
+  diffs, no fifth tool, no MCP change, no `--json` thaw, no Missing
+  Context on `context`, no skill change, no checkout copy, no 078
+  leftover thaw.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
