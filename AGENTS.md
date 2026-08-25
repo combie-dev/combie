@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–101 complete
+## Current baseline: Sprints 001–102 complete
 
 Multi-provider connection loop:
 
@@ -943,6 +943,29 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `tests/` / `package.json` diffs; no fifth tool, no MCP change, no
   `--json` thaw, no skill change, no checkout copy, no 078 leftover
   thaw.
+- **Sprint 102 shipped** the release cut of HEAD + fresh-release D1–D8
+  smoke under founder override 2026-08-25 (implements the 101 earned
+  recommendation; push authorization recorded verbatim in
+  SPRINT-102.md). Prep commit `1993359`: `package.json` → 0.2.0,
+  QUICKSTART expected string → `combie 0.2.0`, plus the mechanical
+  package-identity assertion update in `tests/cli/commands.test.ts`
+  (recorded as Deviation). Annotated tag `v0.2.0` → existing pipeline
+  green ×3 + release job (run `32856206747`); Release "Combie v0.2.0"
+  with six assets; checksum verified (`c95991a7…`); `latest` resolved
+  poll 1; served installer byte-identical to repo `install.sh`.
+  Fresh-release curl smoke on isolated HOME + isolated `--dir`:
+  **D1–D8 PASS — the Sprint 101 blocker is CLOSED** (findings 2–5
+  cleared: `--json` / `--save` live; memory commands recognized; MCP
+  `investigationId` + sidecars + `lastAttemptAt` present; 0
+  `"[Circular]"` whole-set; DB bytes unchanged under MCP reads;
+  skills/combie command audit complete; 086 skill hint printed). New
+  friction minor/nit only (agent-setup CWD-dependent `COMBIE_HOME`
+  embed without `--dir`; installer `~/.profile` hint recurrence 2; sync
+  exit-code carry-over confirmed on release; bucket K recurrence 5) —
+  ledger threshold not met, **NO-GO / defer**. No installer or pipeline
+  edit, no fifth tool, no MCP change, no `--json` thaw, no skill
+  change, no checkout copy, no 078 leftover thaw. Sprint 103 requires a
+  new founder override.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
