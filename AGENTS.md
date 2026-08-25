@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–102 complete
+## Current baseline: Sprints 001–103 complete
 
 Multi-provider connection loop:
 
@@ -966,6 +966,29 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   edit, no fifth tool, no MCP change, no `--json` thaw, no skill
   change, no checkout copy, no 078 leftover thaw. Sprint 103 requires a
   new founder override.
+- **Sprint 103 shipped** the install / first-run setup-correctness
+  slice under founder override 2026-08-25 (implements 102 findings
+  1–2; publish-gate sentence recorded verbatim in SPRINT-103.md).
+  Prep commit `4a85148`: installer PATH hint names rc-files (both
+  copies, sha `79765825…`; no `source ~/.profile`);
+  `resolveAgentCombieHome` (`--dir` > `COMBIE_HOME` > cwd `combie.db`
+  > `$HOME/.combie` + disclosure) consumed only by the `agent`
+  branch; MCP.md automatic-setup wording; `package.json` → 0.2.1,
+  QUICKSTART expected string, package-identity assertions. Annotated
+  tag `v0.2.1` → existing pipeline green ×4 (run `32890223615`);
+  Release "Combie v0.2.1" with six assets; checksum verified
+  (`339371c2…`); `latest` resolved poll 1. Isolated HOME/CWD
+  verification: V1–V6 PASS; V4 re-checked on the installed
+  0.2.1 binary; V6 PASS (`curl | sh` installed 0.2.1, sha match) —
+  the first V6 curl (before the V3 redeploy) saw the old
+  `source ~/.profile` hint. V3 PASS: served installer
+  byte-identical to repo `install.sh` (sha `79765825…`; PARITY-OK);
+  post-redeploy piped curl reproduced the rc-file hint. New friction
+  minor/nit only (Node-20 action deprecations recurrence;
+  `/private/tmp` realpath nit 102 #7 observed again) — ledger
+  threshold not met, **NO-GO / defer**. `getCombieRoot` untouched;
+  four-tool MCP untouched; no pipeline edit; no fifth tool; leftovers
+  stay frozen. Sprint 104 requires a new founder override.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
