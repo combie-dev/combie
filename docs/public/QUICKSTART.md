@@ -39,7 +39,7 @@ combie --version
 Expected output:
 
 ```bash
-combie 0.1.1
+combie 0.2.0
 ```
 
 The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
