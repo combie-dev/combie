@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–109 complete; Sprint 110 Active
+## Current baseline: Sprints 001–110 complete
 
 Launch MVP was validated and concluded on released `v0.4.0`; its conditional
 two-hop projection repair is currently distributed as `v0.4.1`. Sprint 109
@@ -1115,7 +1115,7 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   skill + MCP.md + QUICKSTART teach the surface; 1362 tests / typecheck
   green; T1–T3 dogfood PASS on an isolated store. No tag/push/release;
   Wave 2 not selected.
-- **Sprint 110 Active (2026-08-26): Task-Aware Context MVP Wave 2 —
+- **Sprint 110 Complete (2026-08-26): Task-Aware Context MVP Wave 2 —
   progressive on-demand retrieval + gated v0.5.0 release.** Founder
   instruction starts Wave 2 and authorizes version bump / commit / tag / push /
   release only after implementation, architecture, full-test, and P1–P4
@@ -1131,9 +1131,14 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   command string, automatic retrieval, generic ContextPack/handle registry,
   budget, ranking, classifier, profile rewrite, Investigation lifecycle,
   Recommendation, Learning, policy, execution, provider/graph expansion, or
-  Sprint 111. Target release after PASS: v0.5.0 containing intended Sprint
-  109+110 work; verify pipeline, six assets/checksums, isolated curl install,
-  and v0.4.1 state continuity; stop publication on any failed gate.
+  Sprint 111. Shipped `availableOnDemand` (one `current-investigation` target
+  on every profile + ordered `retained-investigation` targets on
+  `response-recall`); Core owns the semantic target union with no CLI/MCP
+  syntax; boundary emits safe `argv` arrays + exact `investigate_resource`
+  arguments with `returns: retained-snapshot-handle`; 1373 tests / typecheck
+  green; P1–P4 dogfood PASS; released as `v0.5.0` (commit `74a54a6`, tag
+  `v0.5.0`, run `33016091159`, six assets, checksum `f217e2e8…`, isolated curl
+  install and v0.4.1→v0.5.0 state continuity PASS).
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
