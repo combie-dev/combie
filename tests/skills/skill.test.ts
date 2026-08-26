@@ -115,6 +115,22 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(skillText.includes("combie context <id> --json")).toBe(true);
   });
 
+  test("allowlist: list_investigations MCP surface", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("list_investigations")).toBe(true);
+  });
+
+  test("allowlist: investigations --json local-filter surface", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("combie investigations")).toBe(true);
+    expect(skillText.includes("--json")).toBe(true);
+  });
+
+  test("allowlist: named empty related missingContext", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("no_known_relationships")).toBe(true);
+  });
+
   test("allowlist: complete snapshot retrieve surface", () => {
     if (skillText === null) return;
     expect(skillText.includes("combie investigation")).toBe(true);
@@ -141,7 +157,6 @@ describe("skills/combie content contract (Sprint 083)", () => {
     "--refresh",
     "--limit",
     "--offline",
-    "list_investigations",
     "get_investigation",
     "investigationSnapshot.snapshot",
     "npx skills",

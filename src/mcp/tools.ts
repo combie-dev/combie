@@ -12,6 +12,7 @@ import { listResolutions } from "../app/resolutions.ts";
 import {
   projectInvestigateResourceLive,
   projectInvestigationSnapshot,
+  projectListInvestigations,
   projectListProviders,
   projectListResources,
   projectRelatedContext,
@@ -74,6 +75,8 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
       description:
         "Return one-hop Relationships and neighbor Resources for an exact Combie Resource ID. " +
         "Preserves relationship kind, direction, evidence, source, and target. " +
+        "When no one-hop Relationships are stored, related is [] and missingContext names " +
+        "no_known_relationships (Combie graph knowledge only; not inferred edges). " +
         "Does not call providers, infer new relationships, or mutate state. " +
         "Requires a prior sync to populate local context.",
       annotations: READ_ONLY_ANNOTATIONS,
@@ -343,6 +346,61 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           }
           throw err;
         }
+      } catch (err) {
+        const message = err instanceof CombieError ? err.message : String(err);
+        return toolError(message);
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_investigations",
+    {
+      description:
+        "List retained Investigation snapshot summaries from local Combie state. " +
+        "Optionally filter by exact subject Resource id (resourceId). " +
+        "Returns id, subjectResourceId, and composedAt only — not the snapshot body. " +
+        "An empty list is a known-empty result, including when the named subject has " +
+        "no snapshots or is missing from the Resource store. " +
+        "Read-only; does not call providers or mutate state. " +
+        "Named-id retrieve stays investigate_resource (investigationId) or the CLI.",
+      annotations: READ_ONLY_ANNOTATIONS,
+      inputSchema: z.object({
+        resourceId: z
+          .string()
+          .optional()
+          .describe(
+            "Exact Combie Resource ID. When set, lists retained snapshots whose subjectResourceId matches that exact id. Listing is known-empty when none exist; it does not fail if the Resource is missing. Omit to list all retained snapshots.",
+          ),
+      }),
+    },
+    async ({ resourceId }) => {
+      try {
+        const subjectResourceId =
+          resourceId === undefined ? undefined : resourceId.trim();
+        if (resourceId !== undefined && !subjectResourceId) {
+          throw new CombieError(
+            "RESOURCE_ID_REQUIRED",
+            "resourceId requires an exact Resource id, or omit resourceId to list all retained investigations.",
+          );
+        }
+        const records = listInvestigations(
+          baseDir,
+          subjectResourceId !== undefined
+            ? { subjectResourceId }
+            : undefined,
+        );
+        const projection = projectListInvestigations(records);
+        const text =
+          records.length === 0
+            ? subjectResourceId !== undefined
+              ? `No investigation snapshots saved for subject ${subjectResourceId}.`
+              : "No investigation snapshots saved yet."
+            : `${records.length} investigation(s) found.`;
+        return {
+          content: [{ type: "text" as const, text }],
+          structuredContent: safeJson(projection) as Record<string, unknown>,
+        };
       } catch (err) {
         const message = err instanceof CombieError ? err.message : String(err);
         return toolError(message);

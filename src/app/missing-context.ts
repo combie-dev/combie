@@ -168,6 +168,25 @@ export type MissingContextItem =
       lastRequiredProviderAttemptAt: string;
     };
 
+export type NoKnownRelationshipsMissingContext = Extract<
+  MissingContextItem,
+  { kind: "no_known_relationships" }
+>;
+
+/** Same item investigate already emits for a 0-edge subject. */
+export function noKnownRelationshipsMissingContext(
+  resourceId: string,
+): NoKnownRelationshipsMissingContext {
+  return {
+    kind: "no_known_relationships",
+    scope: {
+      resourceId,
+      role: "subject",
+      relationships: [],
+    },
+  };
+}
+
 interface MutableRelatedSource {
   resourceId: string;
   relationships: MissingContextRelationshipRef[];
@@ -828,14 +847,7 @@ export function composeMissingContext(
 
   // Combie graph knowledge only — does not claim external systems have no edges.
   if (context.related.length === 0) {
-    items.push({
-      kind: "no_known_relationships",
-      scope: {
-        resourceId: context.subject.id,
-        role: "subject",
-        relationships: [],
-      },
-    });
+    items.push(noKnownRelationshipsMissingContext(context.subject.id));
   }
 
   return items.sort(compareItems);

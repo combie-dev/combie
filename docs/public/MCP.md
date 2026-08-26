@@ -81,11 +81,14 @@ The manual instructions below remain available as a fallback.
 | --- | --- | --- |
 | `list_resources` | optional `provider`, `kind` | Resource identities and stable IDs (identity only; not lastSuccessfulDiscovery) |
 | `list_providers` | none | provider status and persisted account identity |
-| `get_related_context` | exact `resourceId` | one-hop edges, direction, neighbors, evidence; related entries observe lastVerifiedAt and lastRequiredProviderAttemptAt (omit when null) and are not silent current topology |
+| `get_related_context` | exact `resourceId` | one-hop edges, direction, neighbors, evidence; related entries observe lastVerifiedAt and lastRequiredProviderAttemptAt (omit when null) and are not silent current topology; when related is empty, structured result includes missingContext with kind no_known_relationships (related stays []); when edges exist, omit missingContext |
 | `investigate_resource` | exact `resourceId` (optional when `investigationId` is named); optional `investigationId` | subject observes lastSuccessfulDiscovery (`included` / `not_in_last_successful_discovery`, omit when never recorded; not deletion, not current provider inventory), changes, native evidence, related context (related rows observe lastVerifiedAt and lastRequiredProviderAttemptAt, omit when null, not silent current topology), known facts, missing context, provider activity, timeline, exact shared-commit groups, retained resolution memory for that exact subject (organizational response, not current provider truth, not a recommendation; omitted when none), retained incident grouping for that exact subject (organizational grouping, not current provider truth, not a recommendation; omitted when none), retained investigation history for that exact subject (retained composition summaries: exact `inv:` id and `composedAt`; not current provider truth, not an incident, not a recommendation; omitted when none), and when `investigationId` is passed: the snapshot identity for that id as `investigationSnapshot` (`id`, `subjectResourceId`, `composedAt`, and a bounded `subjectPreview` from the retained snapshot's subject — not the 048 body; retrieve the complete snapshot with `combie investigation <id>`), an ephemeral snapshot-versus-current `investigationCompare` (049 shape; not current provider truth, not an incident, not a recommendation), and retained resolution memory recorded against that Investigation as `investigationResolutionMemory` (organizational response, not current provider truth, not an incident, not a recommendation, not a replacement of subject-scoped `resolutionMemory`; omitted when none), and retained incident grouping whose members include a Resolution recorded against that Investigation as `investigationIncidentMemory` (organizational grouping, not current provider truth, not an incident, not a recommendation, not a replacement of subject-scoped `incidentMemory`; omitted when none); when `investigationId` is named without `resourceId`, the subject is taken from that investigation's retained 048 row (`subjectResourceId`); when `investigationId` names a snapshot of that subject and the subject Resource is missing from the local store, the live compose keys are omitted and the retained snapshot identity and bounded subject preview, the snapshot-versus-current comparison with `currentStatus: subject_missing` (049 shape, not a failure), retained investigation history for that subject, `investigationResolutionMemory`, and `investigationIncidentMemory` are still returned (retained composition, not current provider truth, not an incident, not a recommendation); snapshot, compare, investigation-scoped resolution memory, investigation-scoped incident memory, and the missing-Resource named-id observe are omitted when `investigationId` is not passed, omitted `investigationId` with a missing Resource still returns `RESOURCE_NOT_FOUND`, and omitted `investigationId` with no `resourceId` is usage |
+| `list_investigations` | optional `resourceId` | retained snapshot summaries only (`id`, `subjectResourceId`, `composedAt`); optional exact-subject filter; known-empty is not an error (including unknown/missing subject); no snapshot body |
 
 There are no MCP tools for `init`, `connect`, `sync`, credential access,
-provider calls, deploys, restarts, rollbacks, or any other write.
+provider calls, deploys, restarts, rollbacks, or any other write. Named-id
+snapshot retrieve stays `investigate_resource` with `investigationId`; there
+is no sixth tool.
 
 ## State location
 
@@ -167,6 +170,8 @@ missing context.
 
 Use Combie to show the direct Relationships around this Resource and the
 provider evidence for each one.
+
+Use Combie to list retained investigation snapshots for this Resource.
 ```
 
 Do not ask Combie MCP to sync, mutate infrastructure, find a root cause, or fix

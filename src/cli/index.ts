@@ -84,6 +84,8 @@ import {
 } from "../app/compare-investigation.ts";
 import {
   projectInvestigateResourceLive,
+  projectInvestigationRetrieve,
+  projectListInvestigations,
   projectListProviders,
   projectListResources,
   projectRelatedContext,
@@ -99,9 +101,11 @@ const JSON_COMMANDS = [
   "related",
   "investigate",
   "context",
+  "investigations",
+  "investigation",
 ] as const;
 const JSON_USAGE =
-  "--json is only available for: providers, resources, related, investigate, context.";
+  "--json is only available for: providers, resources, related, investigate, context, investigations, investigation.";
 
 const HELP = `combie — engineering context layer
 
@@ -154,7 +158,8 @@ Resources options:
 
 Read options:
   --json                       Emit structured JSON for providers, resources,
-                               related, investigate, or context
+                               related, investigate, context, investigations,
+                               or investigation <id>
 
 Investigate options:
   --save                       Persist a retained investigation snapshot
@@ -604,7 +609,13 @@ async function main(argv: string[]): Promise<number> {
           baseDir,
           resource !== undefined ? { subjectResourceId: resource } : undefined,
         );
-        console.log(formatInvestigationList(records, resource));
+        if (flags.json === true) {
+          console.log(
+            JSON.stringify(safeJson(projectListInvestigations(records)), null, 2),
+          );
+        } else {
+          console.log(formatInvestigationList(records, resource));
+        }
         return 0;
       }
       case "investigation": {
@@ -612,6 +623,12 @@ async function main(argv: string[]): Promise<number> {
         if (!investigationId) {
           console.error(
             `Usage: ${BINARY_NAME} investigation <investigation-id> [--compare]\nList ids: ${BINARY_NAME} investigations`,
+          );
+          return 1;
+        }
+        if (flags.json === true && flags.compare === true) {
+          console.error(
+            `--json is read-only observe. Use: ${BINARY_NAME} investigation <investigation-id> --compare`,
           );
           return 1;
         }
@@ -625,6 +642,16 @@ async function main(argv: string[]): Promise<number> {
         }
         const saved = getSavedInvestigation(baseDir, investigationId);
         const artifact = getInvestigationArtifact(baseDir, saved.id);
+        if (flags.json === true) {
+          console.log(
+            JSON.stringify(
+              safeJson(projectInvestigationRetrieve(saved, artifact)),
+              null,
+              2,
+            ),
+          );
+          return 0;
+        }
         console.log(
           formatWithIncidentMemory(
             formatWithResolutionMemory(

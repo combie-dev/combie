@@ -4,8 +4,15 @@ import {
 } from "../app/investigation-facts.ts";
 import type { ResourceContext } from "../app/context.ts";
 import type { InvestigationContext } from "../app/investigate.ts";
-import type { SavedInvestigation } from "../app/investigations.ts";
-import { composeMissingContext, type MissingContextItem } from "../app/missing-context.ts";
+import type {
+  InvestigationArtifact,
+  SavedInvestigation,
+} from "../app/investigations.ts";
+import {
+  composeMissingContext,
+  noKnownRelationshipsMissingContext,
+  type MissingContextItem,
+} from "../app/missing-context.ts";
 import {
   composeProviderActivityChronology,
   type ProviderActivityChronology,
@@ -170,6 +177,33 @@ export function projectRelatedContext(ctx: RelatedResourceContext) {
           }
         : null,
     })),
+    ...(ctx.related.length === 0
+      ? {
+          missingContext: projectMissingContext([
+            noKnownRelationshipsMissingContext(ctx.resource.id),
+          ]),
+        }
+      : {}),
+  };
+}
+
+export function projectListInvestigations(records: InvestigationRecord[]) {
+  return {
+    investigations: records.map((record) => ({
+      id: record.id,
+      subjectResourceId: record.subjectResourceId,
+      composedAt: record.composedAt,
+    })),
+  };
+}
+
+export function projectInvestigationRetrieve(
+  record: SavedInvestigation,
+  artifact: InvestigationArtifact,
+) {
+  return {
+    ...projectInvestigationSnapshot(record),
+    investigationArtifact: artifact,
   };
 }
 

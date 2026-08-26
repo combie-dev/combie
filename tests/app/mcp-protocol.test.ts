@@ -26,6 +26,14 @@ import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
 import { Store } from "../../src/storage/store.ts";
 
+const EXPECTED_MCP_TOOLS = [
+  "get_related_context",
+  "investigate_resource",
+  "list_investigations",
+  "list_providers",
+  "list_resources",
+] as const;
+
 describe("MCP stdio contract", () => {
   const dirs: string[] = [];
 
@@ -36,7 +44,7 @@ describe("MCP stdio contract", () => {
     dirs.length = 0;
   });
 
-  test("discovers exactly four read-only tools and returns full investigation context without mutating state", async () => {
+  test("discovers exactly five read-only tools and returns full investigation context without mutating state", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -68,10 +76,7 @@ describe("MCP stdio contract", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       for (const tool of listed.tools) {
         expect(tool.annotations).toMatchObject({
@@ -675,7 +680,7 @@ describe("MCP stdio contract (Sprint 057)", () => {
     dirs.length = 0;
   });
 
-  test("investigate_resource omits investigationId on resource-anchored rows and stays four tools", async () => {
+  test("investigate_resource omits investigationId on resource-anchored rows and stays five tools", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-057-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -717,10 +722,7 @@ describe("MCP stdio contract (Sprint 057)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -757,7 +759,7 @@ describe("MCP stdio contract (Sprint 058)", () => {
     dirs.length = 0;
   });
 
-  test("investigate_resource stays four tools with unchanged resolutionMemory after incident grouping", async () => {
+  test("investigate_resource stays five tools with unchanged resolutionMemory after incident grouping", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-058-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -809,10 +811,7 @@ describe("MCP stdio contract (Sprint 058)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -908,10 +907,7 @@ describe("MCP stdio contract (Sprint 059)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const investigate = listed.tools.find(
         (tool) => tool.name === "investigate_resource",
@@ -1165,10 +1161,7 @@ describe("MCP stdio contract (Sprint 061)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -1274,10 +1267,7 @@ describe("MCP stdio contract (Sprint 062)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -1376,10 +1366,7 @@ describe("MCP stdio contract (Sprint 065)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -1476,10 +1463,7 @@ describe("MCP stdio contract (Sprint 066)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -1571,10 +1555,7 @@ describe("MCP stdio contract (Sprint 067)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -1667,10 +1648,7 @@ describe("MCP stdio contract (Sprint 068)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -1800,14 +1778,9 @@ describe("MCP stdio contract (Sprint 077)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
-      expect(
-        listed.tools.every((tool) => tool.name !== "list_investigations"),
-      ).toBe(true);
+
       const result = await client.callTool({
         name: "investigate_resource",
         arguments: { resourceId: subject.id },
@@ -1832,7 +1805,7 @@ describe("MCP stdio contract (Sprint 077)", () => {
     expect(digest()).toBe(beforePresent);
   }, 15_000);
 
-  test("four tools remain after occurredAt is set; digest unchanged during the MCP call", async () => {
+  test("five tools remain after occurredAt is set; digest unchanged during the MCP call", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-077b-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -1889,17 +1862,10 @@ describe("MCP stdio contract (Sprint 077)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       expect(
-        listed.tools.every(
-          (tool) =>
-            tool.name !== "list_investigations" &&
-            tool.name !== "get_investigation",
-        ),
+        listed.tools.every((tool) => tool.name !== "get_investigation"),
       ).toBe(true);
       for (const tool of listed.tools) {
         expect(tool.annotations).toMatchObject({
@@ -1998,10 +1964,7 @@ describe("MCP stdio contract (Sprint 078)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -2076,14 +2039,9 @@ describe("MCP stdio contract (Sprint 069)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
-      expect(
-        listed.tools.every((tool) => tool.name !== "list_investigations"),
-      ).toBe(true);
+
       const result = await client.callTool({
         name: "investigate_resource",
         arguments: { resourceId: subject.id },
@@ -2208,19 +2166,13 @@ describe("MCP stdio contract (Sprint 070)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const investigate = listed.tools.find(
         (tool) => tool.name === "investigate_resource",
       );
       expect(investigate?.description).toMatch(/investigation history/i);
       expect(investigate?.description).toMatch(/retained composition/i);
-      expect(
-        listed.tools.every((tool) => tool.name !== "list_investigations"),
-      ).toBe(true);
 
       const result = await client.callTool({
         name: "investigate_resource",
@@ -2381,15 +2333,11 @@ describe("MCP stdio contract (Sprint 071)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       expect(
         listed.tools.every(
           (tool) =>
-            tool.name !== "list_investigations" &&
             tool.name !== "compare_investigation" &&
             tool.name !== "get_investigation",
         ),
@@ -2613,10 +2561,7 @@ describe("MCP stdio contract (Sprint 072)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       for (const tool of listed.tools) {
         expect(tool.annotations).toMatchObject({
@@ -2629,7 +2574,6 @@ describe("MCP stdio contract (Sprint 072)", () => {
       expect(
         listed.tools.every(
           (tool) =>
-            tool.name !== "list_investigations" &&
             tool.name !== "compare_investigation" &&
             tool.name !== "get_investigation",
         ),
@@ -2900,10 +2844,7 @@ describe("MCP stdio contract (Sprint 073)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       for (const tool of listed.tools) {
         expect(tool.annotations).toMatchObject({
@@ -2916,7 +2857,6 @@ describe("MCP stdio contract (Sprint 073)", () => {
       expect(
         listed.tools.every(
           (tool) =>
-            tool.name !== "list_investigations" &&
             tool.name !== "compare_investigation" &&
             tool.name !== "get_investigation",
         ),
@@ -3197,10 +3137,7 @@ describe("MCP stdio contract (Sprint 074)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       for (const tool of listed.tools) {
         expect(tool.annotations).toMatchObject({
@@ -3213,7 +3150,6 @@ describe("MCP stdio contract (Sprint 074)", () => {
       expect(
         listed.tools.every(
           (tool) =>
-            tool.name !== "list_investigations" &&
             tool.name !== "compare_investigation" &&
             tool.name !== "get_investigation",
         ),
@@ -3520,10 +3456,7 @@ describe("MCP stdio contract (Sprint 075)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       for (const tool of listed.tools) {
         expect(tool.annotations).toMatchObject({
@@ -3536,7 +3469,6 @@ describe("MCP stdio contract (Sprint 075)", () => {
       expect(
         listed.tools.every(
           (tool) =>
-            tool.name !== "list_investigations" &&
             tool.name !== "compare_investigation" &&
             tool.name !== "get_investigation",
         ),
@@ -3984,10 +3916,7 @@ describe("MCP stdio contract (Sprint 076)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       for (const tool of listed.tools) {
         expect(tool.annotations).toMatchObject({
@@ -4000,7 +3929,6 @@ describe("MCP stdio contract (Sprint 076)", () => {
       expect(
         listed.tools.every(
           (tool) =>
-            tool.name !== "list_investigations" &&
             tool.name !== "compare_investigation" &&
             tool.name !== "get_investigation",
         ),
@@ -4673,7 +4601,7 @@ describe("MCP stdio contract (Sprint 079)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 
-  test("four tools and read-only: database bytes unchanged across a Sprint 079 call", async () => {
+  test("five tools and read-only: database bytes unchanged across a Sprint 079 call", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-079d-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -4712,10 +4640,7 @@ describe("MCP stdio contract (Sprint 079)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const providers = await client.callTool({
         name: "list_providers",
@@ -4788,10 +4713,7 @@ describe("MCP stdio contract (Sprint 081)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const investigate = listed.tools.find(
         (tool) => tool.name === "investigate_resource",
@@ -5065,15 +4987,11 @@ describe("MCP stdio contract (Sprint 082)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       expect(
         listed.tools.every(
           (tool) =>
-            tool.name !== "list_investigations" &&
             tool.name !== "compare_investigation" &&
             tool.name !== "get_investigation",
         ),
@@ -5587,7 +5505,7 @@ describe("MCP stdio contract (Sprint 084)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 
-  test("four tools and read-only: database bytes unchanged across a Sprint 084 call", async () => {
+  test("five tools and read-only: database bytes unchanged across a Sprint 084 call", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-084d-"));
     dirs.push(dir);
     const verifiedAt = "2026-08-19T12:00:00.000Z";
@@ -5648,10 +5566,7 @@ describe("MCP stdio contract (Sprint 084)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const related = await client.callTool({
         name: "get_related_context",
@@ -5875,7 +5790,7 @@ describe("MCP stdio contract (Sprint 085)", () => {
     expect(digest()).toBe(before);
   }, 15_000);
 
-  test("four tools and read-only: database bytes unchanged across a Sprint 085 call", async () => {
+  test("five tools and read-only: database bytes unchanged across a Sprint 085 call", async () => {
     const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-085d-"));
     dirs.push(dir);
     const store = new Store(dir);
@@ -5913,10 +5828,7 @@ describe("MCP stdio contract (Sprint 085)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const resources = await client.callTool({
         name: "list_resources",
@@ -6266,10 +6178,7 @@ describe("MCP stdio contract (Sprint 091)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -6369,10 +6278,7 @@ describe("MCP stdio contract (Sprint 093)", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
-        "get_related_context",
-        "investigate_resource",
-        "list_providers",
-        "list_resources",
+        ...EXPECTED_MCP_TOOLS,
       ]);
       const result = await client.callTool({
         name: "investigate_resource",
@@ -6406,6 +6312,336 @@ describe("MCP stdio contract (Sprint 093)", () => {
       }
       const scopes = refreshed.map((item) => item.scope);
       expect(scopes[0]).toEqual(scopes[1]);
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+});
+
+describe("MCP stdio contract (Sprint 106)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  function spawnClient(dir: string) {
+    const client = new Client({ name: "combie-test-106", version: "1.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["run", "src/cli/index.ts", "mcp", "--dir", dir],
+      cwd: process.cwd(),
+      stderr: "pipe",
+    });
+    return { client, transport };
+  }
+
+  test("get_related_context names no_known_relationships on a zero-edge subject", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-106a-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "example/zero-edge",
+      metadata: { fullName: "example/zero-edge" },
+    });
+    store.upsertResource(repository);
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: repository.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        related?: unknown[];
+        missingContext?: Array<{
+          kind?: string;
+          scope?: { resourceId?: string };
+        }>;
+      };
+      expect(content.related).toEqual([]);
+      expect(Array.isArray(content.missingContext)).toBe(true);
+      const named = content.missingContext?.find(
+        (item) => item.kind === "no_known_relationships",
+      );
+      expect(named).toBeDefined();
+      expect(named?.scope?.resourceId).toBe(repository.id);
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("get_related_context omits missingContext when a relationship exists", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-106b-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "example/demo-hub",
+      metadata: { fullName: "example/demo-hub" },
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "prj_demo",
+      kind: "project",
+      name: "demo-hub",
+      metadata: {},
+    });
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "example/demo-hub",
+          githubRepoId: "1001",
+        },
+      }),
+    );
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "get_related_context",
+        arguments: { resourceId: repository.id },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        related?: unknown[];
+      };
+      expect(content.related).toHaveLength(1);
+      expect(content).not.toHaveProperty("missingContext");
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+  }, 15_000);
+
+  test("list_investigations lists summaries, filters by subject, and is known-empty without a sixth tool", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-106c-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "1001",
+      kind: "repository",
+      name: "example/repo",
+      metadata: { fullName: "example/repo" },
+    });
+    const project = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "combie",
+      metadata: { slug: "combie", organizationSlug: "acme" },
+    });
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.close();
+
+    const githubSaved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: repository.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const sentrySaved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: project.id,
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        ...EXPECTED_MCP_TOOLS,
+      ]);
+      expect(
+        listed.tools.every((tool) => tool.name !== "get_investigation"),
+      ).toBe(true);
+      const listTool = listed.tools.find(
+        (tool) => tool.name === "list_investigations",
+      );
+      expect(listTool?.annotations).toMatchObject({ readOnlyHint: true });
+
+      const unfiltered = await client.callTool({
+        name: "list_investigations",
+        arguments: {},
+      });
+      expect(unfiltered.isError).not.toBe(true);
+      const unfilteredContent = unfiltered.structuredContent as {
+        investigations?: Array<Record<string, unknown>>;
+      };
+      expect(unfilteredContent.investigations).toEqual([
+        {
+          id: githubSaved.record.id,
+          subjectResourceId: repository.id,
+          composedAt: "2026-08-16T12:00:00.000Z",
+        },
+        {
+          id: sentrySaved.record.id,
+          subjectResourceId: project.id,
+          composedAt: "2026-08-16T10:00:00.000Z",
+        },
+      ]);
+      for (const row of unfilteredContent.investigations ?? []) {
+        expect(Object.keys(row).sort()).toEqual([
+          "composedAt",
+          "id",
+          "subjectResourceId",
+        ]);
+        expect(row).not.toHaveProperty("snapshot");
+        expect(row).not.toHaveProperty("snapshotJson");
+        expect(row).not.toHaveProperty("subjectPreview");
+      }
+      expect(JSON.stringify(unfiltered.structuredContent)).not.toMatch(
+        /snapshot_json|snapshotJson/,
+      );
+
+      const filtered = await client.callTool({
+        name: "list_investigations",
+        arguments: { resourceId: repository.id },
+      });
+      expect(filtered.isError).not.toBe(true);
+      expect(
+        (filtered.structuredContent as { investigations?: unknown })
+          .investigations,
+      ).toEqual([
+        {
+          id: githubSaved.record.id,
+          subjectResourceId: repository.id,
+          composedAt: "2026-08-16T12:00:00.000Z",
+        },
+      ]);
+
+      const missingSubject = await client.callTool({
+        name: "list_investigations",
+        arguments: { resourceId: "github:repository:missing-subject" },
+      });
+      expect(missingSubject.isError).not.toBe(true);
+      expect(
+        (missingSubject.structuredContent as { investigations?: unknown })
+          .investigations,
+      ).toEqual([]);
+
+      try {
+        const missingTool = await client.callTool({
+          name: "get_investigation",
+          arguments: { investigationId: githubSaved.record.id },
+        });
+        expect(missingTool.isError).toBe(true);
+      } catch (err) {
+        expect(err).toBeDefined();
+      }
+    } finally {
+      await client.close();
+    }
+    expect(digest()).toBe(before);
+
+    const emptyDir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-106c-empty-"));
+    dirs.push(emptyDir);
+    const emptyStore = new Store(emptyDir);
+    emptyStore.init();
+    emptyStore.close();
+    const emptyDigest = () =>
+      createHash("sha256").update(readFileSync(dbPath(emptyDir))).digest("hex");
+    const emptyBefore = emptyDigest();
+    const emptyClient = spawnClient(emptyDir);
+    try {
+      await emptyClient.client.connect(emptyClient.transport);
+      const emptyList = await emptyClient.client.callTool({
+        name: "list_investigations",
+        arguments: {},
+      });
+      expect(emptyList.isError).not.toBe(true);
+      expect(
+        (emptyList.structuredContent as { investigations?: unknown })
+          .investigations,
+      ).toEqual([]);
+    } finally {
+      await emptyClient.client.close();
+    }
+    expect(emptyDigest()).toBe(emptyBefore);
+  }, 15_000);
+
+  test("list_investigations names emptiness in content text", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-protocol-106d-"));
+    dirs.push(dir);
+    const store = new Store(dir);
+    store.init();
+    store.close();
+
+    const digest = () =>
+      createHash("sha256").update(readFileSync(dbPath(dir))).digest("hex");
+    const before = digest();
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const unfiltered = await client.callTool({
+        name: "list_investigations",
+        arguments: {},
+      });
+      expect(unfiltered.isError).not.toBe(true);
+      const unfilteredText = (
+        unfiltered.content as Array<{ type: string; text: string }>
+      )[0]?.text;
+      expect(
+        unfilteredText?.includes("No investigation snapshots") ||
+          unfilteredText?.includes("0 investigation"),
+      ).toBe(true);
+      expect(JSON.stringify(unfiltered.structuredContent)).not.toMatch(
+        /snapshot_json|snapshotJson/,
+      );
+
+      const filtered = await client.callTool({
+        name: "list_investigations",
+        arguments: { resourceId: "github:repository:missing-subject" },
+      });
+      expect(filtered.isError).not.toBe(true);
+      const filteredText = (
+        filtered.content as Array<{ type: string; text: string }>
+      )[0]?.text;
+      expect(filteredText).toContain("github:repository:missing-subject");
+      expect(
+        (filtered.structuredContent as { investigations?: unknown })
+          .investigations,
+      ).toEqual([]);
     } finally {
       await client.close();
     }

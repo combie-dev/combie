@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { getResourceContext } from "../../src/app/context.ts";
 import { getInvestigationContext } from "../../src/app/investigate.ts";
 import { listIncidentsForSubject } from "../../src/app/incidents.ts";
-import { listInvestigations } from "../../src/app/investigations.ts";
+import {
+  getInvestigationArtifact,
+  getSavedInvestigation,
+  listInvestigations,
+  saveInvestigation,
+} from "../../src/app/investigations.ts";
 import { listProviders, listResources } from "../../src/app/list.ts";
 import { getRelatedContext } from "../../src/app/related.ts";
 import { listResolutions } from "../../src/app/resolutions.ts";
@@ -14,6 +19,8 @@ import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import {
   projectInvestigateResourceLive,
+  projectInvestigationRetrieve,
+  projectListInvestigations,
   projectListProviders,
   projectListResources,
   projectRelatedContext,
@@ -201,6 +208,46 @@ describe("CLI MCP-parity --json", () => {
       "lastRequiredProviderAttemptAt",
     );
     expect(parsed.related[0].relationship).not.toHaveProperty("updatedAt");
+    expect(parsed).not.toHaveProperty("missingContext");
+  });
+
+  test("related --json names no_known_relationships when related is empty", async () => {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "empty-related",
+      kind: "repository",
+      name: "empty-related",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.close();
+
+    const result = await capture(() =>
+      main(["related", repository.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(parsed.related).toEqual([]);
+    expect(parsed.missingContext).toEqual([
+      {
+        kind: "no_known_relationships",
+        scope: {
+          resourceId: repository.id,
+          role: "subject",
+          relationships: [],
+        },
+      },
+    ]);
+    expect(parsed).toEqual(
+      safeJson(
+        projectRelatedContext(
+          getRelatedContext({ baseDir: dir, resourceRef: repository.id }),
+        ),
+      ),
+    );
   });
 
   test("context shares the MCP-parity projection and omits null clocks", async () => {
@@ -321,6 +368,35 @@ describe("CLI MCP-parity --json", () => {
     expect(parsed.subject.lastSuccessfulDiscovery).toBe("included");
     expect(parsed.subject).not.toHaveProperty("lastDiscoveryResourceIds");
     expect(parsed.related).toEqual(relatedParsed.related);
+  });
+
+  test("context --json omits missingContext even when related is empty", async () => {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "context-empty",
+      kind: "repository",
+      name: "context-empty",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.close();
+
+    const contextResult = await capture(() =>
+      main(["context", repository.id, "--json", "--dir", dir]),
+    );
+    const relatedResult = await capture(() =>
+      main(["related", repository.id, "--json", "--dir", dir]),
+    );
+    const contextParsed = JSON.parse(contextResult.stdout);
+    const relatedParsed = JSON.parse(relatedResult.stdout);
+
+    expect(contextResult.code).toBe(0);
+    expect(contextParsed.related).toEqual([]);
+    expect(contextParsed).not.toHaveProperty("missingContext");
+    expect(relatedParsed.related).toEqual([]);
+    expect(relatedParsed.missingContext[0].kind).toBe("no_known_relationships");
   });
 
   test("omitting --json keeps human context output", async () => {
@@ -871,11 +947,170 @@ describe("CLI MCP-parity --json", () => {
     expect(investigate.stdout).toContain("SUBJECT");
   });
 
+  test("investigations --json is known-empty and shares the MCP list projection", async () => {
+    const empty = await capture(() =>
+      main(["investigations", "--json", "--dir", dir]),
+    );
+    expect(empty.code).toBe(0);
+    expect(JSON.parse(empty.stdout)).toEqual({ investigations: [] });
+
+    const github = createResource({
+      provider: "github",
+      providerResourceId: "inv-json",
+      kind: "repository",
+      name: "inv-json",
+      metadata: {},
+    });
+    const sentry = createResource({
+      provider: "sentry",
+      providerResourceId: "450",
+      kind: "project",
+      name: "sentry-json",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(github);
+    store.upsertResource(sentry);
+    store.close();
+    const first = saveInvestigation({
+      baseDir: dir,
+      resourceRef: github.id,
+      composedAt: "2026-08-16T10:00:00.000Z",
+    });
+    const second = saveInvestigation({
+      baseDir: dir,
+      resourceRef: sentry.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+
+    const listed = await capture(() =>
+      main(["investigations", "--json", "--dir", dir]),
+    );
+    const expected = safeJson(projectListInvestigations(listInvestigations(dir)));
+    expect(listed.code).toBe(0);
+    expect(JSON.parse(listed.stdout)).toEqual(expected);
+    expect(JSON.parse(listed.stdout).investigations).toEqual([
+      {
+        id: second.record.id,
+        subjectResourceId: sentry.id,
+        composedAt: "2026-08-16T12:00:00.000Z",
+      },
+      {
+        id: first.record.id,
+        subjectResourceId: github.id,
+        composedAt: "2026-08-16T10:00:00.000Z",
+      },
+    ]);
+    expect(JSON.stringify(listed.stdout)).not.toContain("snapshot");
+
+    const filtered = await capture(() =>
+      main([
+        "investigations",
+        "--resource",
+        github.id,
+        "--json",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(filtered.code).toBe(0);
+    expect(JSON.parse(filtered.stdout)).toEqual(
+      safeJson(
+        projectListInvestigations(
+          listInvestigations(dir, { subjectResourceId: github.id }),
+        ),
+      ),
+    );
+    expect(JSON.parse(filtered.stdout).investigations).toEqual([
+      {
+        id: first.record.id,
+        subjectResourceId: github.id,
+        composedAt: "2026-08-16T10:00:00.000Z",
+      },
+    ]);
+
+    const unknown = await capture(() =>
+      main([
+        "investigations",
+        "--resource",
+        "github:repository:missing",
+        "--json",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(unknown.code).toBe(0);
+    expect(JSON.parse(unknown.stdout)).toEqual({ investigations: [] });
+  });
+
+  test("investigation --json is the compact 082 handle, not the 048 body", async () => {
+    const resource = createResource({
+      provider: "github",
+      providerResourceId: "handle-json",
+      kind: "repository",
+      name: "handle-json",
+      metadata: { fullName: "acme/handle-json" },
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(resource);
+    store.close();
+    const saved = saveInvestigation({
+      baseDir: dir,
+      resourceRef: resource.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+    });
+    const expected = safeJson(
+      projectInvestigationRetrieve(
+        getSavedInvestigation(dir, saved.record.id),
+        getInvestigationArtifact(dir, saved.record.id),
+      ),
+    ) as Record<string, unknown>;
+
+    const result = await capture(() =>
+      main(["investigation", saved.record.id, "--json", "--dir", dir]),
+    );
+    const parsed = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(0);
+    expect(parsed).toEqual(expected);
+    expect(parsed).toEqual({
+      id: saved.record.id,
+      subjectResourceId: resource.id,
+      composedAt: "2026-08-16T12:00:00.000Z",
+      subjectPreview: {
+        id: resource.id,
+        provider: "github",
+        kind: "repository",
+        name: "handle-json",
+      },
+      investigationArtifact: expected.investigationArtifact,
+    });
+    expect(parsed).not.toHaveProperty("snapshot");
+    expect(parsed).not.toHaveProperty("knownFacts");
+    expect(parsed).not.toHaveProperty("missingContext");
+    expect(JSON.stringify(parsed)).not.toContain("INVESTIGATION SNAPSHOT");
+
+    const compareJson = await capture(() =>
+      main([
+        "investigation",
+        saved.record.id,
+        "--compare",
+        "--json",
+        "--dir",
+        dir,
+      ]),
+    );
+    expect(compareJson.code).toBe(1);
+    expect(compareJson.stderr).toContain("--json is read-only observe");
+    expect(compareJson.stdout).toBe("");
+  });
+
   test("--json rejects unsupported commands without a JSON document", async () => {
     for (const command of [
       "history",
       "sync",
-      "investigation",
       "relationships",
       "changes",
     ]) {
@@ -884,7 +1119,7 @@ describe("CLI MCP-parity --json", () => {
       );
       expect(result.code).toBe(1);
       expect(result.stderr).toContain(
-        "providers, resources, related, investigate, context",
+        "providers, resources, related, investigate, context, investigations, investigation",
       );
       expect(result.stdout).toBe("");
     }
@@ -927,7 +1162,7 @@ describe("CLI MCP-parity --json", () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("--json does not take a value");
     expect(result.stderr).toContain(
-      "providers, resources, related, investigate, context",
+      "providers, resources, related, investigate, context, investigations, investigation",
     );
     expect(result.stdout).toBe("");
   });

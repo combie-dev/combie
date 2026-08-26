@@ -39,7 +39,7 @@ combie --version
 Expected output:
 
 ```bash
-combie 0.2.1
+combie 0.3.0
 ```
 
 The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
@@ -267,7 +267,7 @@ Both still work: they read only `.combie`. Nothing in the read path needs
 credentials or the network.
 
 To give a local agent the same read-only context, follow
-[MCP.md](MCP.md). The MCP server exposes exactly four read-only stdio tools and
+[MCP.md](MCP.md). The MCP server exposes exactly five read-only stdio tools and
 still requires a prior manual sync. MCP.md also documents an optional
 installable composition skill for agents.
 

@@ -372,6 +372,7 @@ describe("investigate Sentry issues (Sprint 044)", () => {
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
         "get_related_context",
         "investigate_resource",
+        "list_investigations",
         "list_providers",
         "list_resources",
       ]);
