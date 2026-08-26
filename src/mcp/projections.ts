@@ -17,7 +17,10 @@ import {
   composeProviderActivityChronology,
   type ProviderActivityChronology,
 } from "../app/provider-activity.ts";
-import type { RelatedResourceContext } from "../app/related.ts";
+import type {
+  RelatedPath,
+  RelatedResourceContext,
+} from "../app/related.ts";
 import { lastRequiredProviderAttemptAt } from "../app/relationship-verification-clocks.ts";
 import {
   composeSharedCommitContext,
@@ -184,7 +187,60 @@ export function projectRelatedContext(ctx: RelatedResourceContext) {
           ]),
         }
       : {}),
+    ...((ctx.paths?.length ?? 0) > 0
+      ? {
+          paths: projectRelatedPaths(
+            ctx.paths ?? [],
+            ctx.providerLastAttemptAt ?? {},
+          ),
+        }
+      : {}),
   };
+}
+
+function projectRelatedPathHop(
+  hop: RelatedPath["hops"][number],
+  attempts: Readonly<Record<string, string | null | undefined>>,
+) {
+  return {
+    direction: hop.direction,
+    resourceId: hop.resourceId,
+    relationship: {
+      id: hop.relationship.id,
+      kind: hop.relationship.kind,
+      sourceResourceId: hop.relationship.sourceResourceId,
+      targetResourceId: hop.relationship.targetResourceId,
+      evidence: hop.relationship.evidence,
+      ...relationshipVerificationClockFields(
+        hop.relationship.kind,
+        hop.relationship.updatedAt,
+        attempts,
+      ),
+    },
+    resource: hop.resource
+      ? {
+          id: hop.resource.id,
+          provider: hop.resource.provider,
+          kind: hop.resource.kind,
+          providerResourceId: hop.resource.providerResourceId,
+          name: hop.resource.name,
+        }
+      : null,
+  };
+}
+
+export function projectRelatedPaths(
+  paths: RelatedPath[],
+  attempts: Readonly<Record<string, string | null | undefined>>,
+) {
+  return paths.map((path) => ({
+    viaResourceId: path.viaResourceId,
+    farResourceId: path.farResourceId,
+    hops: [
+      projectRelatedPathHop(path.hops[0], attempts),
+      projectRelatedPathHop(path.hops[1], attempts),
+    ],
+  }));
 }
 
 export function projectListInvestigations(records: InvestigationRecord[]) {
@@ -208,7 +264,12 @@ export function projectInvestigationRetrieve(
 }
 
 export function projectResourceContext(context: ResourceContext) {
-  const { related } = projectRelatedContext(context);
+  const { related } = projectRelatedContext({
+    resource: context.resource,
+    related: context.related,
+    paths: [],
+    providerLastAttemptAt: context.providerLastAttemptAt,
+  });
   return {
     subject: {
       id: context.resource.id,
@@ -351,6 +412,9 @@ export function projectInvestigateResourceLive({
     operations: neighbor.operations,
     releases: neighbor.releases,
     issues: neighbor.issues,
+    ...(neighbor.githubIssues
+      ? { githubIssues: neighbor.githubIssues }
+      : {}),
   }));
 
   const sharedCommitGroups = composeSharedCommitContext(ctx);
@@ -363,7 +427,18 @@ export function projectInvestigateResourceLive({
     subjectOperations: ctx.subjectOperations,
     subjectReleases: ctx.subjectReleases,
     subjectIssues: ctx.subjectIssues,
+    ...(ctx.subjectGitHubIssues
+      ? { subjectGitHubIssues: ctx.subjectGitHubIssues }
+      : {}),
     related,
+    ...((ctx.paths?.length ?? 0) > 0
+      ? {
+          paths: projectRelatedPaths(
+            ctx.paths ?? [],
+            providerLastAttemptAt,
+          ),
+        }
+      : {}),
     knownFacts: projectKnownFacts(composeInvestigationFacts(ctx)),
     missingContext: projectMissingContext(composeMissingContext(ctx)),
     providerActivity: projectProviderActivity(composeProviderActivityChronology(ctx)),

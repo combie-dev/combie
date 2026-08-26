@@ -63,6 +63,33 @@ export interface GitHubWorkflowRunsResponse {
   workflow_runs: GitHubWorkflowRunListItem[];
 }
 
+/**
+ * Issue list item from GET /repos/{owner}/{repo}/issues.
+ * GitHub returns issues AND pull requests as a JSON array (not wrapped).
+ * Pull requests are identified by a `pull_request` object; normalize drops them.
+ */
+export interface GitHubIssueListItem {
+  id?: number;
+  number?: number;
+  state?: string | null;
+  title?: string | null;
+  body?: string | null;
+  comments?: number;
+  user?: unknown;
+  labels?: unknown;
+  assignees?: unknown;
+  html_url?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  closed_at?: string | null;
+  pull_request?: unknown;
+  repository?: {
+    id?: number;
+    name?: string;
+    full_name?: string;
+  } | null;
+}
+
 export interface GitHubClientOptions {
   token: string;
   fetch?: FetchLike;
@@ -149,6 +176,48 @@ export class GitHubClient {
       }
       all.push(...response.workflow_runs);
       if (response.workflow_runs.length < perPage) {
+        break;
+      }
+    }
+
+    return all;
+  }
+
+  /**
+   * List issues for one repository via GET /repos/{owner}/{repo}/issues.
+   *
+   * Official query: state=all&sort=updated&direction=desc. Response is a
+   * JSON array (not wrapped). Explicit bound: at most `maxPages` pages of
+   * `perPage` (default 1×100). Not complete lifetime history. GitHub includes
+   * pull requests in this list; callers drop rows with `pull_request`.
+   */
+  async listIssues(
+    owner: string,
+    repo: string,
+    options?: { perPage?: number; maxPages?: number },
+  ): Promise<GitHubIssueListItem[]> {
+    const perPage = options?.perPage ?? 100;
+    const maxPages = options?.maxPages ?? 1;
+    const all: GitHubIssueListItem[] = [];
+    const endpoint = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues`;
+
+    for (let page = 1; page <= maxPages; page++) {
+      const path =
+        `${endpoint}?state=all&sort=updated&direction=desc` +
+        `&per_page=${perPage}&page=${page}`;
+      const response = await this.getJson<unknown>(
+        path,
+        `List issues for ${owner}/${repo}`,
+      );
+      if (!Array.isArray(response)) {
+        throw new GitHubApiError({
+          message: `List issues for ${owner}/${repo}: response was not an array. Try again.`,
+          status: 200,
+          endpoint,
+        });
+      }
+      all.push(...(response as GitHubIssueListItem[]));
+      if (response.length < perPage) {
         break;
       }
     }

@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–106 complete; Launch MVP Wave 2 not started
+## Current baseline: Sprints 001–107 complete; Launch MVP launch pass not started
 
 Multi-provider connection loop:
 
@@ -328,7 +328,7 @@ combie init
   → connect cloudflare | github | vercel | sentry | neon | planetscale
   → sync (all connected providers)
   → providers | resources | relationships | changes | history | context
-  → investigate (deterministic, offline, one hop)
+  → investigate (deterministic, offline, one hop; additive two-hop paths)
   → agent setup | mcp (five read-only local tools)
 ```
 
@@ -349,7 +349,10 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   (`related` stays `[]`). CLI `--json` includes `investigations` and
   compact `investigation <id>` (082 handle). `get_investigation` is
   not a sixth tool. MCP writes remain forbidden. Connection, sync,
-  and memory writes stay CLI-only.
+  and memory writes stay CLI-only. Launch MVP Wave 2 (Sprint 107)
+  shipped read-time two-hop `paths` over stored proven edges
+  (`related[]` stays one-hop) and GitHub issues as `subjectGitHubIssues`
+  (not Sentry `subjectIssues`).
 - **Shipped Sentry evidence:** compact release history and compact issue
   aggregates on `sentry:project:<id>`, offline `RELEASES` and `ISSUES`,
   `sentry_release` / `sentry_issue` provider activity, and compact
@@ -1060,8 +1063,12 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   `list_investigations` over existing summaries, `--json` on
   `investigations` and compact `investigation <id>` (082 handle).
   Publish gate **opened** — prep commit + annotated tag `v0.3.0`.
-  Wave 2 (two-hop proven edges + GitHub issues) is next; Sprint 107
-  is **not started**.
+  **Sprint 107 (Wave 2) shipped (2026-08-26):** two-hop proven
+  paths (path + clocks; `related[]` stays one-hop; no transitive
+  Relationship; no Vercel↔Sentry causality) + GitHub issues as
+  `subjectGitHubIssues`. Publish gate **opened** — prep commit +
+  annotated tag `v0.4.0`. Launch pass is Sprint 108 after 107;
+  **not started**.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →

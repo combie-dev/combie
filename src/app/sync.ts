@@ -22,6 +22,7 @@ import {
   inferVercelCloudflareRelationships,
   isVercelCloudflareUsesDomainIn,
 } from "./infer-vercel-cloudflare.ts";
+import { syncGitHubIssues } from "./github-issues.ts";
 import { syncGitHubWorkflowRuns } from "./github-workflow-runs.ts";
 import { syncNeonOperations } from "./neon-operations.ts";
 import { syncSentryCodeMappings } from "./sentry-code-mappings.ts";
@@ -214,6 +215,13 @@ async function syncOne(
       observedAt: now,
     });
     evidenceLines.push(...workflowSync.lines);
+    const issueSync = await syncGitHubIssues({
+      store,
+      token,
+      repositories: discovered.resources,
+      observedAt: now,
+    });
+    evidenceLines.push(...issueSync.lines);
   }
   if (providerId === "neon") {
     const operationSync = await syncNeonOperations({

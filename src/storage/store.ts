@@ -13,6 +13,10 @@ import type {
   RelationshipKind,
 } from "../domain/relationship.ts";
 import type {
+  GitHubIssueEvidence,
+  GitHubIssueRefresh,
+} from "../providers/github/issue.ts";
+import type {
   GitHubWorkflowRunEvidence,
   GitHubWorkflowRunRefresh,
 } from "../providers/github/workflow-run.ts";
@@ -158,6 +162,31 @@ CREATE INDEX IF NOT EXISTS github_workflow_runs_resource_created_id_idx
   ON github_workflow_runs(resource_id, created_at DESC, run_id DESC);
 
 CREATE TABLE IF NOT EXISTS github_workflow_run_refresh (
+  resource_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
+  observed_at TEXT NOT NULL,
+  message TEXT,
+  result_count INTEGER,
+  last_success_observed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS github_issues (
+  issue_id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'github',
+  resource_id TEXT NOT NULL,
+  repository_id TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  state TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  closed_at TEXT,
+  observed_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS github_issues_resource_updated_id_idx
+  ON github_issues(resource_id, updated_at DESC, issue_id DESC);
+
+CREATE TABLE IF NOT EXISTS github_issue_refresh (
   resource_id TEXT PRIMARY KEY,
   status TEXT NOT NULL CHECK (status IN ('success', 'failure')),
   observed_at TEXT NOT NULL,
@@ -1220,6 +1249,120 @@ export class Store {
         `SELECT resource_id, status, observed_at, message, result_count,
                 last_success_observed_at
          FROM github_workflow_run_refresh
+         WHERE resource_id = ?`,
+      )
+      .get(resourceId) as
+      | {
+          resource_id: string;
+          status: string;
+          observed_at: string;
+          message: string | null;
+          result_count: number | null;
+          last_success_observed_at: string | null;
+        }
+      | null;
+    if (!row) return null;
+    return {
+      resourceId: row.resource_id,
+      status: row.status as "success" | "failure",
+      observedAt: row.observed_at,
+      message: row.message,
+      resultCount: row.result_count,
+      lastSuccessfulObservedAt: row.last_success_observed_at,
+    };
+  }
+
+  /**
+   * Insert or update GitHub issue evidence by stable issue id.
+   * Current-state snapshot: later observations update state/closed_at
+   * on the same row. Does not create Resource Changes.
+   */
+  upsertGitHubIssue(issue: GitHubIssueEvidence): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO github_issues (
+           issue_id, provider, resource_id, repository_id,
+           number, state, created_at, updated_at, closed_at, observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(issue_id) DO UPDATE SET
+           provider = excluded.provider,
+           resource_id = excluded.resource_id,
+           repository_id = excluded.repository_id,
+           number = excluded.number,
+           state = excluded.state,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at,
+           closed_at = excluded.closed_at,
+           observed_at = excluded.observed_at`,
+      )
+      .run(
+        issue.issueId,
+        issue.provider,
+        issue.resourceId,
+        issue.repositoryId,
+        issue.number,
+        issue.state,
+        issue.createdAt,
+        issue.updatedAt,
+        issue.closedAt,
+        issue.observedAt,
+      );
+  }
+
+  /**
+   * Newest-updated-first GitHub issues for an exact repository Resource.
+   * Ordering: updated_at DESC, issue_id DESC.
+   */
+  listGitHubIssuesForResource(resourceId: string): GitHubIssueEvidence[] {
+    const rows = this.getDb()
+      .query(
+        `SELECT issue_id, provider, resource_id, repository_id,
+                number, state, created_at, updated_at, closed_at, observed_at
+         FROM github_issues
+         WHERE resource_id = ?
+         ORDER BY updated_at DESC, issue_id DESC`,
+      )
+      .all(resourceId) as GitHubIssueRow[];
+    return rows.map(mapGitHubIssue);
+  }
+
+  countGitHubIssues(): number {
+    const row = this.getDb()
+      .query(`SELECT COUNT(*) AS n FROM github_issues`)
+      .get() as { n: number };
+    return Number(row.n);
+  }
+
+  setGitHubIssueRefresh(refresh: GitHubIssueRefresh): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO github_issue_refresh (
+           resource_id, status, observed_at, message, result_count,
+           last_success_observed_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(resource_id) DO UPDATE SET
+           status = excluded.status,
+           observed_at = excluded.observed_at,
+           message = excluded.message,
+           result_count = excluded.result_count,
+           last_success_observed_at = excluded.last_success_observed_at`,
+      )
+      .run(
+        refresh.resourceId,
+        refresh.status,
+        refresh.observedAt,
+        refresh.message,
+        refresh.resultCount,
+        refresh.lastSuccessfulObservedAt,
+      );
+  }
+
+  getGitHubIssueRefresh(resourceId: string): GitHubIssueRefresh | null {
+    const row = this.getDb()
+      .query(
+        `SELECT resource_id, status, observed_at, message, result_count,
+                last_success_observed_at
+         FROM github_issue_refresh
          WHERE resource_id = ?`,
       )
       .get(resourceId) as
@@ -2382,6 +2525,34 @@ function mapGitHubWorkflowRun(
     createdAt: row.created_at,
     runStartedAt: row.run_started_at,
     updatedAt: row.updated_at,
+    observedAt: row.observed_at,
+  };
+}
+
+interface GitHubIssueRow {
+  issue_id: number;
+  provider: string;
+  resource_id: string;
+  repository_id: string;
+  number: number;
+  state: string | null;
+  created_at: string;
+  updated_at: string | null;
+  closed_at: string | null;
+  observed_at: string;
+}
+
+function mapGitHubIssue(row: GitHubIssueRow): GitHubIssueEvidence {
+  return {
+    provider: "github",
+    issueId: row.issue_id,
+    resourceId: row.resource_id,
+    repositoryId: row.repository_id,
+    number: row.number,
+    state: row.state,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    closedAt: row.closed_at,
     observedAt: row.observed_at,
   };
 }

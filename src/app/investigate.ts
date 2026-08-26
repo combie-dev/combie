@@ -6,6 +6,11 @@ import type {
 import type { Resource } from "../domain/resource.ts";
 import { BINARY_NAME } from "../cli/constants.ts";
 import {
+  composeGitHubIssueAuthority,
+  type GitHubIssueEvidence,
+  type GitHubIssueEvidenceAuthority,
+} from "../providers/github/issue.ts";
+import {
   composeWorkflowRunAuthority,
   type GitHubWorkflowRunEvidence,
   type WorkflowRunEvidenceAuthority,
@@ -43,9 +48,11 @@ import { Store } from "../storage/store.ts";
 import { CombieError, notInitialized } from "./errors.ts";
 import { getResourceHistoryForResource } from "./history.ts";
 import {
+  formatRelatedPaths,
   getRelatedContextForResource,
   type RelatedDirection,
   type RelatedNeighbor,
+  type RelatedPath,
 } from "./related.ts";
 import {
   composeProviderActivityChronology,
@@ -101,6 +108,11 @@ export interface InvestigationNeighbor {
   releases: ReleaseEvidenceAuthority;
   /** Sentry issue-aggregate evidence for a one-hop Sentry project neighbor. */
   issues: IssueEvidenceAuthority;
+  /**
+   * GitHub issue evidence for a one-hop GitHub repository neighbor.
+   * not_applicable when omitted or for non-GitHub neighbors.
+   */
+  githubIssues?: GitHubIssueEvidenceAuthority;
 }
 
 /**
@@ -111,6 +123,11 @@ export interface InvestigationContext {
   subject: Resource;
   subjectChanges: Change[];
   related: InvestigationNeighbor[];
+  /**
+   * Read-time two-hop paths over stored Relationships (Sprint 107).
+   * Not a Relationship. Not hop-2 evidence. Empty when none.
+   */
+  paths?: RelatedPath[];
   /** Deployment evidence for the subject (Vercel projects only). */
   subjectDeployments: DeploymentEvidenceAuthority;
   /** Workflow-run evidence for the subject (GitHub repositories only). */
@@ -121,6 +138,11 @@ export interface InvestigationContext {
   subjectReleases: ReleaseEvidenceAuthority;
   /** Issue-aggregate evidence for the subject (Sentry projects only). */
   subjectIssues: IssueEvidenceAuthority;
+  /**
+   * GitHub issue evidence for the subject (GitHub repositories only).
+   * Not Sentry subjectIssues.
+   */
+  subjectGitHubIssues?: GitHubIssueEvidenceAuthority;
   /**
    * Live provider discovery clocks for the subject's provider.
    * Stripped from 048 snapshots (not current provider truth on reopen).
@@ -219,6 +241,24 @@ function loadWorkflowRunAuthority(
   );
 }
 
+function loadGitHubIssueAuthority(
+  store: Store,
+  resource: Resource | null,
+): GitHubIssueEvidenceAuthority {
+  if (!resource) {
+    return { kind: "not_applicable" };
+  }
+  if (resource.provider !== "github" || resource.kind !== "repository") {
+    return { kind: "not_applicable" };
+  }
+  return composeGitHubIssueAuthority(
+    resource.provider,
+    resource.kind,
+    store.getGitHubIssueRefresh(resource.id),
+    store.listGitHubIssuesForResource(resource.id),
+  );
+}
+
 function loadNeonOperationAuthority(
   store: Store,
   resource: Resource | null,
@@ -301,6 +341,7 @@ export function getInvestigationContextForResource(
       operations: loadNeonOperationAuthority(store, neighbor.resource),
       releases: loadReleaseAuthority(store, neighbor.resource),
       issues: loadIssueAuthority(store, neighbor.resource),
+      githubIssues: loadGitHubIssueAuthority(store, neighbor.resource),
     }),
   );
 
@@ -308,11 +349,13 @@ export function getInvestigationContextForResource(
     subject,
     subjectChanges: subjectHistory.changes,
     related,
+    paths: relatedContext.paths,
     subjectDeployments: loadDeploymentAuthority(store, subject),
     subjectWorkflowRuns: loadWorkflowRunAuthority(store, subject),
     subjectOperations: loadNeonOperationAuthority(store, subject),
     subjectReleases: loadReleaseAuthority(store, subject),
     subjectIssues: loadIssueAuthority(store, subject),
+    subjectGitHubIssues: loadGitHubIssueAuthority(store, subject),
     providerSyncClocks: subjectHistory.providerSyncClocks,
     providerLastAttemptAt: relatedContext.providerLastAttemptAt,
     lastSuccessfulDiscovery: subjectHistory.lastSuccessfulDiscovery ?? undefined,
@@ -587,6 +630,72 @@ function formatRelease(release: SentryReleaseEvidence): string {
   return lines.join("\n");
 }
 
+function formatGitHubIssue(issue: GitHubIssueEvidence): string {
+  const lines = [
+    `issue id: ${issue.issueId}`,
+    `number: ${issue.number}`,
+  ];
+  if (issue.state) lines.push(`state: ${issue.state}`);
+  lines.push(`created at: ${issue.createdAt}`);
+  if (issue.updatedAt) lines.push(`updated at: ${issue.updatedAt}`);
+  if (issue.closedAt) lines.push(`closed at: ${issue.closedAt}`);
+  lines.push(`observed by Combie at: ${issue.observedAt}`);
+  return lines.join("\n");
+}
+
+function formatGitHubIssuesBlock(
+  authority: GitHubIssueEvidenceAuthority,
+): string {
+  if (authority.kind === "not_applicable") {
+    return "GitHub issue evidence does not apply to this resource.";
+  }
+  if (authority.kind === "unknown") {
+    const marker = formatDetailAuthorityMarker("unknown", {
+      retained: authority.issues.length,
+      resultCount: authority.resultCount,
+      message: authority.message,
+    });
+    if (authority.issues.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPrior recorded GitHub issues (may be stale):\n\n` +
+      authority.issues.map(formatGitHubIssue).join("\n\n")
+    );
+  }
+  if (authority.kind === "empty") {
+    const marker = formatDetailAuthorityMarker("empty", {
+      retained: authority.issues.length,
+      resultCount: authority.resultCount,
+      message: null,
+      emptyObservedAt: authority.observedAt,
+    });
+    if (authority.issues.length === 0) {
+      return marker;
+    }
+    return (
+      `${marker}\n\nPreviously recorded GitHub issues (outside the latest successful response):\n\n` +
+      authority.issues.map(formatGitHubIssue).join("\n\n")
+    );
+  }
+  const marker = formatDetailAuthorityMarker("populated", {
+    retained: authority.issues.length,
+    resultCount: authority.resultCount,
+    message: null,
+  });
+  const boundNote =
+    authority.resultCount === 100
+      ? "\n(bounded: ≤100 most-recently-updated issues per repository; pull requests excluded)"
+      : "";
+  if (authority.issues.length === 0) {
+    return marker + boundNote;
+  }
+  return (
+    `${marker}${boundNote}\n\n` +
+    authority.issues.map(formatGitHubIssue).join("\n\n")
+  );
+}
+
 function formatIssue(issue: SentryIssueEvidence): string {
   const lines = [`issue id: ${issue.issueId}`];
   if (issue.shortId) lines.push(`short id: ${issue.shortId}`);
@@ -855,6 +964,13 @@ function formatRelatedSummary(item: InvestigationNeighbor): string {
       item.issues.kind,
       item.issues.kind === "not_applicable" ? 0 : item.issues.issues.length,
     ),
+    formatRelatedFamilyToken(
+      "githubIssues",
+      (item.githubIssues ?? { kind: "not_applicable" }).kind,
+      item.githubIssues && item.githubIssues.kind !== "not_applicable"
+        ? item.githubIssues.issues.length
+        : 0,
+    ),
   ];
   for (const token of tokens) {
     if (token) parts.push(token);
@@ -943,6 +1059,16 @@ function formatDetailedEvidence(context: InvestigationContext): string {
     ) {
       sections.push(
         `ISSUES (most-recently-active first)\n\n${formatIssuesBlock(first.issues)}`,
+      );
+    }
+    const neighborGitHubIssues =
+      first.githubIssues ?? { kind: "not_applicable" as const };
+    if (
+      neighborGitHubIssues.kind !== "not_applicable" &&
+      neighborGitHubIssues.issues.length > 0
+    ) {
+      sections.push(
+        `GITHUB ISSUES (most-recently-updated first)\n\n${formatGitHubIssuesBlock(neighborGitHubIssues)}`,
       );
     }
     if (sections.length === 0) continue;
@@ -1065,6 +1191,15 @@ function formatProviderActivityEntry(entry: ProviderActivityEntry): string {
     );
   }
 
+  if (entry.family === "github_issue") {
+    const issue = entry.evidence;
+    const state = issue.state != null ? ` state=${issue.state}` : "";
+    return (
+      `${entry.primaryTime}  GitHub issue  ${id}  number=${issue.number}${state}  ` +
+      `${scope}  ${auth}  resource=${entry.resourceId}`
+    );
+  }
+
   const op = entry.evidence;
   return (
     `${entry.primaryTime}  Neon operation  ${id}  action=${op.action}  ` +
@@ -1101,6 +1236,9 @@ function providerActivityName(
   if (family === "sentry_issue") {
     return count === 1 ? "Sentry issue" : "Sentry issues";
   }
+  if (family === "github_issue") {
+    return count === 1 ? "GitHub issue" : "GitHub issues";
+  }
   return count === 1 ? "Neon operation" : "Neon operations";
 }
 
@@ -1111,6 +1249,7 @@ function providerAuthorityName(
   if (family === "github_workflow_run") return "GitHub workflow-run";
   if (family === "sentry_release") return "Sentry release";
   if (family === "sentry_issue") return "Sentry issue";
+  if (family === "github_issue") return "GitHub issue";
   return "Neon operation";
 }
 
@@ -1129,6 +1268,9 @@ function providerEvidenceNoun(
   }
   if (family === "sentry_issue") {
     return count === 1 ? "issue" : "issues";
+  }
+  if (family === "github_issue") {
+    return count === 1 ? "GitHub issue" : "GitHub issues";
   }
   return count === 1 ? "operation" : "operations";
 }
@@ -1543,6 +1685,13 @@ export function formatInvestigationContext(
       ? ""
       : `\n\nISSUES (most-recently-active first)\n\n${formatIssuesBlock(context.subjectIssues)}`;
 
+  const subjectGitHubIssuesAuthority =
+    context.subjectGitHubIssues ?? { kind: "not_applicable" as const };
+  const subjectGitHubIssues =
+    subjectGitHubIssuesAuthority.kind === "not_applicable"
+      ? ""
+      : `\n\nGITHUB ISSUES (most-recently-updated first)\n\n${formatGitHubIssuesBlock(subjectGitHubIssuesAuthority)}`;
+
   const related =
     context.related.length === 0
       ? "No relationships discovered."
@@ -1580,8 +1729,15 @@ export function formatInvestigationContext(
     `${subjectWorkflowRuns}` +
     `${subjectOperations}` +
     `${subjectReleases}` +
-    `${subjectIssues}\n\n` +
+    `${subjectIssues}` +
+    `${subjectGitHubIssues}\n\n` +
     `RELATED CONTEXT\n\n${related}` +
+    formatRelatedPaths({
+      resource: context.subject,
+      related: [],
+      paths: context.paths ?? [],
+      providerLastAttemptAt: context.providerLastAttemptAt ?? {},
+    }) +
     `${sharedCommitBlock}\n\n` +
     `KNOWN PROVIDER ACTIVITY (newest first; incomplete)\n\n` +
     `${formatProviderActivity(context)}\n\n` +

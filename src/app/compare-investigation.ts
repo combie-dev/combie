@@ -737,12 +737,20 @@ function issueIds(authority: IssueEvidenceAuthority): string[] {
     : authority.issues.map((issue) => issue.issueId);
 }
 
+function githubIssueIds(
+  authority: InvestigationContext["subjectGitHubIssues"],
+): string[] {
+  if (!authority || authority.kind === "not_applicable") return [];
+  return authority.issues.map((issue) => String(issue.issueId));
+}
+
 function familyOrder(family: ProviderActivityFamily): number {
   if (family === "github_workflow_run") return 0;
-  if (family === "neon_operation") return 1;
-  if (family === "sentry_issue") return 2;
-  if (family === "sentry_release") return 3;
-  return 4;
+  if (family === "github_issue") return 1;
+  if (family === "neon_operation") return 2;
+  if (family === "sentry_issue") return 3;
+  if (family === "sentry_release") return 4;
+  return 5;
 }
 
 function collectClockSources(context: InvestigationContext): ClockSource[] {
@@ -798,6 +806,13 @@ function collectClockSources(context: InvestigationContext): ClockSource[] {
     context.subjectIssues,
     issueIds(context.subjectIssues),
   );
+  push(
+    "github_issue",
+    context.subject.id,
+    "subject",
+    context.subjectGitHubIssues ?? { kind: "not_applicable" },
+    githubIssueIds(context.subjectGitHubIssues),
+  );
 
   for (const neighbor of context.related) {
     if (!neighbor.resource || neighbor.resource.id === context.subject.id) {
@@ -837,6 +852,13 @@ function collectClockSources(context: InvestigationContext): ClockSource[] {
       "related",
       neighbor.issues,
       issueIds(neighbor.issues),
+    );
+    push(
+      "github_issue",
+      neighbor.resource.id,
+      "related",
+      neighbor.githubIssues ?? { kind: "not_applicable" },
+      githubIssueIds(neighbor.githubIssues),
     );
   }
 

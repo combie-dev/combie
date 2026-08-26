@@ -78,6 +78,11 @@ export type InvestigationFactActivityRef =
       family: "sentry_issue";
       primaryTimeField: "lastSeen";
       recordedStatus: string | null;
+    })
+  | (InvestigationFactActivityBase & {
+      family: "github_issue";
+      primaryTimeField: "updated_at" | "created_at";
+      recordedStatus: string | null;
     });
 
 export interface InvestigationFactAuthorityRef {
@@ -474,6 +479,17 @@ function issueIds(
   );
 }
 
+function githubIssueIds(
+  authority: Exclude<
+    NonNullable<InvestigationContext["subjectGitHubIssues"]>,
+    { kind: "not_applicable" }
+  >,
+): string[] {
+  return [...new Set(authority.issues.map((item) => String(item.issueId)))].sort(
+    compareNativeIdDescending,
+  );
+}
+
 function collectAuthoritySources(
   context: InvestigationContext,
 ): MutableAuthoritySource[] {
@@ -516,6 +532,7 @@ function collectAuthoritySources(
     operations: NeonOperationEvidenceAuthority,
     releases: ReleaseEvidenceAuthority,
     issues: IssueEvidenceAuthority,
+    githubIssues: NonNullable<InvestigationContext["subjectGitHubIssues"]> | { kind: "not_applicable" },
   ): void {
     if (deployments.kind !== "not_applicable") {
       upsert(
@@ -577,6 +594,22 @@ function collectAuthoritySources(
         lastSuccessAtFromIssues(issues),
       );
     }
+    if (githubIssues.kind !== "not_applicable") {
+      upsert(
+        "github_issue",
+        resourceId,
+        role,
+        relationships,
+        githubIssues.kind === "unknown"
+          ? { kind: "unknown", refreshObservedAt: null }
+          : { kind: githubIssues.kind, refreshObservedAt: githubIssues.observedAt },
+        githubIssueIds(githubIssues),
+        githubIssues.resultCount,
+        githubIssues.kind === "unknown"
+          ? githubIssues.lastSuccessAt
+          : githubIssues.observedAt,
+      );
+    }
   }
 
   addAuthorities(
@@ -588,6 +621,7 @@ function collectAuthoritySources(
     context.subjectOperations,
     context.subjectReleases,
     context.subjectIssues,
+    context.subjectGitHubIssues ?? { kind: "not_applicable" },
   );
 
   for (const neighbor of context.related) {
@@ -603,6 +637,7 @@ function collectAuthoritySources(
       neighbor.operations,
       neighbor.releases,
       neighbor.issues,
+      neighbor.githubIssues ?? { kind: "not_applicable" },
     );
   }
 
@@ -691,6 +726,14 @@ function activityRef(
       family: entry.family,
       primaryTimeField: entry.primaryTimeField,
       recordedStatus: entry.evidence.status,
+    };
+  }
+  if (entry.family === "github_issue") {
+    return {
+      ...base,
+      family: entry.family,
+      primaryTimeField: entry.primaryTimeField,
+      recordedStatus: entry.evidence.state,
     };
   }
   return {

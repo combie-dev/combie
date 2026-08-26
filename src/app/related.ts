@@ -23,9 +23,32 @@ export interface RelatedNeighbor {
   resource: Resource | null;
 }
 
+/**
+ * One hop on a two-hop path (Sprint 107). Direction is from the walk:
+ * outbound means this hop left via the Relationship source → target.
+ */
+export interface RelatedPathHop {
+  relationship: Relationship;
+  direction: RelatedDirection;
+  resourceId: string;
+  resource: Resource | null;
+}
+
+/**
+ * Exactly two stored Relationships from the subject. Not a Relationship.
+ * Not hop-2 evidence. Omitted when none exist.
+ */
+export interface RelatedPath {
+  hops: [RelatedPathHop, RelatedPathHop];
+  viaResourceId: string;
+  farResourceId: string;
+}
+
 export interface RelatedResourceContext {
   resource: Resource;
   related: RelatedNeighbor[];
+  /** Read-time two-hop paths over stored edges (Sprint 107). Empty when none. */
+  paths: RelatedPath[];
   /** Live required-provider last_attempt_at map (Sprint 084). Not persisted. */
   providerLastAttemptAt: Record<string, string | null>;
 }
@@ -40,6 +63,77 @@ export interface GetRelatedContextOptions {
   resourceRef: string;
 }
 
+function hopFrom(
+  relationship: Relationship,
+  fromResourceId: string,
+): { direction: RelatedDirection; neighborId: string } | null {
+  if (relationship.sourceResourceId === fromResourceId) {
+    return {
+      direction: "outbound",
+      neighborId: relationship.targetResourceId,
+    };
+  }
+  if (relationship.targetResourceId === fromResourceId) {
+    return {
+      direction: "inbound",
+      neighborId: relationship.sourceResourceId,
+    };
+  }
+  return null;
+}
+
+function enumerateTwoHopPaths(
+  store: Store,
+  subjectId: string,
+  oneHop: RelatedNeighbor[],
+): RelatedPath[] {
+  const paths: RelatedPath[] = [];
+  const seen = new Set<string>();
+
+  for (const first of oneHop) {
+    const viaResourceId = hopFrom(first.relationship, subjectId)?.neighborId;
+    if (!viaResourceId || viaResourceId === subjectId) continue;
+
+    for (const second of store.listRelationshipsForResource(viaResourceId)) {
+      if (second.id === first.relationship.id) continue;
+      const secondHop = hopFrom(second, viaResourceId);
+      if (!secondHop) continue;
+      const farResourceId = secondHop.neighborId;
+      if (farResourceId === subjectId || farResourceId === viaResourceId) {
+        continue;
+      }
+      const key = `${first.relationship.id}\u0000${second.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      paths.push({
+        hops: [
+          {
+            relationship: first.relationship,
+            direction: first.direction,
+            resourceId: viaResourceId,
+            resource: first.resource,
+          },
+          {
+            relationship: second,
+            direction: secondHop.direction,
+            resourceId: farResourceId,
+            resource: store.getResource(farResourceId),
+          },
+        ],
+        viaResourceId,
+        farResourceId,
+      });
+    }
+  }
+
+  paths.sort((left, right) => {
+    const a = `${left.hops[0].relationship.id}\u0000${left.hops[1].relationship.id}`;
+    const b = `${right.hops[0].relationship.id}\u0000${right.hops[1].relationship.id}`;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  return paths;
+}
+
 /** Compose already-resolved current state with its canonical one-hop edges. */
 export function getRelatedContextForResource(
   store: Store,
@@ -49,30 +143,19 @@ export function getRelatedContextForResource(
   const related: RelatedNeighbor[] = [];
 
   for (const relationship of relationships) {
-    let direction: RelatedDirection;
-    let neighborId: string;
-
-    if (relationship.sourceResourceId === resource.id) {
-      direction = "outbound";
-      neighborId = relationship.targetResourceId;
-    } else if (relationship.targetResourceId === resource.id) {
-      direction = "inbound";
-      neighborId = relationship.sourceResourceId;
-    } else {
-      // Defensive: query should only return touching edges
-      continue;
-    }
-
+    const hop = hopFrom(relationship, resource.id);
+    if (!hop) continue;
     related.push({
       relationship,
-      direction,
-      resource: store.getResource(neighborId),
+      direction: hop.direction,
+      resource: store.getResource(hop.neighborId),
     });
   }
 
   return {
     resource,
     related,
+    paths: enumerateTwoHopPaths(store, resource.id, related),
     providerLastAttemptAt: lastAttemptAtByProvider(store.listProviders()),
   };
 }
@@ -161,6 +244,37 @@ function formatNeighborResource(resource: Resource | null, fallbackId: string): 
   return `${providerLabel(resource.provider)} ${resource.kind}: ${resourceDisplayName(resource)}`;
 }
 
+function formatPathHop(
+  hop: RelatedPathHop,
+  attempts: Readonly<Record<string, string | null>>,
+): string {
+  const directionLine =
+    hop.direction === "outbound"
+      ? `${hop.relationship.kind} →`
+      : `← ${hop.relationship.kind}`;
+  const neighborLine = formatNeighborResource(hop.resource, hop.resourceId);
+  const evidenceLine = `Evidence: ${formatEvidence(hop.relationship)}`;
+  const clocks = formatRelationshipClockLines(
+    hop.relationship.updatedAt,
+    lastRequiredProviderAttemptAt(hop.relationship.kind, attempts),
+  );
+  return `${directionLine}\n${neighborLine}\n${evidenceLine}\n${clocks}`;
+}
+
+export function formatRelatedPaths(ctx: RelatedResourceContext): string {
+  if (ctx.paths.length === 0) return "";
+  const blocks = ctx.paths.map((path) => {
+    const hop1 = formatPathHop(path.hops[0], ctx.providerLastAttemptAt);
+    const hop2 = formatPathHop(path.hops[1], ctx.providerLastAttemptAt);
+    return (
+      `${hop1}\n${hop2}\n` +
+      `via ${path.viaResourceId}\n` +
+      `(two stored Relationships; not a Relationship)`
+    );
+  });
+  return `\n\nPATHS\n\n${blocks.join("\n\n")}`;
+}
+
 /** Compact human-readable related-context view. */
 export function formatRelatedContext(ctx: RelatedResourceContext): string {
   const header =
@@ -171,7 +285,8 @@ export function formatRelatedContext(ctx: RelatedResourceContext): string {
     return (
       `${header}\n\n` +
       `No related resources discovered for this resource.\n` +
-      `(Combie only shows relationships supported by current evidence.)`
+      `(Combie only shows relationships supported by current evidence.)` +
+      formatRelatedPaths(ctx)
     );
   }
 
@@ -195,5 +310,5 @@ export function formatRelatedContext(ctx: RelatedResourceContext): string {
     return `${directionLine}\n${neighborLine}\n${evidenceLine}\n${clocks}`;
   });
 
-  return `${header}\n\nRELATED\n\n${blocks.join("\n\n")}`;
+  return `${header}\n\nRELATED\n\n${blocks.join("\n\n")}${formatRelatedPaths(ctx)}`;
 }

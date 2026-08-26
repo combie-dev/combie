@@ -1,5 +1,6 @@
 import type { Relationship } from "../domain/relationship.ts";
 import type { DeploymentEvidenceAuthority } from "../providers/vercel/deployment.ts";
+import type { GitHubIssueEvidenceAuthority } from "../providers/github/issue.ts";
 import type { WorkflowRunEvidenceAuthority } from "../providers/github/workflow-run.ts";
 import type { NeonOperationEvidenceAuthority } from "../providers/neon/operation.ts";
 import type { IssueEvidenceAuthority } from "../providers/sentry/issue.ts";
@@ -195,6 +196,7 @@ interface MutableRelatedSource {
   operations: NeonOperationEvidenceAuthority;
   releases: ReleaseEvidenceAuthority;
   issues: IssueEvidenceAuthority;
+  githubIssues: GitHubIssueEvidenceAuthority;
 }
 
 function compareAscending(left: string, right: string): number {
@@ -241,10 +243,11 @@ function relationshipRef(
 function familyOrder(family: ProviderActivityFamily): number {
   // Stable organizational order — not importance.
   if (family === "github_workflow_run") return 0;
-  if (family === "neon_operation") return 1;
-  if (family === "sentry_issue") return 2;
-  if (family === "sentry_release") return 3;
-  return 4;
+  if (family === "github_issue") return 1;
+  if (family === "neon_operation") return 2;
+  if (family === "sentry_issue") return 3;
+  if (family === "sentry_release") return 4;
+  return 5;
 }
 
 function compareItems(left: MissingContextItem, right: MissingContextItem): number {
@@ -458,6 +461,52 @@ function issueRetainedCount(
   return authority.issues.length;
 }
 
+function githubIssueRetainedCount(
+  authority: Exclude<GitHubIssueEvidenceAuthority, { kind: "not_applicable" }>,
+): number {
+  return authority.issues.length;
+}
+
+function pushGitHubIssueGap(
+  items: MissingContextItem[],
+  authority: GitHubIssueEvidenceAuthority | undefined,
+  scope: MissingContextScopeRef,
+): void {
+  const resolved = authority ?? { kind: "not_applicable" as const };
+  if (resolved.kind === "not_applicable") return;
+  if (resolved.kind === "empty" || resolved.kind === "populated") return;
+  if (resolved.kind !== "unknown") return;
+
+  const retainedCount = githubIssueRetainedCount(resolved);
+  const prior = hasLastSuccessProvenance(
+    resolved.lastSuccessAt,
+    resolved.resultCount,
+  );
+  if (!prior) {
+    items.push({
+      kind: "never_successfully_refreshed",
+      family: "github_issue",
+      provider: "github",
+      scope,
+      retainedCount,
+      latestAttemptObservedAt: resolved.latestAttemptObservedAt,
+      message: resolved.message,
+    });
+    return;
+  }
+  items.push({
+    kind: "unknown_current_authority",
+    family: "github_issue",
+    provider: "github",
+    scope,
+    retainedCount,
+    latestAttemptObservedAt: resolved.latestAttemptObservedAt,
+    lastSuccessfulObservedAt: resolved.lastSuccessAt,
+    lastSuccessfulResultCount: resolved.resultCount,
+    message: resolved.message,
+  });
+}
+
 function pushIssueGap(
   items: MissingContextItem[],
   authority: IssueEvidenceAuthority,
@@ -616,6 +665,7 @@ export function composeMissingContext(
   pushOperationGap(items, context.subjectOperations, subjectScopeRef);
   pushReleaseGap(items, context.subjectReleases, subjectScopeRef);
   pushIssueGap(items, context.subjectIssues, subjectScopeRef);
+  pushGitHubIssueGap(items, context.subjectGitHubIssues, subjectScopeRef);
 
   if (
     context.providerSyncClocks &&
@@ -694,6 +744,7 @@ export function composeMissingContext(
       operations: neighbor.operations,
       releases: neighbor.releases,
       issues: neighbor.issues,
+      githubIssues: neighbor.githubIssues ?? { kind: "not_applicable" },
     });
   }
 
@@ -707,6 +758,7 @@ export function composeMissingContext(
     pushOperationGap(items, source.operations, scope);
     pushReleaseGap(items, source.releases, scope);
     pushIssueGap(items, source.issues, scope);
+    pushGitHubIssueGap(items, source.githubIssues, scope);
   }
 
   const subjectReleaseCount = retainedEvidenceCount(context.subjectReleases);
@@ -859,6 +911,7 @@ export function missingContextFamilyName(family: ProviderActivityFamily): string
   if (family === "github_workflow_run") return "GitHub workflow-run";
   if (family === "sentry_release") return "Sentry release";
   if (family === "sentry_issue") return "Sentry issue";
+  if (family === "github_issue") return "GitHub issue";
   return "Neon operation";
 }
 

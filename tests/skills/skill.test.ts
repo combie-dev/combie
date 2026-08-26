@@ -131,6 +131,18 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(skillText.includes("no_known_relationships")).toBe(true);
   });
 
+  test("allowlist: two-hop paths vs one-hop related", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("paths")).toBe(true);
+    expect(skillText.includes("not a Relationship")).toBe(true);
+  });
+
+  test("allowlist: GitHub issues family field", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("subjectGitHubIssues")).toBe(true);
+    expect(skillText.includes("GITHUB ISSUES") || skillText.includes("GitHub issue")).toBe(true);
+  });
+
   test("allowlist: complete snapshot retrieve surface", () => {
     if (skillText === null) return;
     expect(skillText.includes("combie investigation")).toBe(true);

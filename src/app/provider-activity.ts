@@ -1,5 +1,6 @@
 import type { Relationship } from "../domain/relationship.ts";
 import type { Resource } from "../domain/resource.ts";
+import type { GitHubIssueEvidence } from "../providers/github/issue.ts";
 import type { GitHubWorkflowRunEvidence } from "../providers/github/workflow-run.ts";
 import type { NeonOperationEvidence } from "../providers/neon/operation.ts";
 import type { SentryIssueEvidence } from "../providers/sentry/issue.ts";
@@ -12,6 +13,7 @@ import type { RelatedDirection } from "./related.ts";
 export type ProviderActivityFamily =
   | "vercel_deployment"
   | "github_workflow_run"
+  | "github_issue"
   | "neon_operation"
   | "sentry_release"
   | "sentry_issue";
@@ -83,6 +85,16 @@ export type ProviderActivityEntry =
       resourceId: string;
       relationships: ProviderActivityRelationship[];
       authority: ProviderActivityAuthority;
+    }
+  | {
+      family: "github_issue";
+      evidence: GitHubIssueEvidence;
+      primaryTime: string;
+      primaryTimeField: "updated_at" | "created_at";
+      role: "subject" | "related";
+      resourceId: string;
+      relationships: ProviderActivityRelationship[];
+      authority: ProviderActivityAuthority;
     };
 
 export interface ProviderActivityChronology {
@@ -113,6 +125,10 @@ interface RelatedActivitySource {
     authority: ProviderActivityAuthority;
     items: SentryIssueEvidence[];
   } | null;
+  githubIssues: {
+    authority: ProviderActivityAuthority;
+    items: GitHubIssueEvidence[];
+  } | null;
 }
 
 function compareDescending(left: string, right: string): number {
@@ -140,6 +156,8 @@ export function nativeEvidenceId(entry: ProviderActivityEntry): string {
       return entry.evidence.version;
     case "sentry_issue":
       return entry.evidence.issueId;
+    case "github_issue":
+      return String(entry.evidence.issueId);
   }
 }
 
@@ -228,6 +246,26 @@ function collectOperations(
   }
   return authority.operations.length > 0
     ? { authority: "unknown", items: authority.operations }
+    : null;
+}
+
+function collectGitHubIssues(
+  authority: InvestigationContext["subjectGitHubIssues"],
+): {
+  authority: ProviderActivityAuthority;
+  items: GitHubIssueEvidence[];
+} | null {
+  if (!authority || authority.kind === "not_applicable") return null;
+  if (authority.kind === "populated") {
+    return { authority: "populated", items: authority.issues };
+  }
+  if (authority.kind === "empty") {
+    return authority.issues.length > 0
+      ? { authority: "empty", items: authority.issues }
+      : null;
+  }
+  return authority.issues.length > 0
+    ? { authority: "unknown", items: authority.issues }
     : null;
 }
 
@@ -326,6 +364,27 @@ function pushOperationEntries(
       evidence,
       primaryTime: evidence.createdAt,
       primaryTimeField: "created_at",
+      role,
+      resourceId: evidence.resourceId,
+      relationships,
+      authority,
+    });
+  }
+}
+
+function pushGitHubIssueEntries(
+  entries: ProviderActivityEntry[],
+  items: GitHubIssueEvidence[],
+  authority: ProviderActivityAuthority,
+  role: "subject" | "related",
+  relationships: ProviderActivityRelationship[],
+): void {
+  for (const evidence of items) {
+    entries.push({
+      family: "github_issue",
+      evidence,
+      primaryTime: evidence.updatedAt ?? evidence.createdAt,
+      primaryTimeField: evidence.updatedAt ? "updated_at" : "created_at",
       role,
       resourceId: evidence.resourceId,
       relationships,
@@ -439,6 +498,16 @@ export function composeProviderActivityChronology(
       [],
     );
   }
+  const subjectGitHubIssues = collectGitHubIssues(context.subjectGitHubIssues);
+  if (subjectGitHubIssues) {
+    pushGitHubIssueEntries(
+      entries,
+      subjectGitHubIssues.items,
+      subjectGitHubIssues.authority,
+      "subject",
+      [],
+    );
+  }
 
   // Group related neighbors by Resource id so multi-edge neighbors dedupe
   // evidence while retaining every Relationship path (same pattern as timeline).
@@ -458,6 +527,7 @@ export function composeProviderActivityChronology(
         operations: null,
         releases: null,
         issues: null,
+        githubIssues: null,
       };
       relatedByResource.set(neighbor.resource.id, source);
     }
@@ -483,6 +553,9 @@ export function composeProviderActivityChronology(
     }
     if (!source.issues) {
       source.issues = collectIssues(neighbor.issues);
+    }
+    if (!source.githubIssues) {
+      source.githubIssues = collectGitHubIssues(neighbor.githubIssues);
     }
   }
 
@@ -560,6 +633,21 @@ export function composeProviderActivityChronology(
         entries,
         unique,
         source.issues.authority,
+        "related",
+        rels,
+      );
+    }
+    if (source.githubIssues) {
+      const seen = new Set<number>();
+      const unique = source.githubIssues.items.filter((issue) => {
+        if (seen.has(issue.issueId)) return false;
+        seen.add(issue.issueId);
+        return true;
+      });
+      pushGitHubIssueEntries(
+        entries,
+        unique,
+        source.githubIssues.authority,
         "related",
         rels,
       );

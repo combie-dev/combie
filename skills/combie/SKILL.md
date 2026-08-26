@@ -50,6 +50,8 @@ Also read `last successful discovery` (`included` / `not in last successful disc
 
 MCP `get_related_context` on a 0-edge subject keeps `related` as `[]` and names the gap as `missingContext` kind `no_known_relationships`. When edges exist, omit `missingContext`. CLI `related --json` shares that projection. Do not add Missing Context to `combie context`.
 
+When two stored Relationships form a path (subject —edge— middle —edge— far), `related` stays one-hop and additive `paths` lists those two hops with verification clocks. A path is not a Relationship. Do not treat a Vercel–Sentry path via GitHub as Vercel↔Sentry causality. `combie context --json` stays one-hop RELATED and omits `paths`.
+
 CLI: `combie providers [--json]` shows LAST SYNC (last success) and LAST ATTEMPT per provider.
 
 MCP: `list_providers` includes `lastAttemptAt`.
@@ -72,6 +74,8 @@ Bare `combie sync` syncs all connected providers; prefer scoping to the authorit
 
 ```bash
 combie investigate <id> --json | jq '.knownFacts'
+combie investigate <id> --json | jq '.paths'
+combie investigate <id> --json | jq '.subjectGitHubIssues'
 combie context <id> --json | jq '.related'
 combie providers --json | jq '.providers[] | {name, lastSyncAt, lastAttemptAt}'
 combie investigations --json
@@ -93,6 +97,8 @@ A retained snapshot is composition at `composedAt`, NOT current truth. Do not pa
 
 ## 6. Cite the evidence used in a conclusion
 
-Cite exact local evidence ids and resource ids from the compose. Do not guess ids, do not invent evidence, and do not infer Action from provider activity — a deployment or workflow run is evidence, not a conclusion.
+Cite exact local evidence ids and resource ids from the compose. Do not guess ids, do not invent evidence, and do not infer Action from provider activity — a deployment, workflow run, or GitHub issue is evidence, not a conclusion.
+
+GitHub repositories expose GitHub issues on `subjectGitHubIssues` (and CLI GITHUB ISSUES), not Sentry `subjectIssues` (`not_applicable` on a repository). A two-hop `paths` entry is two proven edges, not a new edge and not a causal claim.
 
 Resolution and Incident recording is optional CLI work and is not part of this loop; MCP cannot write.

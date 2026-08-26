@@ -488,4 +488,109 @@ describe("getRelatedContext", () => {
     );
     expect(text).not.toContain("last required-provider sync attempt:");
   });
+
+  test("one-hop related omits two-hop paths", () => {
+    const { gh } = seedGraph(dir);
+    const ctx = getRelatedContext({ baseDir: dir, resourceRef: gh.id });
+    expect(ctx.related).toHaveLength(1);
+    expect(ctx.paths).toEqual([]);
+    expect(formatRelatedContext(ctx)).not.toContain("PATHS");
+  });
+
+  test("two stored edges compose an additive path without a third Relationship", () => {
+    const { gh, vercel } = seedGraph(dir);
+    const store = new Store(dir);
+    store.isInitialized();
+    const zone = createResource({
+      provider: "cloudflare",
+      providerResourceId: "zone-demo",
+      kind: "zone",
+      name: "example.com",
+      metadata: {},
+    });
+    store.upsertResource(zone);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: vercel.id,
+        targetResourceId: zone.id,
+        kind: "uses_domain_in",
+        evidence: {
+          source: "vercel",
+          mechanism: "custom_domain_apex",
+          apexName: "example.com",
+        },
+      }),
+    );
+    expect(store.listRelationships()).toHaveLength(2);
+    store.close();
+
+    const fromGh = getRelatedContext({ baseDir: dir, resourceRef: gh.id });
+    expect(fromGh.related).toHaveLength(1);
+    expect(fromGh.related[0]!.resource?.id).toBe(vercel.id);
+    expect(fromGh.paths).toHaveLength(1);
+    expect(fromGh.paths[0]!.viaResourceId).toBe(vercel.id);
+    expect(fromGh.paths[0]!.farResourceId).toBe(zone.id);
+    expect(fromGh.paths[0]!.hops[0].relationship.kind).toBe("source_for");
+    expect(fromGh.paths[0]!.hops[1].relationship.kind).toBe("uses_domain_in");
+    const text = formatRelatedContext(fromGh);
+    expect(text).toContain("PATHS");
+    expect(text).toContain("via " + vercel.id);
+    expect(text).toContain("two stored Relationships; not a Relationship");
+    expect(text).not.toMatch(/caus(e|al)/i);
+
+    const check = new Store(dir);
+    check.isInitialized();
+    expect(check.listRelationships()).toHaveLength(2);
+    expect(check.listRelationships().map((r) => r.kind).sort()).toEqual([
+      "source_for",
+      "uses_domain_in",
+    ]);
+    check.close();
+  });
+
+  test("Vercel–Sentry via GitHub is two hops, not a Vercel↔Sentry Relationship", () => {
+    const { gh, vercel, sentry } = seedGraph(dir);
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: gh.id,
+        targetResourceId: sentry.id,
+        kind: "code_mapped_to",
+        evidence: {
+          source: "sentry",
+          mechanism: "code_mapping",
+        },
+      }),
+    );
+    expect(store.listRelationships()).toHaveLength(2);
+    store.close();
+
+    const fromVercel = getRelatedContext({
+      baseDir: dir,
+      resourceRef: vercel.id,
+    });
+    expect(fromVercel.related).toHaveLength(1);
+    expect(fromVercel.paths).toHaveLength(1);
+    expect(fromVercel.paths[0]!.viaResourceId).toBe(gh.id);
+    expect(fromVercel.paths[0]!.farResourceId).toBe(sentry.id);
+    expect(fromVercel.paths[0]!.hops.map((h) => h.relationship.kind)).toEqual([
+      "source_for",
+      "code_mapped_to",
+    ]);
+    const kinds = new Store(dir);
+    kinds.isInitialized();
+    expect(kinds.listRelationships().some((r) => r.kind !== "source_for" && r.kind !== "code_mapped_to" && r.kind !== "uses_domain_in")).toBe(false);
+    expect(
+      kinds
+        .listRelationships()
+        .some(
+          (r) =>
+            (r.sourceResourceId === vercel.id && r.targetResourceId === sentry.id) ||
+            (r.sourceResourceId === sentry.id && r.targetResourceId === vercel.id),
+        ),
+    ).toBe(false);
+    kinds.close();
+    expect(formatRelatedContext(fromVercel)).not.toMatch(/caus(e|al)/i);
+  });
 });

@@ -532,6 +532,9 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
         if (url.includes("/actions/runs")) {
         return Response.json({ total_count: 0, workflow_runs: [] });
       }
+      if (url.includes("/issues")) {
+        return Response.json([]);
+      }
       if (url.includes("/user/repos") || url.includes("/repos")) {
           return Response.json([
             {
@@ -602,6 +605,9 @@ describe("Vercel↔Cloudflare uses_domain_in sync", () => {
             : input.url;
 
       if (url.includes("api.github.com")) {
+        if (url.includes("/issues")) {
+          return Response.json([]);
+        }
         if (url.includes("/repos")) {
           return Response.json([
             {

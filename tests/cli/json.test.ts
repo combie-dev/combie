@@ -209,6 +209,7 @@ describe("CLI MCP-parity --json", () => {
     );
     expect(parsed.related[0].relationship).not.toHaveProperty("updatedAt");
     expect(parsed).not.toHaveProperty("missingContext");
+    expect(parsed).not.toHaveProperty("paths");
   });
 
   test("related --json names no_known_relationships when related is empty", async () => {
@@ -248,6 +249,88 @@ describe("CLI MCP-parity --json", () => {
         ),
       ),
     );
+  });
+
+  test("related --json includes two-hop paths; context --json omits them", async () => {
+    const repository = createResource({
+      provider: "github",
+      providerResourceId: "path-repo",
+      kind: "repository",
+      name: "path-repo",
+      metadata: {},
+    });
+    const project = createResource({
+      provider: "vercel",
+      providerResourceId: "path-project",
+      kind: "project",
+      name: "path-project",
+      metadata: {},
+    });
+    const zone = createResource({
+      provider: "cloudflare",
+      providerResourceId: "path-zone",
+      kind: "zone",
+      name: "example.com",
+      metadata: {},
+    });
+    const store = new Store(dir);
+    store.isInitialized();
+    store.upsertResource(repository);
+    store.upsertResource(project);
+    store.upsertResource(zone);
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: repository.id,
+        targetResourceId: project.id,
+        kind: "source_for",
+        evidence: {
+          source: "vercel",
+          mechanism: "git_repository_reference",
+          repository: "acme/path-repo",
+        },
+      }),
+    );
+    store.upsertRelationship(
+      createRelationship({
+        sourceResourceId: project.id,
+        targetResourceId: zone.id,
+        kind: "uses_domain_in",
+        evidence: {
+          source: "vercel",
+          mechanism: "custom_domain_apex",
+          apexName: "example.com",
+        },
+      }),
+    );
+    store.close();
+
+    const relatedResult = await capture(() =>
+      main(["related", repository.id, "--json", "--dir", dir]),
+    );
+    const contextResult = await capture(() =>
+      main(["context", repository.id, "--json", "--dir", dir]),
+    );
+    const investigateResult = await capture(() =>
+      main(["investigate", repository.id, "--json", "--dir", dir]),
+    );
+    const relatedParsed = JSON.parse(relatedResult.stdout);
+    const contextParsed = JSON.parse(contextResult.stdout);
+    const investigateParsed = JSON.parse(investigateResult.stdout);
+
+    expect(relatedResult.code).toBe(0);
+    expect(relatedParsed.related).toHaveLength(1);
+    expect(relatedParsed.paths).toHaveLength(1);
+    expect(relatedParsed.paths[0].viaResourceId).toBe(project.id);
+    expect(relatedParsed.paths[0].farResourceId).toBe(zone.id);
+    expect(relatedParsed.paths[0].hops).toHaveLength(2);
+    expect(relatedParsed.paths[0].hops[0].relationship.kind).toBe("source_for");
+    expect(relatedParsed.paths[0].hops[1].relationship.kind).toBe(
+      "uses_domain_in",
+    );
+    expect(contextParsed).not.toHaveProperty("paths");
+    expect(investigateParsed.related).toHaveLength(1);
+    expect(investigateParsed.paths).toHaveLength(1);
+    expect(investigateParsed.paths[0].farResourceId).toBe(zone.id);
   });
 
   test("context shares the MCP-parity projection and omits null clocks", async () => {
@@ -397,6 +480,8 @@ describe("CLI MCP-parity --json", () => {
     expect(contextParsed).not.toHaveProperty("missingContext");
     expect(relatedParsed.related).toEqual([]);
     expect(relatedParsed.missingContext[0].kind).toBe("no_known_relationships");
+    expect(relatedParsed).not.toHaveProperty("paths");
+    expect(contextParsed).not.toHaveProperty("paths");
   });
 
   test("omitting --json keeps human context output", async () => {
