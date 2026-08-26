@@ -331,6 +331,8 @@ describe("CLI MCP-parity --json", () => {
     expect(investigateParsed.related).toHaveLength(1);
     expect(investigateParsed.paths).toHaveLength(1);
     expect(investigateParsed.paths[0].farResourceId).toBe(zone.id);
+    expect(relatedResult.stdout).not.toContain("Circular");
+    expect(investigateResult.stdout).not.toContain("Circular");
   });
 
   test("context shares the MCP-parity projection and omits null clocks", async () => {

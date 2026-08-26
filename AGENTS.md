@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–107 complete; Launch MVP launch pass not started
+## Current baseline: Sprints 001–108 complete; Launch MVP concluded on v0.4.0
 
 Multi-provider connection loop:
 
@@ -1067,8 +1067,22 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   paths (path + clocks; `related[]` stays one-hop; no transitive
   Relationship; no Vercel↔Sentry causality) + GitHub issues as
   `subjectGitHubIssues`. Publish gate **opened** — prep commit +
-  annotated tag `v0.4.0`. Launch pass is Sprint 108 after 107;
-  **not started**.
+  annotated tag `v0.4.0`.
+- **Sprint 108 (launch pass) shipped (2026-08-26):** Launch MVP
+  **concluded (PASS) on released `v0.4.0`** — fresh curl identity +
+  checksum verified; v0.2.1→v0.4.0 replacement preserved store bytes,
+  Resource/Investigation identity, composedAt, artifact hash; Wave 1
+  five-tool/list/named-empty and Wave 2 two-hop paths + GitHub-issue
+  tasks passed on the installed binary (live two-hop honestly absent;
+  labeled deterministic store for shape); skill-only agent answered
+  with exact ids/clocks, no causal invention. One major repaired on
+  HEAD under the conditional gate: `[Circular]` in `paths` hop
+  evidence (reproduced by test; deep-copy at projection boundary);
+  QUICKSTART/MCP.md aligned to three relationship kinds. Publish gate
+  **opened** — prep commit + annotated tag `v0.4.1`. Post-launch
+  program not selected; lifecycle /
+  Recommendation / Learning / similarity / policy / execution / sixth
+  tool / MCP writes remain out of scope.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →

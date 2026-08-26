@@ -182,8 +182,8 @@ a deployment. It supplies bounded evidence; the external agent interprets it.
 
 - State is only as fresh as the last manual CLI sync.
 - Investigation output is unpaginated and can be large.
-- Relationships are one hop and limited to the two deterministic kinds in the
-  README.
+- Relationships are one hop and limited to the three deterministic kinds in
+  the README (`source_for`, `uses_domain_in`, `code_mapped_to`).
 - No root-cause analysis, recommendations, or autonomous action.
 - Codex natural-agent execution is validated; Cursor natural-agent execution
   and Claude Code execution are not.

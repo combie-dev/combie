@@ -39,7 +39,7 @@ combie --version
 Expected output:
 
 ```bash
-combie 0.4.0
+combie 0.4.1
 ```
 
 The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
@@ -201,12 +201,15 @@ combie relationships
 - `providers` — which providers are connected and when they last synced.
 - `resources` — every discovered resource. Filter with `--provider <id>` or
   `--kind <kind>` (kinds listed above).
-- `relationships` — cross-provider edges. Combie proves exactly two kinds,
+- `relationships` — cross-provider edges. Combie proves exactly three kinds,
   only when deterministic evidence exists:
   - `source_for`: GitHub repository -> Vercel project (the project's Git link
     must match a discovered repository)
   - `uses_domain_in`: Vercel project -> Cloudflare zone (a custom domain apex
     must match a discovered zone)
+  - `code_mapped_to`: GitHub repository -> Sentry project (Sentry configured
+    the repository as source context; it does not prove error-reporting
+    completeness or causality)
 
 If `relationships` is empty, no deterministic evidence was found — partial
 data produces no edges by design.

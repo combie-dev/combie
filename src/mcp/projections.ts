@@ -210,7 +210,7 @@ function projectRelatedPathHop(
       kind: hop.relationship.kind,
       sourceResourceId: hop.relationship.sourceResourceId,
       targetResourceId: hop.relationship.targetResourceId,
-      evidence: hop.relationship.evidence,
+      evidence: deepCopyProjectionValue(hop.relationship.evidence),
       ...relationshipVerificationClockFields(
         hop.relationship.kind,
         hop.relationship.updatedAt,
