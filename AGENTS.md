@@ -319,7 +319,7 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–105 complete
+## Current baseline: Sprints 001–105 complete; Launch MVP Wave 1 (Sprint 106) Active
 
 Multi-provider connection loop:
 
@@ -342,9 +342,12 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   exact provider evidence. `code_mapped_to` means Sentry configured the
   repository as source-context for the project; it does not prove
   error-reporting completeness or release/issue causality.
-- Current agent scope: exactly four local, offline, read-only MCP tools:
-  `list_resources`, `list_providers`, `get_related_context`, and
-  `investigate_resource`.
+- Current agent scope: four local, offline, read-only MCP tools
+  shipped: `list_resources`, `list_providers`, `get_related_context`,
+  and `investigate_resource`. Launch MVP Wave 1 (Sprint 106, Active)
+  authorizes a fifth read-only tool `list_investigations` (summaries
+  only; not shipped until 106 completes). MCP writes remain forbidden.
+  Connection, sync, and memory writes stay CLI-only.
 - **Shipped Sentry evidence:** compact release history and compact issue
   aggregates on `sentry:project:<id>`, offline `RELEASES` and `ISSUES`,
   `sentry_release` / `sentry_issue` provider activity, and compact
@@ -1045,6 +1048,17 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   founder override. No `src/` / `tests/` / `package.json` diffs;
   no fifth tool; no MCP change; no `--json` thaw; no skill
   change; no checkout copy; no 078 leftover thaw.
+- **Launch MVP authorized (2026-08-25):** keep distributing v0.2.1
+  (A). Program B is two capability waves plus a launch pass —
+  not v0.8/v0.9, not Investigation lifecycle/Recommendation.
+  Cadence: outcome-sized sprints; implementation+dogfood together;
+  release after each wave. **Sprint 106 (Wave 1) Active:** complete
+  the read-only agent loop — named zero-edge `get_related_context`
+  (`no_known_relationships`), fifth tool `list_investigations`
+  over existing summaries, `--json` on `investigations` (compact
+  `investigation <id>` handle if it stays 082-shaped). Wave 2
+  (two-hop proven edges + GitHub issues) is next after 106, not
+  this sprint.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
