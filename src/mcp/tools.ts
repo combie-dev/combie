@@ -9,6 +9,7 @@ import {
 import { listInvestigations, getSavedInvestigation, getInvestigationArtifact } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { listResolutions } from "../app/resolutions.ts";
+import { composeTaskContext, normalizeTaskProfile } from "../app/task-context.ts";
 import {
   projectInvestigateResourceLive,
   projectInvestigationSnapshot,
@@ -16,6 +17,7 @@ import {
   projectListProviders,
   projectListResources,
   projectRelatedContext,
+  projectTaskContext,
   toIncidentMemory,
   toInvestigationHistory,
   toResolutionMemory,
@@ -146,6 +148,11 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "omitting live compose keys; that is retained composition, not current provider truth, " +
         "and not a recommendation. " +
         "Omitted investigationId with a missing Resource still returns RESOURCE_NOT_FOUND. " +
+        "Optional task (one of change-review, dependency-impact, response-recall) selects a " +
+        "smaller deterministic task-scoped view from the same live compose plus the same " +
+        "exact-subject Investigation / Resolution / Incident reads; task cannot be combined " +
+        "with investigationId, requires resourceId, is read-only, and names no new evidence. " +
+        "Omitted task returns the full investigation context unchanged. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
       inputSchema: z.object({
@@ -153,18 +160,73 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .string()
           .optional()
           .describe(
-            "Exact Combie Resource ID (e.g. 'vercel:project:prj_abc'). Optional when investigationId is named: the subject is then taken from that investigation's retained 048 row (subjectResourceId).",
+            "Exact Combie Resource ID (e.g. 'vercel:project:prj_abc'). Optional when investigationId is named: the subject is then taken from that investigation's retained 048 row (subjectResourceId). Required when task is set.",
           ),
         investigationId: z
           .string()
           .optional()
           .describe(
-            "Exact saved Investigation id (inv:…). When set, also returns the retained snapshot identity for that id as investigationSnapshot (id, subjectResourceId, composedAt, and a bounded subjectPreview from the retained snapshot's subject — not the 048 body; retrieve the complete snapshot with the CLI), a read-time investigationArtifact handle (schema, sha256 of the stored snapshot text, in-database location, record counts), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. resourceId may be omitted; the subject is then taken from this investigation's 048 row. Omit to skip snapshot, artifact, compare, investigation-scoped resolution memory, and investigation-scoped incident memory.",
+            "Exact saved Investigation id (inv:…). When set, also returns the retained snapshot identity for that id as investigationSnapshot (id, subjectResourceId, composedAt, and a bounded subjectPreview from the retained snapshot's subject — not the 048 body; retrieve the complete snapshot with the CLI), a read-time investigationArtifact handle (schema, sha256 of the stored snapshot text, in-database location, record counts), an ephemeral snapshot-versus-current comparison, investigation-scoped resolution memory, and investigation-scoped incident memory recorded against that id if any exist and the snapshot belongs to this Resource. resourceId may be omitted; the subject is then taken from this investigation's 048 row. Omit to skip snapshot, artifact, compare, investigation-scoped resolution memory, and investigation-scoped incident memory. Cannot be combined with task.",
+          ),
+        task: z
+          .enum(["change-review", "dependency-impact", "response-recall"])
+          .optional()
+          .describe(
+            "Optional explicit task profile for a task-scoped deterministic view of the same live compose. change-review: subject authority, changes, one-hop evidence, provider activity, timeline, shared commits, relationships/paths, evidence gaps. dependency-impact: direct Relationships, directions, neighbors, two-hop paths, relationship clocks, graph/discovery gaps (connectivity, not blast radius). response-recall: retained investigation history, resolution decision/action/outcome, incident groupings (exact prior records, not recommendations). Requires resourceId. Cannot be combined with investigationId. Omit for the full investigation context.",
           ),
       }),
     },
-    async ({ resourceId, investigationId }) => {
+    async ({ resourceId, investigationId, task }) => {
       try {
+        if (task !== undefined && investigationId !== undefined) {
+          throw new CombieError(
+            "TASK_INVESTIGATION_ID_CONFLICT",
+            "task cannot be combined with investigationId.\nName an exact resourceId with a task profile, or omit task to use investigationId.",
+          );
+        }
+        if (task !== undefined) {
+          const namedResourceRef =
+            resourceId === undefined ? "" : resourceId.trim();
+          if (namedResourceRef === "") {
+            throw new CombieError(
+              "RESOURCE_ID_REQUIRED",
+              "resourceId is required when task is set.\nPass an exact resource id with a task profile.",
+            );
+          }
+          const profile = normalizeTaskProfile(task);
+          const { getInvestigationContext } = await import("../app/investigate.ts");
+          const ctx = getInvestigationContext({
+            baseDir,
+            resourceRef: namedResourceRef,
+          });
+          const resolutionRows = listResolutions(baseDir, {
+            subjectResourceId: ctx.subject.id,
+          });
+          const incidentRows = listIncidentsForSubject(baseDir, ctx.subject.id);
+          const investigationRows = listInvestigations(baseDir, {
+            subjectResourceId: ctx.subject.id,
+          });
+          const projection = projectTaskContext(
+            composeTaskContext({
+              task: profile,
+              ctx,
+              resolutionRows,
+              incidentRows,
+              investigationRows,
+            }),
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Task-scoped ${profile} context for ${ctx.subject.name}. ` +
+                  `Exact subject ${ctx.subject.id}; read-only deterministic selection.`,
+              },
+            ],
+            structuredContent: safeJson(projection) as Record<string, unknown>,
+          };
+        }
         let investigationCompare: ReturnType<
           typeof compareInvestigationToCurrent
         > | undefined;

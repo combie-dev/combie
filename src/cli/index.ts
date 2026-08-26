@@ -34,6 +34,10 @@ import {
   formatInvestigationContext,
 } from "../app/investigate.ts";
 import {
+  composeTaskContext,
+  normalizeTaskProfile,
+} from "../app/task-context.ts";
+import {
   formatInvestigationList,
   formatSaveConfirmation,
   formatSavedInvestigation,
@@ -90,6 +94,7 @@ import {
   projectListResources,
   projectRelatedContext,
   projectResourceContext,
+  projectTaskContext,
 } from "../mcp/projections.ts";
 import { safeJson } from "../mcp/serialization.ts";
 import { serveMcp } from "../mcp/server.ts";
@@ -163,6 +168,8 @@ Read options:
 
 Investigate options:
   --save                       Persist a retained investigation snapshot
+  --task <profile>             With "investigate" + --json: select a task-scoped
+                               view (change-review | dependency-impact | response-recall)
   --compare                    With "investigation <id>": compare snapshot to current compose
   --resource <resource-id>     With "investigations": list snapshots for one subject
                                With "resolutions": list resolutions for one subject
@@ -222,6 +229,9 @@ Examples:
   ${BINARY_NAME} context github:repository:1001
   ${BINARY_NAME} investigate vercel:project:prj_abc
   ${BINARY_NAME} investigate vercel:project:prj_abc --save
+  ${BINARY_NAME} investigate vercel:project:prj_abc --task change-review --json
+  ${BINARY_NAME} investigate vercel:project:prj_abc --task dependency-impact --json
+  ${BINARY_NAME} investigate vercel:project:prj_abc --task response-recall --json
   ${BINARY_NAME} investigations
   ${BINARY_NAME} investigations --resource github:repository:1001
   ${BINARY_NAME} investigation inv:…
@@ -375,6 +385,13 @@ async function main(argv: string[]): Promise<number> {
     return 1;
   }
 
+  if (flags.task !== undefined && command !== "investigate") {
+    console.error(
+      `--task is only available with investigate.\nUsage: ${BINARY_NAME} investigate <resource-id> --task <profile> --json`,
+    );
+    return 1;
+  }
+
   const baseDir = baseDirFromFlags(flags);
 
   try {
@@ -511,6 +528,60 @@ async function main(argv: string[]): Promise<number> {
             `Usage: ${BINARY_NAME} investigate <resource-id> [--save]\nExample: ${BINARY_NAME} investigate vercel:project:prj_abc\nList ids: ${BINARY_NAME} resources`,
           );
           return 1;
+        }
+        const taskValue = flags.task;
+        if (taskValue !== undefined) {
+          if (typeof taskValue !== "string") {
+            console.error(
+              `--task requires a profile.\nUsage: ${BINARY_NAME} investigate <resource-id> --task <profile> --json\nProfiles: change-review, dependency-impact, response-recall`,
+            );
+            return 1;
+          }
+          if (flags.save === true) {
+            console.error(
+              `--task is read-only and cannot be combined with --save.\nUse: ${BINARY_NAME} investigate <resource-id> --task <profile> --json`,
+            );
+            return 1;
+          }
+          if (flags.json !== true) {
+            console.error(
+              `--task requires --json in Sprint 109 task mode.\nUsage: ${BINARY_NAME} investigate <resource-id> --task <profile> --json`,
+            );
+            return 1;
+          }
+          const profile = normalizeTaskProfile(taskValue.trim());
+          const investigation = getInvestigationContext({
+            baseDir,
+            resourceRef,
+          });
+          const resolutionRows = listResolutions(baseDir, {
+            subjectResourceId: investigation.subject.id,
+          });
+          const incidentRows = listIncidentsForSubject(
+            baseDir,
+            investigation.subject.id,
+          );
+          const investigationRows = listInvestigations(baseDir, {
+            subjectResourceId: investigation.subject.id,
+          });
+          console.log(
+            JSON.stringify(
+              safeJson(
+                projectTaskContext(
+                  composeTaskContext({
+                    task: profile,
+                    ctx: investigation,
+                    resolutionRows,
+                    incidentRows,
+                    investigationRows,
+                  }),
+                ),
+              ),
+              null,
+              2,
+            ),
+          );
+          return 0;
         }
         if (flags.json === true && flags.save === true) {
           console.error(

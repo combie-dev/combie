@@ -3,7 +3,15 @@ import {
   type InvestigationFact,
 } from "../app/investigation-facts.ts";
 import type { ResourceContext } from "../app/context.ts";
-import type { InvestigationContext } from "../app/investigate.ts";
+import type {
+  InvestigationContext,
+  InvestigationNeighbor,
+} from "../app/investigate.ts";
+import type {
+  DependencyImpactNeighbor,
+  OnDemandTarget,
+  TaskScopedContext,
+} from "../app/task-context.ts";
 import type {
   InvestigationArtifact,
   SavedInvestigation,
@@ -30,9 +38,13 @@ import {
   composeInvestigationTimeline,
   type InvestigationTimeline,
 } from "../app/timeline.ts";
+import type { Change } from "../domain/change.ts";
 import type { IncidentRecord } from "../domain/incident.ts";
 import type { InvestigationRecord } from "../domain/investigation.ts";
-import type { RelationshipKind } from "../domain/relationship.ts";
+import type {
+  Relationship,
+  RelationshipKind,
+} from "../domain/relationship.ts";
 import type { ResolutionRecord } from "../domain/resolution.ts";
 import type { Resource } from "../domain/resource.ts";
 import type { ProviderRecord } from "../storage/store.ts";
@@ -338,15 +350,13 @@ function projectMissingContext(items: MissingContextItem[]): MissingContextItem[
   return items.map((item) => deepCopyProjectionValue(item) as MissingContextItem);
 }
 
-export function projectInvestigateResourceLive({
-  ctx,
-  resolutionRows,
-  incidentRows,
-  investigationRows,
-}: ProjectInvestigateResourceLiveOptions) {
-  const providerLastAttemptAt = ctx.providerLastAttemptAt ?? {};
-
-  const subject = {
+function projectSubject(
+  ctx: Pick<
+    InvestigationContext,
+    "subject" | "providerSyncClocks" | "lastSuccessfulDiscovery"
+  >,
+) {
+  return {
     id: ctx.subject.id,
     provider: ctx.subject.provider,
     kind: ctx.subject.kind,
@@ -370,58 +380,108 @@ export function projectInvestigateResourceLive({
       ? { lastSuccessfulDiscovery: ctx.lastSuccessfulDiscovery }
       : {}),
   };
+}
 
-  const subjectChanges = ctx.subjectChanges.map((change) => ({
+function projectChanges(changes: Change[]) {
+  return changes.map((change) => ({
     id: change.id,
     kind: change.kind,
     observedAt: change.observedAt,
     fields: change.fields,
   }));
+}
 
-  const related = ctx.related.map((neighbor) => ({
+function projectResourceIdentity(
+  resource: Pick<
+    Resource,
+    "id" | "provider" | "kind" | "providerResourceId" | "name"
+  >,
+) {
+  return {
+    id: resource.id,
+    provider: resource.provider,
+    kind: resource.kind,
+    providerResourceId: resource.providerResourceId,
+    name: resource.name,
+  };
+}
+
+function projectRelationshipLeaf(
+  neighbor: {
+    relationship: Pick<
+      Relationship,
+      | "id"
+      | "kind"
+      | "sourceResourceId"
+      | "targetResourceId"
+      | "evidence"
+      | "updatedAt"
+    >;
+  },
+  attempts: Readonly<Record<string, string | null | undefined>>,
+) {
+  return {
+    id: neighbor.relationship.id,
+    kind: neighbor.relationship.kind,
+    sourceResourceId: neighbor.relationship.sourceResourceId,
+    targetResourceId: neighbor.relationship.targetResourceId,
+    evidence: neighbor.relationship.evidence,
+    ...relationshipVerificationClockFields(
+      neighbor.relationship.kind,
+      neighbor.relationship.updatedAt,
+      attempts,
+    ),
+  };
+}
+
+/** Full one-hop neighbor projection (relationship + identity + changes + evidence). */
+function projectRelatedNeighborDetail(
+  neighbor: InvestigationNeighbor,
+  attempts: Readonly<Record<string, string | null | undefined>>,
+) {
+  return {
     direction: neighbor.direction,
-    relationship: {
-      id: neighbor.relationship.id,
-      kind: neighbor.relationship.kind,
-      sourceResourceId: neighbor.relationship.sourceResourceId,
-      targetResourceId: neighbor.relationship.targetResourceId,
-      evidence: neighbor.relationship.evidence,
-      ...relationshipVerificationClockFields(
-        neighbor.relationship.kind,
-        neighbor.relationship.updatedAt,
-        providerLastAttemptAt,
-      ),
-    },
-    resource: neighbor.resource
-      ? {
-          id: neighbor.resource.id,
-          provider: neighbor.resource.provider,
-          kind: neighbor.resource.kind,
-          providerResourceId: neighbor.resource.providerResourceId,
-          name: neighbor.resource.name,
-        }
-      : null,
-    changes: neighbor.changes.map((change) => ({
-      id: change.id,
-      kind: change.kind,
-      observedAt: change.observedAt,
-      fields: change.fields,
-    })),
+    relationship: projectRelationshipLeaf(neighbor, attempts),
+    resource: neighbor.resource ? projectResourceIdentity(neighbor.resource) : null,
+    changes: projectChanges(neighbor.changes),
     deployments: neighbor.deployments,
     workflowRuns: neighbor.workflowRuns,
     operations: neighbor.operations,
     releases: neighbor.releases,
     issues: neighbor.issues,
-    ...(neighbor.githubIssues
-      ? { githubIssues: neighbor.githubIssues }
-      : {}),
-  }));
+    ...(neighbor.githubIssues ? { githubIssues: neighbor.githubIssues } : {}),
+  };
+}
+
+/** Thin one-hop neighbor projection (direction + relationship + identity only). */
+function projectRelatedNeighborIdentity(
+  neighbor: DependencyImpactNeighbor,
+  attempts: Readonly<Record<string, string | null | undefined>>,
+) {
+  return {
+    direction: neighbor.direction,
+    relationship: projectRelationshipLeaf(neighbor, attempts),
+    resource: neighbor.resource ? projectResourceIdentity(neighbor.resource) : null,
+  };
+}
+
+export function projectInvestigateResourceLive({
+  ctx,
+  resolutionRows,
+  incidentRows,
+  investigationRows,
+}: ProjectInvestigateResourceLiveOptions) {
+  const providerLastAttemptAt = ctx.providerLastAttemptAt ?? {};
+
+  const related = ctx.related.map((neighbor) =>
+    projectRelatedNeighborDetail(neighbor, providerLastAttemptAt),
+  );
 
   const sharedCommitGroups = composeSharedCommitContext(ctx);
 
   return {
-    subject,
-    subjectChanges,
+    subject: projectSubject(ctx),
+    subjectChanges: projectChanges(ctx.subjectChanges),
     subjectDeployments: ctx.subjectDeployments,
     subjectWorkflowRuns: ctx.subjectWorkflowRuns,
     subjectOperations: ctx.subjectOperations,
@@ -456,4 +516,102 @@ export function projectInvestigateResourceLive({
       ? { investigationHistory: toInvestigationHistory(investigationRows) }
       : {}),
   };
+}
+
+/**
+ * Task-scoped projection (Sprint 109). Shared by CLI `investigate --task` and
+ * MCP `investigate_resource` task mode. Reuses the same leaf shapes as the
+ * full live projection; only the selected sections are rendered.
+ */
+export function projectTaskContext(tc: TaskScopedContext) {
+  const result: Record<string, unknown> = {
+    task: {
+      profile: tc.task.profile,
+      subjectResourceId: tc.task.subjectResourceId,
+    },
+    subject: projectSubject(tc.subjectContext),
+  };
+
+  if (tc.profile === "change-review") {
+    result.subjectChanges = projectChanges(tc.subjectChanges);
+    result.subjectDeployments = tc.subjectDeployments;
+    result.subjectWorkflowRuns = tc.subjectWorkflowRuns;
+    result.subjectOperations = tc.subjectOperations;
+    result.subjectReleases = tc.subjectReleases;
+    result.subjectIssues = tc.subjectIssues;
+    if (tc.subjectGitHubIssues) {
+      result.subjectGitHubIssues = tc.subjectGitHubIssues;
+    }
+    result.related = tc.related.map((neighbor) =>
+      projectRelatedNeighborDetail(neighbor, tc.providerLastAttemptAt),
+    );
+    if (tc.paths.length > 0) {
+      result.paths = projectRelatedPaths(tc.paths, tc.providerLastAttemptAt);
+    }
+    result.knownFacts = projectKnownFacts(tc.knownFacts);
+    result.missingContext = projectMissingContext(tc.missingContext);
+    result.providerActivity = projectProviderActivity(tc.providerActivity);
+    result.timeline = projectTimeline(tc.timeline);
+    result.sharedCommitContext = tc.sharedCommitContext;
+    result.sharedCommitCorrespondences = tc.sharedCommitCorrespondences;
+  } else if (tc.profile === "dependency-impact") {
+    result.related = tc.related.map((neighbor) =>
+      projectRelatedNeighborIdentity(neighbor, tc.providerLastAttemptAt),
+    );
+    if (tc.paths.length > 0) {
+      result.paths = projectRelatedPaths(tc.paths, tc.providerLastAttemptAt);
+    }
+    result.missingContext = projectMissingContext(tc.missingContext);
+  } else {
+    result.investigationHistory = toInvestigationHistory(
+      tc.investigationHistory,
+    );
+    result.resolutionMemory = toResolutionMemory(tc.resolutionMemory);
+    result.incidentMemory = toIncidentMemory(tc.incidentMemory);
+  }
+
+  result.availableOnDemand = projectOnDemandTargets(tc.onDemandTargets);
+
+  return result;
+}
+
+/**
+ * Retrieval syntax for one on-demand target (Sprint 110). The literal binary
+ * name is `combie` — the CLI-facing / released name, independent of any build
+ * constant. The resource id stays one inert argv array element even when it
+ * contains shell metacharacters; it is never interpolated into a command
+ * string.
+ */
+function projectOnDemandTarget(target: OnDemandTarget): Record<string, unknown> {
+  if (target.kind === "current-investigation") {
+    return {
+      kind: "current-investigation",
+      subjectResourceId: target.subjectResourceId,
+      cli: {
+        argv: ["combie", "investigate", target.subjectResourceId, "--json"],
+      },
+      mcp: {
+        tool: "investigate_resource",
+        arguments: { resourceId: target.subjectResourceId },
+      },
+    };
+  }
+  return {
+    kind: "retained-investigation",
+    investigationId: target.investigationId,
+    subjectResourceId: target.subjectResourceId,
+    composedAt: target.composedAt,
+    cli: {
+      argv: ["combie", "investigation", target.investigationId],
+    },
+    mcp: {
+      tool: "investigate_resource",
+      arguments: { investigationId: target.investigationId },
+      returns: "retained-snapshot-handle",
+    },
+  };
+}
+
+export function projectOnDemandTargets(targets: OnDemandTarget[]) {
+  return targets.map(projectOnDemandTarget);
 }

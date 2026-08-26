@@ -28,11 +28,68 @@ This skill teaches the six-step composition loop over shipped primitives:
 6. cite exact evidence
 ```
 
+## Task profiles
+
+For a task-scoped deterministic view, name one of three exact profiles instead
+of hand-filtering the full document:
+
+- `change-review` — what changed around this Resource. Subject/current
+  authority, changes, one-hop evidence, provider activity, timeline, shared
+  commits, relevant relationships/paths, evidence gaps. Chronology and
+  correspondence, not causality.
+- `dependency-impact` — what is connected to or potentially affected. Direct
+  Relationships, directions, neighbors, two-hop paths, relationship evidence
+  and verification clocks, graph/discovery gaps. Connectivity, not blast
+  radius or runtime-dependency certainty.
+- `response-recall` — what we investigated, decided, did, and observed
+  previously. Investigation summaries, Resolution decision/action/outcome
+  fields, evidence ids, Incident groupings, explicit known-empty arrays.
+  Exact prior records, not similar incidents or recommendations.
+
+Map a user's question to a profile explicitly; Combie itself never classifies
+free-text intent.
+
+```text
+CLI: combie investigate <id> --task <profile> --json
+MCP: investigate_resource { resourceId, task: "<profile>" }
+```
+
+`--task` is read-only and requires `--json`; it cannot be combined with
+`--save`. MCP `task` cannot be combined with `investigationId`. When no profile
+fits, fall back to full `combie investigate <id> --json`.
+
+### `availableOnDemand` — deeper context without expanding the result
+
+Every `--task` result carries one top-level `availableOnDemand` array: inert
+retrieval descriptors, never executed by Combie. An omitted-task full
+`investigate` has no such field. Two target kinds:
+
+- `current-investigation` — exactly one, always first, for the exact subject.
+  `cli.argv: ["combie", "investigate", "<id>", "--json"]`, or MCP
+  `investigate_resource { resourceId: "<id>" }` (no `task`). This is a NEW live
+  local compose, not frozen to the earlier task call; a sync between calls may
+  change evidence and clocks.
+- `retained-investigation` — only on `response-recall`, one per existing
+  `investigationHistory` row, in the same order (`kind`, `investigationId`,
+  `subjectResourceId`, `composedAt`). `cli.argv: ["combie", "investigation",
+  "<investigationId>"]` retrieves the COMPLETE retained (frozen at `composedAt`)
+  composition. MCP `investigate_resource { investigationId: "<id>" }` returns
+  the thin named-id handle — snapshot identity, bounded subject preview, and
+  artifact handle — NOT the snapshot body.
+
+`change-review` and `dependency-impact` expose only the one current target
+(no retained ids — those profiles exclude memory).
+
+`argv` is an argument vector, never a shell command string. The descriptor is
+guidance, not an automatic-retrieval policy: follow the current target only
+when the task result is insufficient, and remember a current target is a live
+re-compose while a retained target is frozen at `composedAt`.
+
 ## 1. Run a compact investigation
 
 MCP: `investigate_resource { resourceId }`
 
-CLI: `combie investigate <id> [--json] [--save]`
+CLI: `combie investigate <id> [--json] [--save] [--task <profile>]`
 
 A live investigate is CURRENT observation — what the providers and local relationships say now — not a stored snapshot. `--save` retains a snapshot for later reopen or compare, but saving is not needed for this loop.
 
@@ -76,6 +133,9 @@ Bare `combie sync` syncs all connected providers; prefer scoping to the authorit
 combie investigate <id> --json | jq '.knownFacts'
 combie investigate <id> --json | jq '.paths'
 combie investigate <id> --json | jq '.subjectGitHubIssues'
+combie investigate <id> --task change-review --json
+combie investigate <id> --task dependency-impact --json
+combie investigate <id> --task response-recall --json
 combie context <id> --json | jq '.related'
 combie providers --json | jq '.providers[] | {name, lastSyncAt, lastAttemptAt}'
 combie investigations --json

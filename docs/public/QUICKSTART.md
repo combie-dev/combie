@@ -39,7 +39,7 @@ combie --version
 Expected output:
 
 ```bash
-combie 0.4.1
+combie 0.5.0
 ```
 
 The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
@@ -245,6 +245,38 @@ provider-activity chronology; and detailed evidence.
 
 It does **not** contain root-cause analysis or AI reasoning — those do not
 exist yet. You get the facts and the evidence trail; interpretation is yours.
+
+For a smaller task-scoped view, name one of three profiles with `--json`:
+
+```bash
+combie investigate vercel:project:prj_abc123 --task change-review --json
+combie investigate vercel:project:prj_abc123 --task dependency-impact --json
+combie investigate vercel:project:prj_abc123 --task response-recall --json
+```
+
+`change-review` returns what changed and the evidence chronology;
+`dependency-impact` returns proven connectivity and paths (connectivity, not
+blast radius); `response-recall` returns retained investigations, resolutions,
+and incident groupings. Each is read-only and deterministic; omit `--task` for
+the full investigation document.
+
+Every `--task` result also carries a top-level `availableOnDemand` array —
+inert descriptors for deeper context on demand. Follow one only when the task
+result is insufficient:
+
+```json
+{
+  "availableOnDemand": [
+    { "kind": "current-investigation",
+      "cli": { "argv": ["combie", "investigate", "<resource-id>", "--json"] },
+      "mcp": { "tool": "investigate_resource", "arguments": { "resourceId": "<resource-id>" } } }
+  ]
+}
+```
+
+The `current-investigation` target re-composes live now; `retained-investigation`
+targets (only on `response-recall`) are frozen at `composedAt`. `cli.argv` and
+`mcp` are inert descriptors — Combie does not execute them.
 
 **Troubleshooting:** `Unknown resource` -> the ID is not in the store;
 re-check the exact string from `resources`, or re-run `sync` — state is only

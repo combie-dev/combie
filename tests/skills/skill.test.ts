@@ -162,6 +162,21 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(skillText.includes("read-only")).toBe(true);
   });
 
+  test("allowlist: task-scoped profiles (Sprint 109)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("--task")).toBe(true);
+    expect(skillText.includes("change-review")).toBe(true);
+    expect(skillText.includes("dependency-impact")).toBe(true);
+    expect(skillText.includes("response-recall")).toBe(true);
+  });
+
+  test("allowlist: task-scoped availableOnDemand (Sprint 110)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("availableOnDemand")).toBe(true);
+    expect(skillText.includes("current-investigation")).toBe(true);
+    expect(skillText.includes("retained-investigation")).toBe(true);
+  });
+
   const DENYLIST = [
     "combie timeline",
     "combie memory",

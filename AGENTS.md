@@ -319,7 +319,12 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–108 complete; Launch MVP concluded on v0.4.0
+## Current baseline: Sprints 001–109 complete; Sprint 110 Active
+
+Launch MVP was validated and concluded on released `v0.4.0`; its conditional
+two-hop projection repair is currently distributed as `v0.4.1`. Sprint 109
+starts the post-launch Task-Aware Context MVP under founder authorization
+2026-08-26. It is not leftover-order thaw.
 
 Multi-provider connection loop:
 
@@ -1079,10 +1084,56 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   HEAD under the conditional gate: `[Circular]` in `paths` hop
   evidence (reproduced by test; deep-copy at projection boundary);
   QUICKSTART/MCP.md aligned to three relationship kinds. Publish gate
-  **opened** — prep commit + annotated tag `v0.4.1`. Post-launch
-  program not selected; lifecycle /
+  **opened and published** — prep commit `29083f5` + annotated tag
+  `v0.4.1`; GitHub Release with six assets. Launch MVP was concluded on
+  `v0.4.0`; `v0.4.1` distributes the launch repair. Lifecycle /
   Recommendation / Learning / similarity / policy / execution / sixth
   tool / MCP writes remain out of scope.
+- **Sprint 109 shipped (2026-08-26): Task-Aware Context MVP Wave 1 —
+  task-scoped deterministic composition.** Founder agreement with the
+  recommended next program plus explicit instruction "author sprint 109
+  then." Exact Resource id + one explicit profile: `change-review`,
+  `dependency-impact`, or `response-recall`. CLI surface:
+  `investigate <resource-id> --task <profile> --json`; MCP surface:
+  optional `task` enum on existing `investigate_resource`. Task mode
+  reuses the complete current Investigation compose and exact subject
+  Investigation / Resolution / Incident reads, then selects one smaller
+  profile-specific view through a concrete application composer and
+  shared CLI/MCP projection. Omitted task behavior stays unchanged.
+  `--task` cannot combine with `--save`; MCP `task` cannot combine with
+  `investigationId`. No schema, task persistence, task-scoped snapshot,
+  human task renderer, generic ContextPack / ContextEngine, free-text
+  classification, ranking, budget, sixth tool, MCP write, new provider /
+  Relationship / traversal, Recommendation, Learning, policy, or
+  execution. Shipped in HEAD: `src/app/task-context.ts` (exhaustive
+  switch reusing existing composers) + shared `projectTaskContext`
+  (thin dependency-impact neighbors, deep-copied path evidence, no
+  `"[Circular]"`); CLI validation (rejects `--save`, missing `--json`,
+  missing value, unknown profile, and `--task` on other commands) and MCP
+  `task` enum (rejects
+  `investigationId`, requires `resourceId`, still five read-only tools);
+  skill + MCP.md + QUICKSTART teach the surface; 1362 tests / typecheck
+  green; T1–T3 dogfood PASS on an isolated store. No tag/push/release;
+  Wave 2 not selected.
+- **Sprint 110 Active (2026-08-26): Task-Aware Context MVP Wave 2 —
+  progressive on-demand retrieval + gated v0.5.0 release.** Founder
+  instruction starts Wave 2 and authorizes version bump / commit / tag / push /
+  release only after implementation, architecture, full-test, and P1–P4
+  dogfood gates pass. Additive `availableOnDemand` on Sprint 109 task results:
+  one semantic current-investigation target on every profile; ordered retained-
+  investigation targets only for rows already visible in `response-recall`
+  `investigationHistory`. Application Core owns a closed target union without
+  CLI/MCP syntax; the shared boundary emits inert CLI argv arrays and exact
+  existing `investigate_resource` arguments. Existing full-live and retained
+  retrieval paths remain authoritative; current follow-up is live, retained is
+  frozen, and MCP retained retrieval stays a thin artifact handle rather than
+  the snapshot body. No new inputs, sixth tool, MCP write, schema, persistence,
+  command string, automatic retrieval, generic ContextPack/handle registry,
+  budget, ranking, classifier, profile rewrite, Investigation lifecycle,
+  Recommendation, Learning, policy, execution, provider/graph expansion, or
+  Sprint 111. Target release after PASS: v0.5.0 containing intended Sprint
+  109+110 work; verify pipeline, six assets/checksums, isolated curl install,
+  and v0.4.1 state continuity; stop publication on any failed gate.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
