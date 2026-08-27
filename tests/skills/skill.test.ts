@@ -177,6 +177,19 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(skillText.includes("retained-investigation")).toBe(true);
   });
 
+  test("allowlist: structuredResponseMemory (Sprint 111)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("structuredResponseMemory")).toBe(true);
+  });
+
+  test("allowlist: structured response CLI capture (Sprint 111)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("combie recommendation")).toBe(true);
+    expect(skillText.includes("combie decision")).toBe(true);
+    expect(skillText.includes("combie action")).toBe(true);
+    expect(skillText.includes("combie outcome")).toBe(true);
+  });
+
   const DENYLIST = [
     "combie timeline",
     "combie memory",

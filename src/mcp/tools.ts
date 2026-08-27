@@ -9,6 +9,7 @@ import {
 import { listInvestigations, getSavedInvestigation, getInvestigationArtifact } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { listResolutions } from "../app/resolutions.ts";
+import { composeStructuredResponseMemory } from "../app/structured-response-memory.ts";
 import { composeTaskContext, normalizeTaskProfile } from "../app/task-context.ts";
 import {
   projectInvestigateResourceLive,
@@ -152,6 +153,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "smaller deterministic task-scoped view from the same live compose plus the same " +
         "exact-subject Investigation / Resolution / Incident reads; task cannot be combined " +
         "with investigationId, requires resourceId, is read-only, and names no new evidence. " +
+        "When task is response-recall, also returns additive structuredResponseMemory: exact " +
+        "Recommendation → Decision → Action → Outcome chains for that subject (retained " +
+        "organizational memory, not current provider truth, not inferred Action). Always " +
+        "present; [] is known-empty. " +
         "Omitted task returns the full investigation context unchanged. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
@@ -172,7 +177,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .enum(["change-review", "dependency-impact", "response-recall"])
           .optional()
           .describe(
-            "Optional explicit task profile for a task-scoped deterministic view of the same live compose. change-review: subject authority, changes, one-hop evidence, provider activity, timeline, shared commits, relationships/paths, evidence gaps. dependency-impact: direct Relationships, directions, neighbors, two-hop paths, relationship clocks, graph/discovery gaps (connectivity, not blast radius). response-recall: retained investigation history, resolution decision/action/outcome, incident groupings (exact prior records, not recommendations). Requires resourceId. Cannot be combined with investigationId. Omit for the full investigation context.",
+            "Optional explicit task profile for a task-scoped deterministic view of the same live compose. change-review: subject authority, changes, one-hop evidence, provider activity, timeline, shared commits, relationships/paths, evidence gaps. dependency-impact: direct Relationships, directions, neighbors, two-hop paths, relationship clocks, graph/discovery gaps (connectivity, not blast radius). response-recall: retained investigation history, resolution decision/action/outcome, incident groupings (exact prior records, not recommendations), and additive structuredResponseMemory (exact Recommendation → Decision → Action → Outcome chains for that subject; retained organizational memory, not current provider truth, not inferred Action; always present, [] is known-empty). Requires resourceId. Cannot be combined with investigationId. Omit for the full investigation context.",
           ),
       }),
     },
@@ -206,6 +211,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           const investigationRows = listInvestigations(baseDir, {
             subjectResourceId: ctx.subject.id,
           });
+          const structuredResponseChains = composeStructuredResponseMemory(
+            baseDir,
+            ctx.subject.id,
+          );
           const projection = projectTaskContext(
             composeTaskContext({
               task: profile,
@@ -213,6 +222,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               resolutionRows,
               incidentRows,
               investigationRows,
+              structuredResponseChains,
             }),
           );
           return {

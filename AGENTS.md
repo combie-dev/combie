@@ -319,12 +319,17 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–110 complete
+## Current baseline: Sprints 001–111 complete
 
 Launch MVP was validated and concluded on released `v0.4.0`; its conditional
-two-hop projection repair is currently distributed as `v0.4.1`. Sprint 109
-starts the post-launch Task-Aware Context MVP under founder authorization
-2026-08-26. It is not leftover-order thaw.
+two-hop projection repair was distributed as `v0.4.1`. Task-Aware Context MVP
+Waves 1–2 are complete and currently distributed as `v0.5.0`. On 2026-08-26
+the founder authorized the Operational Learning MVP, explicitly deferring the
+external v0.5 task-loop validation pass until Combie has more pre-beta
+developer utility. Sprint 111 (Wave 1: Structured Response Memory) is
+complete. This is a named founder override, not leftover-order thaw. Wave 2
+(incident links + precedents) and Wave 3 (transparent learning + release)
+are not authorized. No version bump or Sprint 112.
 
 Multi-provider connection loop:
 
@@ -1139,6 +1144,27 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   green; P1–P4 dogfood PASS; released as `v0.5.0` (commit `74a54a6`, tag
   `v0.5.0`, run `33016091159`, six assets, checksum `f217e2e8…`, isolated curl
   install and v0.4.1→v0.5.0 state continuity PASS).
+- **Sprint 111 Complete (2026-08-26): Operational Learning MVP Wave 1 —
+  Structured Response Memory.** Founder-authorized program after explicitly
+  deferring external v0.5 task-loop validation before beta. Four append-only
+  provider-independent records with exact parent identity: Recommendation
+  (`rec:`) → Decision (`dec:`) → Action (`act:`) → Outcome (`out:`).
+  Recommendation anchors to an exact Investigation, Resource, or explicit
+  Incident member subject; Decision records approved/rejected/deferred/
+  modified; Action requires an approved/modified Decision; Outcome records
+  an explicit assessment, optional atomic numeric measurement, named
+  observation time, and exact evidence. Direct create/show/list is CLI-only.
+  Existing `response-recall` CLI JSON and five-tool read-only MCP task mode
+  gain additive subject-scoped `structuredResponseMemory` (always present;
+  `[]` known-empty). Legacy Resolution fields, Incident `res:` membership,
+  Investigation snapshots/artifacts, other task profiles, and task-omitted
+  output remain unchanged. Shared `evidence-attachment.ts` leaf reused by
+  Resolution / Recommendation / Outcome. 1419 tests / typecheck green;
+  O1–O6 dogfood PASS on isolated `/tmp/combie-111-dogfood-20260826`. No
+  legacy promotion, inferred Action/Outcome, similarity, Incident linking,
+  precedent retrieval, scoring, Learning Engine, policy, execution, MCP
+  write/new tool, hosted platform, version bump, commit/tag/push/release, or
+  Sprint 112.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →

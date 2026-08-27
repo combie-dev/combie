@@ -24,6 +24,7 @@ import {
   type GitCommitEvidenceGroup,
   type SharedCommitCorrespondence,
 } from "./shared-commit-context.ts";
+import type { StructuredResponseChain } from "./structured-response-memory.ts";
 import {
   composeInvestigationTimeline,
   type InvestigationTimeline,
@@ -90,6 +91,7 @@ export interface ComposeTaskContextInput {
   resolutionRows: ResolutionRecord[];
   incidentRows: IncidentRecord[];
   investigationRows: InvestigationRecord[];
+  structuredResponseChains: StructuredResponseChain[];
 }
 
 /**
@@ -183,6 +185,7 @@ export interface ResponseRecallTaskContext
   investigationHistory: InvestigationRecord[];
   resolutionMemory: ResolutionRecord[];
   incidentMemory: IncidentRecord[];
+  structuredResponseMemory: StructuredResponseChain[];
 }
 
 export type TaskScopedContext =
@@ -196,7 +199,14 @@ export type TaskScopedContext =
  * provider queries or storage. Ephemeral, offline, read-only.
  */
 export function composeTaskContext(input: ComposeTaskContextInput): TaskScopedContext {
-  const { task, ctx, resolutionRows, incidentRows, investigationRows } = input;
+  const {
+    task,
+    ctx,
+    resolutionRows,
+    incidentRows,
+    investigationRows,
+    structuredResponseChains,
+  } = input;
   const taskEnvelope = {
     task: {
       subjectResourceId: ctx.subject.id,
@@ -291,6 +301,7 @@ export function composeTaskContext(input: ComposeTaskContextInput): TaskScopedCo
         investigationHistory: investigationRows,
         resolutionMemory: resolutionRows,
         incidentMemory: incidentRows,
+        structuredResponseMemory: structuredResponseChains,
       };
     }
   }

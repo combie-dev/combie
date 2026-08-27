@@ -7,6 +7,13 @@ import { listIncidentsForSubject } from "../../src/app/incidents.ts";
 import { getInvestigationContext } from "../../src/app/investigate.ts";
 import { listInvestigations } from "../../src/app/investigations.ts";
 import { listResolutions } from "../../src/app/resolutions.ts";
+import {
+  composeStructuredResponseMemory,
+  recordAction,
+  recordDecision,
+  recordOutcome,
+  recordRecommendation,
+} from "../../src/app/structured-response-memory.ts";
 import { composeTaskContext } from "../../src/app/task-context.ts";
 import { main } from "../../src/cli/index.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
@@ -109,6 +116,10 @@ describe("CLI investigate --task", () => {
           investigationRows: listInvestigations(dir, {
             subjectResourceId: subjectId,
           }),
+          structuredResponseChains: composeStructuredResponseMemory(
+            dir,
+            ctx.subject.id,
+          ),
         }),
       ),
     );
@@ -149,6 +160,77 @@ describe("CLI investigate --task", () => {
     expect(parsed.investigationHistory).toEqual([]);
     expect(parsed.resolutionMemory).toEqual([]);
     expect(parsed.incidentMemory).toEqual([]);
+    expect(parsed.structuredResponseMemory).toEqual([]);
+  });
+
+  test("response-recall CLI JSON includes nested structuredResponseMemory for a seeded chain", async () => {
+    const rec = recordRecommendation({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      actionKey: "rollback-deployment",
+      proposal: "Rollback the latest deployment",
+      recordedAt: "2026-08-26T12:00:00.000Z",
+    });
+    const dec = recordDecision({
+      baseDir: dir,
+      recommendationId: rec.id,
+      disposition: "approved",
+      recordedAt: "2026-08-26T12:05:00.000Z",
+    });
+    const act = recordAction({
+      baseDir: dir,
+      decisionId: dec.id,
+      actionKey: "rollback-deployment",
+      summary: "Rolled back deployment dpl_abc",
+      recordedAt: "2026-08-26T12:10:00.000Z",
+    });
+    recordOutcome({
+      baseDir: dir,
+      actionId: act.id,
+      assessment: "positive",
+      summary: "Error rate returned toward baseline",
+      measurement: {
+        metric: "error-rate",
+        before: 12.4,
+        after: 1.1,
+        unit: "percent",
+      },
+      recordedAt: "2026-08-26T12:25:00.000Z",
+    });
+
+    const result = await capture(() =>
+      main(["investigate", subjectId, "--task", "response-recall", "--json", "--dir", dir]),
+    );
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed).toEqual(expectedTaskProjection("response-recall"));
+    expect(parsed.structuredResponseMemory).toHaveLength(1);
+    expect(parsed.structuredResponseMemory[0].recommendation.id).toBe(rec.id);
+    expect(parsed.structuredResponseMemory[0].recommendation.actionKey).toBe(
+      "rollback-deployment",
+    );
+    expect(parsed.structuredResponseMemory[0].recommendation.proposal).toBe(
+      "Rollback the latest deployment",
+    );
+    expect(
+      parsed.structuredResponseMemory[0].decisions[0].decision.disposition,
+    ).toBe("approved");
+    expect(
+      parsed.structuredResponseMemory[0].decisions[0].actions[0].action.summary,
+    ).toBe("Rolled back deployment dpl_abc");
+    expect(
+      parsed.structuredResponseMemory[0].decisions[0].actions[0].outcomes[0]
+        .assessment,
+    ).toBe("positive");
+    expect(
+      parsed.structuredResponseMemory[0].decisions[0].actions[0].outcomes[0]
+        .measurement,
+    ).toEqual({
+      metric: "error-rate",
+      before: 12.4,
+      after: 1.1,
+      unit: "percent",
+    });
   });
 
   test("unknown profile fails with the accepted-profile list", async () => {

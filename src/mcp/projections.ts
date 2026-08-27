@@ -7,6 +7,7 @@ import type {
   InvestigationContext,
   InvestigationNeighbor,
 } from "../app/investigate.ts";
+import type { StructuredResponseChain } from "../app/structured-response-memory.ts";
 import type {
   DependencyImpactNeighbor,
   OnDemandTarget,
@@ -95,6 +96,67 @@ export function toIncidentMemoryRow(
   if (record.title !== undefined) row.title = record.title;
   if (record.occurredAt !== undefined) row.occurredAt = record.occurredAt;
   return row;
+}
+
+function toStructuredResponseMemoryRow(
+  chain: StructuredResponseChain,
+): Record<string, unknown> {
+  return {
+    recommendation: {
+      id: chain.recommendation.id,
+      subjectResourceId: chain.recommendation.subjectResourceId,
+      ...(chain.recommendation.investigationId !== undefined
+        ? { investigationId: chain.recommendation.investigationId }
+        : {}),
+      ...(chain.recommendation.incidentId !== undefined
+        ? { incidentId: chain.recommendation.incidentId }
+        : {}),
+      recordedAt: chain.recommendation.recordedAt,
+      actionKey: chain.recommendation.actionKey,
+      proposal: chain.recommendation.proposal,
+      ...(chain.recommendation.rationale !== undefined
+        ? { rationale: chain.recommendation.rationale }
+        : {}),
+      ...(chain.recommendation.evidenceIds !== undefined
+        ? { evidenceIds: chain.recommendation.evidenceIds }
+        : {}),
+    },
+    decisions: chain.decisions.map((d) => ({
+      decision: {
+        id: d.decision.id,
+        recommendationId: d.decision.recommendationId,
+        recordedAt: d.decision.recordedAt,
+        disposition: d.decision.disposition,
+        ...(d.decision.note !== undefined ? { note: d.decision.note } : {}),
+      },
+      actions: d.actions.map((a) => ({
+        action: {
+          id: a.action.id,
+          decisionId: a.action.decisionId,
+          recordedAt: a.action.recordedAt,
+          actionKey: a.action.actionKey,
+          summary: a.action.summary,
+          ...(a.action.performedAt !== undefined
+            ? { performedAt: a.action.performedAt }
+            : {}),
+        },
+        outcomes: a.outcomes.map((o) => ({
+          id: o.id,
+          actionId: o.actionId,
+          recordedAt: o.recordedAt,
+          ...(o.observedAt !== undefined ? { observedAt: o.observedAt } : {}),
+          assessment: o.assessment,
+          summary: o.summary,
+          ...(o.measurement !== undefined ? { measurement: o.measurement } : {}),
+          ...(o.evidenceIds !== undefined ? { evidenceIds: o.evidenceIds } : {}),
+        })),
+      })),
+    })),
+  };
+}
+
+export function toStructuredResponseMemory(chains: StructuredResponseChain[]) {
+  return chains.map(toStructuredResponseMemoryRow);
 }
 
 export function toIncidentMemory(records: IncidentRecord[]) {
@@ -568,6 +630,9 @@ export function projectTaskContext(tc: TaskScopedContext) {
     );
     result.resolutionMemory = toResolutionMemory(tc.resolutionMemory);
     result.incidentMemory = toIncidentMemory(tc.incidentMemory);
+    result.structuredResponseMemory = toStructuredResponseMemory(
+      tc.structuredResponseMemory,
+    );
   }
 
   result.availableOnDemand = projectOnDemandTargets(tc.onDemandTargets);

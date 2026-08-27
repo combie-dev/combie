@@ -13,6 +13,19 @@ import type {
   RelationshipKind,
 } from "../domain/relationship.ts";
 import type {
+  ActionRecord,
+} from "../domain/action.ts";
+import type {
+  DecisionDisposition,
+  DecisionRecord,
+} from "../domain/decision.ts";
+import type {
+  OutcomeAssessment,
+  OutcomeMeasurement,
+  OutcomeRecord,
+} from "../domain/outcome.ts";
+import type { RecommendationRecord } from "../domain/recommendation.ts";
+import type {
   GitHubIssueEvidence,
   GitHubIssueRefresh,
 } from "../providers/github/issue.ts";
@@ -313,6 +326,76 @@ CREATE TABLE IF NOT EXISTS incidents (
 
 CREATE INDEX IF NOT EXISTS incidents_recorded_at_id_idx
   ON incidents(recorded_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS recommendations (
+  id TEXT PRIMARY KEY,
+  subject_resource_id TEXT NOT NULL,
+  investigation_id TEXT,
+  incident_id TEXT,
+  recorded_at TEXT NOT NULL,
+  action_key TEXT NOT NULL,
+  proposal TEXT NOT NULL,
+  rationale TEXT,
+  evidence_ids TEXT
+);
+
+CREATE INDEX IF NOT EXISTS recommendations_recorded_at_id_idx
+  ON recommendations(recorded_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS recommendations_subject_recorded_id_idx
+  ON recommendations(subject_resource_id, recorded_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS recommendations_investigation_recorded_id_idx
+  ON recommendations(investigation_id, recorded_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS recommendations_incident_recorded_id_idx
+  ON recommendations(incident_id, recorded_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS decisions (
+  id TEXT PRIMARY KEY,
+  recommendation_id TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  disposition TEXT NOT NULL,
+  note TEXT
+);
+
+CREATE INDEX IF NOT EXISTS decisions_recorded_at_id_idx
+  ON decisions(recorded_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS decisions_recommendation_recorded_id_idx
+  ON decisions(recommendation_id, recorded_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS actions (
+  id TEXT PRIMARY KEY,
+  decision_id TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  action_key TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  performed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS actions_recorded_at_id_idx
+  ON actions(recorded_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS actions_decision_recorded_id_idx
+  ON actions(decision_id, recorded_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS outcomes (
+  id TEXT PRIMARY KEY,
+  action_id TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  observed_at TEXT,
+  assessment TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  measurement_json TEXT,
+  evidence_ids TEXT
+);
+
+CREATE INDEX IF NOT EXISTS outcomes_recorded_at_id_idx
+  ON outcomes(recorded_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS outcomes_action_recorded_id_idx
+  ON outcomes(action_id, recorded_at DESC, id DESC);
 `;
 
 export interface ApplyResourceObservation extends ChangeObservation {
@@ -2160,6 +2243,226 @@ export class Store {
     return table !== null;
   }
 
+  /** Probe for a table without migrating. Read-only recall uses this. */
+  private hasTable(db: Database, name: string): boolean {
+    const table = db
+      .query(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`,
+      )
+      .get(name) as { name: string } | null;
+    return table !== null;
+  }
+
+  insertRecommendation(row: RecommendationRecord): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO recommendations (
+           id, subject_resource_id, investigation_id, incident_id,
+           recorded_at, action_key, proposal, rationale, evidence_ids
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.id,
+        row.subjectResourceId,
+        row.investigationId ?? null,
+        row.incidentId ?? null,
+        row.recordedAt,
+        row.actionKey,
+        row.proposal,
+        row.rationale ?? null,
+        row.evidenceIds ? JSON.stringify(row.evidenceIds) : null,
+      );
+  }
+
+  insertDecision(row: DecisionRecord): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO decisions (
+           id, recommendation_id, recorded_at, disposition, note
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.id,
+        row.recommendationId,
+        row.recordedAt,
+        row.disposition,
+        row.note ?? null,
+      );
+  }
+
+  insertAction(row: ActionRecord): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO actions (
+           id, decision_id, recorded_at, action_key, summary, performed_at
+         ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.id,
+        row.decisionId,
+        row.recordedAt,
+        row.actionKey,
+        row.summary,
+        row.performedAt ?? null,
+      );
+  }
+
+  insertOutcome(row: OutcomeRecord): void {
+    this.getWritableDb()
+      .query(
+        `INSERT INTO outcomes (
+           id, action_id, recorded_at, observed_at, assessment, summary,
+           measurement_json, evidence_ids
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.id,
+        row.actionId,
+        row.recordedAt,
+        row.observedAt ?? null,
+        row.assessment,
+        row.summary,
+        row.measurement ? JSON.stringify(row.measurement) : null,
+        row.evidenceIds ? JSON.stringify(row.evidenceIds) : null,
+      );
+  }
+
+  listRecommendations(filter?: {
+    subjectResourceId?: string;
+    investigationId?: string;
+    incidentId?: string;
+  }): RecommendationRecord[] {
+    const db = this.getDb();
+    if (!this.hasTable(db, "recommendations")) return [];
+    const clauses: string[] = [];
+    const params: string[] = [];
+    if (filter?.subjectResourceId !== undefined) {
+      clauses.push("subject_resource_id = ?");
+      params.push(filter.subjectResourceId);
+    }
+    if (filter?.investigationId !== undefined) {
+      clauses.push("investigation_id = ?");
+      params.push(filter.investigationId);
+    }
+    if (filter?.incidentId !== undefined) {
+      clauses.push("incident_id = ?");
+      params.push(filter.incidentId);
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .query(
+        `SELECT id, subject_resource_id, investigation_id, incident_id,
+                recorded_at, action_key, proposal, rationale, evidence_ids
+         FROM recommendations ${where}
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all(...params) as RecommendationSqlRow[];
+    return rows.map(mapRecommendationRow);
+  }
+
+  getRecommendation(id: string): RecommendationRecord | null {
+    const db = this.getDb();
+    if (!this.hasTable(db, "recommendations")) return null;
+    const row = db
+      .query(
+        `SELECT id, subject_resource_id, investigation_id, incident_id,
+                recorded_at, action_key, proposal, rationale, evidence_ids
+         FROM recommendations WHERE id = ?`,
+      )
+      .get(id) as RecommendationSqlRow | null;
+    return row ? mapRecommendationRow(row) : null;
+  }
+
+  listDecisions(filter?: { recommendationId?: string }): DecisionRecord[] {
+    const db = this.getDb();
+    if (!this.hasTable(db, "decisions")) return [];
+    const where =
+      filter?.recommendationId !== undefined
+        ? "WHERE recommendation_id = ?"
+        : "";
+    const params =
+      filter?.recommendationId !== undefined
+        ? [filter.recommendationId]
+        : [];
+    const rows = db
+      .query(
+        `SELECT id, recommendation_id, recorded_at, disposition, note
+         FROM decisions ${where}
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all(...params) as DecisionSqlRow[];
+    return rows.map(mapDecisionRow);
+  }
+
+  getDecision(id: string): DecisionRecord | null {
+    const db = this.getDb();
+    if (!this.hasTable(db, "decisions")) return null;
+    const row = db
+      .query(
+        `SELECT id, recommendation_id, recorded_at, disposition, note
+         FROM decisions WHERE id = ?`,
+      )
+      .get(id) as DecisionSqlRow | null;
+    return row ? mapDecisionRow(row) : null;
+  }
+
+  listActions(filter?: { decisionId?: string }): ActionRecord[] {
+    const db = this.getDb();
+    if (!this.hasTable(db, "actions")) return [];
+    const where =
+      filter?.decisionId !== undefined ? "WHERE decision_id = ?" : "";
+    const params = filter?.decisionId !== undefined ? [filter.decisionId] : [];
+    const rows = db
+      .query(
+        `SELECT id, decision_id, recorded_at, action_key, summary, performed_at
+         FROM actions ${where}
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all(...params) as ActionSqlRow[];
+    return rows.map(mapActionRow);
+  }
+
+  getAction(id: string): ActionRecord | null {
+    const db = this.getDb();
+    if (!this.hasTable(db, "actions")) return null;
+    const row = db
+      .query(
+        `SELECT id, decision_id, recorded_at, action_key, summary, performed_at
+         FROM actions WHERE id = ?`,
+      )
+      .get(id) as ActionSqlRow | null;
+    return row ? mapActionRow(row) : null;
+  }
+
+  listOutcomes(filter?: { actionId?: string }): OutcomeRecord[] {
+    const db = this.getDb();
+    if (!this.hasTable(db, "outcomes")) return [];
+    const where = filter?.actionId !== undefined ? "WHERE action_id = ?" : "";
+    const params = filter?.actionId !== undefined ? [filter.actionId] : [];
+    const rows = db
+      .query(
+        `SELECT id, action_id, recorded_at, observed_at, assessment, summary,
+                measurement_json, evidence_ids
+         FROM outcomes ${where}
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all(...params) as OutcomeSqlRow[];
+    return rows.map(mapOutcomeRow);
+  }
+
+  getOutcome(id: string): OutcomeRecord | null {
+    const db = this.getDb();
+    if (!this.hasTable(db, "outcomes")) return null;
+    const row = db
+      .query(
+        `SELECT id, action_id, recorded_at, observed_at, assessment, summary,
+                measurement_json, evidence_ids
+         FROM outcomes WHERE id = ?`,
+      )
+      .get(id) as OutcomeSqlRow | null;
+    return row ? mapOutcomeRow(row) : null;
+  }
+
   close(): void {
     if (this.db) {
       if (!this.dbReadOnly) {
@@ -2283,6 +2586,158 @@ function mapResolutionRow(
     ...(row.action ? { action: row.action } : {}),
     ...(row.outcome ? { outcome: row.outcome } : {}),
     ...(evidence ? { evidenceIds: evidence } : {}),
+  };
+}
+
+type RecommendationSqlRow = {
+  id: string;
+  subject_resource_id: string;
+  investigation_id: string | null;
+  incident_id: string | null;
+  recorded_at: string;
+  action_key: string;
+  proposal: string;
+  rationale: string | null;
+  evidence_ids: string | null;
+};
+
+type DecisionSqlRow = {
+  id: string;
+  recommendation_id: string;
+  recorded_at: string;
+  disposition: string;
+  note: string | null;
+};
+
+type ActionSqlRow = {
+  id: string;
+  decision_id: string;
+  recorded_at: string;
+  action_key: string;
+  summary: string;
+  performed_at: string | null;
+};
+
+type OutcomeSqlRow = {
+  id: string;
+  action_id: string;
+  recorded_at: string;
+  observed_at: string | null;
+  assessment: string;
+  summary: string;
+  measurement_json: string | null;
+  evidence_ids: string | null;
+};
+
+/**
+ * Stored evidence_ids is a JSON array of exact ids. Corrupt or non-array
+ * payloads are untrusted and omitted — never surfaced as invented evidence.
+ */
+function parseEvidenceIds(
+  raw: string | null | undefined,
+): string[] | undefined {
+  if (raw == null) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((value) => typeof value === "string")
+    ) {
+      return parsed.length > 0 ? (parsed as string[]) : undefined;
+    }
+  } catch {
+    // Untrusted stored payload: skip without inventing ids.
+  }
+  return undefined;
+}
+
+/**
+ * Stored measurement_json is an atomic measurement object. Corrupt, partial,
+ * or non-finite payloads are untrusted and omitted — never invented.
+ */
+function parseMeasurement(
+  raw: string | null | undefined,
+): OutcomeMeasurement | undefined {
+  if (raw == null) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      const obj = parsed as Record<string, unknown>;
+      const metric = obj.metric;
+      const before = obj.before;
+      const after = obj.after;
+      const unit = obj.unit;
+      if (
+        typeof metric === "string" &&
+        metric.length > 0 &&
+        typeof before === "number" &&
+        Number.isFinite(before) &&
+        typeof after === "number" &&
+        Number.isFinite(after) &&
+        typeof unit === "string" &&
+        unit.length > 0
+      ) {
+        return { metric, before, after, unit };
+      }
+    }
+  } catch {
+    // Untrusted stored payload: skip without inventing a measurement.
+  }
+  return undefined;
+}
+
+function mapRecommendationRow(row: RecommendationSqlRow): RecommendationRecord {
+  const evidenceIds = parseEvidenceIds(row.evidence_ids);
+  return {
+    id: row.id,
+    subjectResourceId: row.subject_resource_id,
+    ...(row.investigation_id ? { investigationId: row.investigation_id } : {}),
+    ...(row.incident_id ? { incidentId: row.incident_id } : {}),
+    recordedAt: row.recorded_at,
+    actionKey: row.action_key,
+    proposal: row.proposal,
+    ...(row.rationale ? { rationale: row.rationale } : {}),
+    ...(evidenceIds ? { evidenceIds } : {}),
+  };
+}
+
+function mapDecisionRow(row: DecisionSqlRow): DecisionRecord {
+  return {
+    id: row.id,
+    recommendationId: row.recommendation_id,
+    recordedAt: row.recorded_at,
+    disposition: row.disposition as DecisionDisposition,
+    ...(row.note ? { note: row.note } : {}),
+  };
+}
+
+function mapActionRow(row: ActionSqlRow): ActionRecord {
+  return {
+    id: row.id,
+    decisionId: row.decision_id,
+    recordedAt: row.recorded_at,
+    actionKey: row.action_key,
+    summary: row.summary,
+    ...(row.performed_at ? { performedAt: row.performed_at } : {}),
+  };
+}
+
+function mapOutcomeRow(row: OutcomeSqlRow): OutcomeRecord {
+  const evidenceIds = parseEvidenceIds(row.evidence_ids);
+  const measurement = parseMeasurement(row.measurement_json);
+  return {
+    id: row.id,
+    actionId: row.action_id,
+    recordedAt: row.recorded_at,
+    ...(row.observed_at ? { observedAt: row.observed_at } : {}),
+    assessment: row.assessment as OutcomeAssessment,
+    summary: row.summary,
+    ...(measurement ? { measurement } : {}),
+    ...(evidenceIds ? { evidenceIds } : {}),
   };
 }
 

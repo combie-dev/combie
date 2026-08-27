@@ -257,8 +257,9 @@ combie investigate vercel:project:prj_abc123 --task response-recall --json
 `change-review` returns what changed and the evidence chronology;
 `dependency-impact` returns proven connectivity and paths (connectivity, not
 blast radius); `response-recall` returns retained investigations, resolutions,
-and incident groupings. Each is read-only and deterministic; omit `--task` for
-the full investigation document.
+incident groupings, and additive `structuredResponseMemory` (exact
+Recommendation→Decision→Action→Outcome chains for that subject). Each is
+read-only and deterministic; omit `--task` for the full investigation document.
 
 Every `--task` result also carries a top-level `availableOnDemand` array —
 inert descriptors for deeper context on demand. Follow one only when the task
@@ -277,6 +278,23 @@ result is insufficient:
 The `current-investigation` target re-composes live now; `retained-investigation`
 targets (only on `response-recall`) are frozen at `composedAt`. `cli.argv` and
 `mcp` are inert descriptors — Combie does not execute them.
+
+### Optional structured response memory (CLI-only)
+
+Four append-only records — Recommendation (`rec:`) → Decision (`dec:`) →
+Action (`act:`) → Outcome (`out:`) — capture an explicit organizational
+response chain. Direct create/show/list is CLI-only (human text; no `--json`
+on these commands). Recall is `investigate --task response-recall --json` or
+MCP `investigate_resource` with `task: "response-recall"`
+(`structuredResponseMemory`; `[]` when empty). MCP cannot write. Action is
+not inferred from provider activity. This is not a replacement for Resolution.
+
+```bash
+combie recommendation --resource vercel:project:prj_abc123 --action-key rollback --proposal "Roll back the last production deploy"
+combie decision --recommendation rec:01h... --disposition approved
+combie action --decision dec:01h... --action-key rollback --summary "Rolled back production"
+combie outcome --action act:01h... --assessment positive --summary "Error rate returned to baseline"
+```
 
 **Troubleshooting:** `Unknown resource` -> the ID is not in the store;
 re-check the exact string from `resources`, or re-run `sync` — state is only

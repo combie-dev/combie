@@ -6,6 +6,12 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { saveInvestigation } from "../../src/app/investigations.ts";
+import {
+  recordAction,
+  recordDecision,
+  recordOutcome,
+  recordRecommendation,
+} from "../../src/app/structured-response-memory.ts";
 import { createRelationship } from "../../src/domain/relationship.ts";
 import { createResource } from "../../src/domain/resource.ts";
 import { dbPath } from "../../src/storage/paths.ts";
@@ -105,6 +111,7 @@ describe("MCP investigate_resource task mode", () => {
       expect(result.structuredContent).not.toHaveProperty("providerActivity");
       expect(result.structuredContent).not.toHaveProperty("timeline");
       expect(result.structuredContent).not.toHaveProperty("resolutionMemory");
+      expect(result.structuredContent).not.toHaveProperty("structuredResponseMemory");
     } finally {
       await client.close();
     }
@@ -130,6 +137,7 @@ describe("MCP investigate_resource task mode", () => {
         investigationHistory: [],
         resolutionMemory: [],
         incidentMemory: [],
+        structuredResponseMemory: [],
       });
       expect(result.structuredContent).not.toHaveProperty("related");
       expect(result.structuredContent).not.toHaveProperty("knownFacts");
@@ -267,6 +275,112 @@ describe("MCP investigate_resource task mode", () => {
       expect(mcp.returns).toBe("retained-snapshot-handle");
       const cli = retained.cli as { argv: string[] };
       expect(cli.argv).toEqual(["combie", "investigation", saved.record.id]);
+    } finally {
+      await client.close();
+    }
+  }, 15_000);
+
+  test("response-recall returns nested structuredResponseMemory for a seeded chain", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-task-srm-"));
+    dirs.push(dir);
+    const subjectId = seedTaskStore(dir);
+    const rec = recordRecommendation({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      actionKey: "rollback-deployment",
+      proposal: "Rollback the latest deployment",
+      recordedAt: "2026-08-26T12:00:00.000Z",
+    });
+    const dec = recordDecision({
+      baseDir: dir,
+      recommendationId: rec.id,
+      disposition: "approved",
+      recordedAt: "2026-08-26T12:05:00.000Z",
+    });
+    const act = recordAction({
+      baseDir: dir,
+      decisionId: dec.id,
+      actionKey: "rollback-deployment",
+      summary: "Rolled back deployment dpl_abc",
+      recordedAt: "2026-08-26T12:10:00.000Z",
+    });
+    recordOutcome({
+      baseDir: dir,
+      actionId: act.id,
+      assessment: "positive",
+      summary: "Error rate returned toward baseline",
+      measurement: {
+        metric: "error-rate",
+        before: 12.4,
+        after: 1.1,
+        unit: "percent",
+      },
+      recordedAt: "2026-08-26T12:25:00.000Z",
+    });
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subjectId, task: "response-recall" },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        task: { profile: "response-recall", subjectResourceId: subjectId },
+      });
+      const memory = (
+        result.structuredContent as {
+          structuredResponseMemory: Array<{
+            recommendation: {
+              id: string;
+              actionKey: string;
+              proposal: string;
+            };
+            decisions: Array<{
+              decision: { disposition: string };
+              actions: Array<{
+                action: { summary: string };
+                outcomes: Array<{
+                  assessment: string;
+                  measurement: Record<string, unknown>;
+                }>;
+              }>;
+            }>;
+          }>;
+        }
+      ).structuredResponseMemory;
+      expect(memory).toHaveLength(1);
+      expect(memory[0]!.recommendation.id.startsWith("rec:")).toBe(true);
+      expect(memory[0]!.recommendation.id).toBe(rec.id);
+      expect(memory[0]!.recommendation.actionKey).toBe("rollback-deployment");
+      expect(memory[0]!.recommendation.proposal).toBe(
+        "Rollback the latest deployment",
+      );
+      expect(memory[0]!.decisions[0]!.decision.disposition).toBe("approved");
+      expect(memory[0]!.decisions[0]!.actions[0]!.action.summary).toBe(
+        "Rolled back deployment dpl_abc",
+      );
+      expect(memory[0]!.decisions[0]!.actions[0]!.outcomes[0]!.assessment).toBe(
+        "positive",
+      );
+      expect(memory[0]!.decisions[0]!.actions[0]!.outcomes[0]!.measurement).toEqual(
+        {
+          metric: "error-rate",
+          before: 12.4,
+          after: 1.1,
+          unit: "percent",
+        },
+      );
+
+      const change = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subjectId, task: "change-review" },
+      });
+      expect(change.isError).not.toBe(true);
+      expect(change.structuredContent).not.toHaveProperty(
+        "structuredResponseMemory",
+      );
     } finally {
       await client.close();
     }

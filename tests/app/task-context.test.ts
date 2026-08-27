@@ -10,6 +10,13 @@ import {
   type InvestigationContext,
 } from "../../src/app/investigate.ts";
 import {
+  composeStructuredResponseMemory,
+  recordAction,
+  recordDecision,
+  recordOutcome,
+  recordRecommendation,
+} from "../../src/app/structured-response-memory.ts";
+import {
   composeTaskContext,
   isTaskProfile,
   normalizeTaskProfile,
@@ -134,6 +141,10 @@ describe("task-scoped deterministic composition", () => {
       investigationRows: listInvestigations(dir, {
         subjectResourceId: ctx.subject.id,
       }),
+      structuredResponseChains: composeStructuredResponseMemory(
+        dir,
+        ctx.subject.id,
+      ),
     });
   }
 
@@ -167,6 +178,7 @@ describe("task-scoped deterministic composition", () => {
     expect("investigationHistory" in tc).toBe(false);
     expect("resolutionMemory" in tc).toBe(false);
     expect("incidentMemory" in tc).toBe(false);
+    expect("structuredResponseMemory" in tc).toBe(false);
   });
 
   test("dependency-impact selects only restricted Missing Context", () => {
@@ -189,6 +201,7 @@ describe("task-scoped deterministic composition", () => {
     expect("investigationHistory" in tc).toBe(false);
     expect("resolutionMemory" in tc).toBe(false);
     expect("incidentMemory" in tc).toBe(false);
+    expect("structuredResponseMemory" in tc).toBe(false);
   });
 
   test("response-recall selects memory arrays and excludes live sections", () => {
@@ -200,6 +213,7 @@ describe("task-scoped deterministic composition", () => {
     expect(tc.investigationHistory).toBeDefined();
     expect(tc.resolutionMemory).toBeDefined();
     expect(tc.incidentMemory).toBeDefined();
+    expect(tc.structuredResponseMemory).toBeDefined();
     expect("subjectChanges" in tc).toBe(false);
     expect("knownFacts" in tc).toBe(false);
     expect("missingContext" in tc).toBe(false);
@@ -416,6 +430,10 @@ describe("task-scoped projection", () => {
       investigationRows: listInvestigations(dir, {
         subjectResourceId: ctx.subject.id,
       }),
+      structuredResponseChains: composeStructuredResponseMemory(
+        dir,
+        ctx.subject.id,
+      ),
     });
     return projectTaskContext(tc);
   }
@@ -445,6 +463,7 @@ describe("task-scoped projection", () => {
     expect(projected).not.toHaveProperty("investigationHistory");
     expect(projected).not.toHaveProperty("resolutionMemory");
     expect(projected).not.toHaveProperty("incidentMemory");
+    expect(projected).not.toHaveProperty("structuredResponseMemory");
 
     const related = projected.related as Array<Record<string, unknown>>;
     expect(related.length).toBe(1);
@@ -462,6 +481,7 @@ describe("task-scoped projection", () => {
     expect(projected).not.toHaveProperty("providerActivity");
     expect(projected).not.toHaveProperty("timeline");
     expect(projected).not.toHaveProperty("sharedCommitContext");
+    expect(projected).not.toHaveProperty("structuredResponseMemory");
 
     const related = projected.related as Array<Record<string, unknown>>;
     expect(related.length).toBe(1);
@@ -479,6 +499,7 @@ describe("task-scoped projection", () => {
     expect(projected.investigationHistory).toEqual([]);
     expect(projected.resolutionMemory).toEqual([]);
     expect(projected.incidentMemory).toEqual([]);
+    expect(projected.structuredResponseMemory).toEqual([]);
     expect(projected).not.toHaveProperty("related");
     expect(projected).not.toHaveProperty("subjectChanges");
     expect(projected).not.toHaveProperty("knownFacts");
@@ -516,6 +537,7 @@ describe("task-scoped projection", () => {
       resolutionRows: listResolutions(dir, { subjectResourceId: subjectId }),
       incidentRows: listIncidentsForSubject(dir, subjectId),
       investigationRows: listInvestigations(dir, { subjectResourceId: subjectId }),
+      structuredResponseChains: composeStructuredResponseMemory(dir, subjectId),
     });
     const projected = projectTaskContext(tc);
 
@@ -533,6 +555,102 @@ describe("task-scoped projection", () => {
       title: "API error spike",
       resolutionIds: [r1.id, r2.id],
     });
+  });
+
+  test("response-recall projects structured Recommendation → Decision → Action → Outcome independently of Resolution", () => {
+    seedGraphWithChanges();
+    const subjectId = "github:repository:repo-proj";
+    const resolution = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "Keep holding",
+      recordedAt: "2026-08-26T11:00:00.000Z",
+    });
+    const rec = recordRecommendation({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      actionKey: "rollback-deployment",
+      proposal: "Rollback the latest deployment",
+      recordedAt: "2026-08-26T12:00:00.000Z",
+    });
+    const dec = recordDecision({
+      baseDir: dir,
+      recommendationId: rec.id,
+      disposition: "approved",
+      recordedAt: "2026-08-26T12:05:00.000Z",
+    });
+    const act = recordAction({
+      baseDir: dir,
+      decisionId: dec.id,
+      actionKey: "rollback-deployment",
+      summary: "Rolled back deployment dpl_abc",
+      recordedAt: "2026-08-26T12:10:00.000Z",
+    });
+    recordOutcome({
+      baseDir: dir,
+      actionId: act.id,
+      assessment: "positive",
+      summary: "Error rate returned toward baseline",
+      measurement: {
+        metric: "error-rate",
+        before: 12.4,
+        after: 1.1,
+        unit: "percent",
+      },
+      recordedAt: "2026-08-26T12:25:00.000Z",
+    });
+
+    const ctx = getInvestigationContext({ baseDir: dir, resourceRef: subjectId });
+    const tc = composeTaskContext({
+      task: "response-recall",
+      ctx,
+      resolutionRows: listResolutions(dir, { subjectResourceId: subjectId }),
+      incidentRows: listIncidentsForSubject(dir, subjectId),
+      investigationRows: listInvestigations(dir, { subjectResourceId: subjectId }),
+      structuredResponseChains: composeStructuredResponseMemory(dir, subjectId),
+    });
+    const projected = projectTaskContext(tc);
+
+    expect(projected.structuredResponseMemory).toHaveLength(1);
+    const chains = projected.structuredResponseMemory as Array<
+      Record<string, unknown>
+    >;
+    const chain = chains[0]!;
+    const recommendation = chain.recommendation as Record<string, unknown>;
+    expect(String(recommendation.id).startsWith("rec:")).toBe(true);
+    expect(recommendation.actionKey).toBe("rollback-deployment");
+    expect(recommendation.proposal).toBe("Rollback the latest deployment");
+    const decisions = chain.decisions as Array<Record<string, unknown>>;
+    expect(
+      (decisions[0]!.decision as Record<string, unknown>).disposition,
+    ).toBe("approved");
+    expect(
+      (
+        (decisions[0]!.actions as Array<Record<string, unknown>>)[0]!
+          .action as Record<string, unknown>
+      ).summary,
+    ).toBe("Rolled back deployment dpl_abc");
+    const outcome = (
+      (decisions[0]!.actions as Array<Record<string, unknown>>)[0]!
+        .outcomes as Array<Record<string, unknown>>
+    )[0]!;
+    expect(outcome.assessment).toBe("positive");
+    expect(outcome.measurement).toEqual({
+      metric: "error-rate",
+      before: 12.4,
+      after: 1.1,
+      unit: "percent",
+    });
+
+    expect(projected.resolutionMemory).toHaveLength(1);
+    const resolutions = projected.resolutionMemory as Array<
+      Record<string, unknown>
+    >;
+    expect(resolutions[0]!.id).toBe(resolution.id);
+    expect(String(resolutions[0]!.id).startsWith("res:")).toBe(true);
+    expect(resolutions.some((row) => String(row.id).startsWith("rec:"))).toBe(
+      false,
+    );
   });
 
   test("all profiles serialize whole-document with no Circular placeholder", () => {

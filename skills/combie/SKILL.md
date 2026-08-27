@@ -43,8 +43,11 @@ of hand-filtering the full document:
   radius or runtime-dependency certainty.
 - `response-recall` — what we investigated, decided, did, and observed
   previously. Investigation summaries, Resolution decision/action/outcome
-  fields, evidence ids, Incident groupings, explicit known-empty arrays.
-  Exact prior records, not similar incidents or recommendations.
+  fields, evidence ids, Incident groupings, additive
+  `structuredResponseMemory` (exact Recommendation→Decision→Action→Outcome
+  chains for that subject; organizational memory, not current provider
+  truth, not inferred Action), explicit known-empty arrays. Exact prior
+  records, not similar incidents.
 
 Map a user's question to a profile explicitly; Combie itself never classifies
 free-text intent.
@@ -84,6 +87,16 @@ retrieval descriptors, never executed by Combie. An omitted-task full
 guidance, not an automatic-retrieval policy: follow the current target only
 when the task result is insufficient, and remember a current target is a live
 re-compose while a retained target is frozen at `composedAt`.
+
+### Optional structured response capture (CLI-only)
+
+To retain an explicit Recommendation → Decision → Action → Outcome chain, use
+`combie recommendation`, `combie decision`, `combie action`, and
+`combie outcome`. Writes are CLI-only; MCP cannot write. Action is not
+inferred from provider activity. An approved Decision is not permission to
+execute. Outcome is a retained assessment — not current provider truth and
+not a success score. Measurement is optional and atomic. This is optional
+organizational memory, not a seventh loop step.
 
 ## 1. Run a compact investigation
 
@@ -161,4 +174,4 @@ Cite exact local evidence ids and resource ids from the compose. Do not guess id
 
 GitHub repositories expose GitHub issues on `subjectGitHubIssues` (and CLI GITHUB ISSUES), not Sentry `subjectIssues` (`not_applicable` on a repository). A two-hop `paths` entry is two proven edges, not a new edge and not a causal claim.
 
-Resolution and Incident recording is optional CLI work and is not part of this loop; MCP cannot write.
+Resolution, Incident, and structured response recording (recommendation / decision / action / outcome) is optional CLI work and is not part of this loop; MCP cannot write.

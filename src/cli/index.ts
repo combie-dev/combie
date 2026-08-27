@@ -87,6 +87,35 @@ import {
   formatInvestigationCompare,
 } from "../app/compare-investigation.ts";
 import {
+  composeStructuredResponseMemory,
+  formatAction,
+  formatActionConfirmation,
+  formatActionList,
+  formatDecision,
+  formatDecisionConfirmation,
+  formatDecisionList,
+  formatOutcome,
+  formatOutcomeConfirmation,
+  formatOutcomeList,
+  formatRecommendation,
+  formatRecommendationConfirmation,
+  formatRecommendationList,
+  getAction,
+  getDecision,
+  getOutcome,
+  getRecommendation,
+  listActions,
+  listDecisions,
+  listOutcomes,
+  listRecommendations,
+  recordAction,
+  recordDecision,
+  recordOutcome,
+  recordRecommendation,
+} from "../app/structured-response-memory.ts";
+import type { DecisionDisposition } from "../domain/decision.ts";
+import type { OutcomeAssessment } from "../domain/outcome.ts";
+import {
   projectInvestigateResourceLive,
   projectInvestigationRetrieve,
   projectListInvestigations,
@@ -137,6 +166,14 @@ Commands:
   resolutions                  List retained resolution records
   incident                     Record, show, add, or remove members of an explicit incident grouping of resolutions
   incidents                    List retained incident groupings
+  recommendation               Record or show an explicit recommendation
+  recommendations              List retained recommendation records
+  decision                     Record or show an explicit decision on a recommendation
+  decisions                    List retained decision records
+  action                       Record or show an explicit attempted response
+  actions                      List retained action records
+  outcome                      Record or show an explicit outcome assessment
+  outcomes                     List retained outcome records
   mcp                          Start read-only MCP server over stdio
   agent status                 Show MCP integration status for claude, codex, cursor
   agent setup [agent...]       Configure MCP access for agents (default: all supported)
@@ -175,16 +212,42 @@ Investigate options:
                                With "resolutions": list resolutions for one subject
                                With "resolution": resource to record against (no saved investigation), or with --incident the subject of the new row (must already be a member subject)
                                With "incidents": list groupings with a member Resolution on one subject
+                               With "recommendation": resource to record against, or with --incident the named member subject
+                               With "recommendations": list recommendations for one subject
   --investigation <id>         With "resolution": investigation to record against
                                With "resolutions": list resolutions for one investigation
                                With "incidents": list groupings with a member Resolution recorded against that investigation (membership only; one exact id)
+                               With "recommendation": investigation to record against
+                               With "recommendations": list recommendations for one investigation
   --incident <incident-id>     With "resolution": existing incident grouping to record
                                against (subject copied from members, or named with --resource; one exact id)
+                               With "recommendation": existing incident grouping to record against (requires --resource)
+                               With "recommendations": list recommendations for one incident
   --decision <text>            Explicit decision (what you decided)
+                               With "action": parent decision to record against
+                               With "actions": list actions for one decision
   --action <text>              Explicit action (what you actually did)
+                               With "outcome": parent action to record against
+                               With "outcomes": list outcomes for one action
   --outcome <text>             Explicit outcome (what happened afterward)
   --evidence <id>              Attach an exact local evidence id (optional, repeatable; never inferred)
                                With "resolutions": list retained resolutions that attached that exact local id (membership only; one exact id)
+                               With "recommendation" / "outcome": attach exact local evidence ids at record time (repeatable)
+  --recommendation <id>        With "decision": parent recommendation to record against
+                               With "decisions": list decisions for one recommendation
+  --action-key <token>         Lower-kebab response category (recommendation / action)
+  --proposal <text>            Explicit proposed response
+  --rationale <text>           Optional recommendation rationale
+  --disposition <value>        approved, rejected, deferred, or modified
+  --note <text>                Optional decision note (required when disposition is modified)
+  --summary <text>             Explicit action or outcome summary
+  --performed-at <iso>         With "action": named attempt time (omit means unknown)
+  --assessment <value>         positive, negative, mixed, neutral, or inconclusive
+  --observed-at <iso>          With "outcome": named observation time (omit means unknown)
+  --metric <name>              With "outcome": measurement metric (atomic with --before/--after/--unit)
+  --before <number>            With "outcome": measurement before (finite number; atomic)
+  --after <number>             With "outcome": measurement after (finite number; atomic)
+  --unit <unit>                With "outcome": measurement unit (atomic)
   --resolution <resolution-id> With "incident": exact Resolution id to group at create (repeatable), or to append to incident <id>
                                With "incidents": list groupings that named that exact resolution id (membership only; one exact id)
   --remove-resolution <resolution-id> With "incident <id>": exact current member Resolution id to detach (repeatable; remaining members must stay ≥2)
@@ -257,6 +320,21 @@ Examples:
   ${BINARY_NAME} incidents --resource github:repository:1001
   ${BINARY_NAME} incidents --investigation inv:…
   ${BINARY_NAME} incident inc:…
+  ${BINARY_NAME} recommendation --resource vercel:project:prj_abc --action-key rollback-deployment --proposal "Rollback the latest deployment"
+  ${BINARY_NAME} recommendation --investigation inv:… --action-key inspect-database --proposal "Inspect the primary"
+  ${BINARY_NAME} recommendation --incident inc:… --resource github:repository:1001 --action-key hold-deploys --proposal "Hold deploys"
+  ${BINARY_NAME} recommendations --resource vercel:project:prj_abc
+  ${BINARY_NAME} recommendation rec:…
+  ${BINARY_NAME} decision --recommendation rec:… --disposition approved
+  ${BINARY_NAME} decisions --recommendation rec:…
+  ${BINARY_NAME} decision dec:…
+  ${BINARY_NAME} action --decision dec:… --action-key rollback-deployment --summary "Rolled back dpl_abc"
+  ${BINARY_NAME} actions --decision dec:…
+  ${BINARY_NAME} action act:…
+  ${BINARY_NAME} outcome --action act:… --assessment positive --summary "Error rate returned toward baseline"
+  ${BINARY_NAME} outcome --action act:… --assessment positive --summary "Error rate dropped" --metric error-rate --before 12.4 --after 1.1 --unit percent
+  ${BINARY_NAME} outcomes --action act:…
+  ${BINARY_NAME} outcome out:…
   ${BINARY_NAME} mcp
   ${BINARY_NAME} agent status
   ${BINARY_NAME} agent setup
@@ -574,6 +652,10 @@ async function main(argv: string[]): Promise<number> {
                     resolutionRows,
                     incidentRows,
                     investigationRows,
+                    structuredResponseChains: composeStructuredResponseMemory(
+                      baseDir,
+                      investigation.subject.id,
+                    ),
                   }),
                 ),
               ),
@@ -1286,6 +1368,423 @@ async function main(argv: string[]): Promise<number> {
           ? listIncidentsFiltered(baseDir, filter)
           : listIncidents(baseDir);
         console.log(formatIncidentList(records, filter));
+        return 0;
+      }
+      case "recommendation": {
+        const usage =
+          `Usage: ${BINARY_NAME} recommendation --investigation <investigation-id> --action-key <token> --proposal <text>\n` +
+          `Usage: ${BINARY_NAME} recommendation --resource <resource-id> --action-key <token> --proposal <text>\n` +
+          `Usage: ${BINARY_NAME} recommendation --incident <incident-id> --resource <resource-id> --action-key <token> --proposal <text>`;
+        const investigationFlag = optionalFlagId(flags.investigation);
+        if (investigationFlag === "missing") {
+          console.error(`--investigation requires an investigation id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.investigation ?? []).length > 0) {
+          console.error(`--investigation takes one exact id on record.\n${usage}`);
+          return 1;
+        }
+        const resourceFlag = optionalFlagId(flags.resource);
+        if (resourceFlag === "missing") {
+          console.error(`--resource requires a resource id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.resource ?? []).length > 0) {
+          console.error(`--resource takes one exact id on record.\n${usage}`);
+          return 1;
+        }
+        const incidentFlag = optionalFlagId(flags.incident);
+        if (incidentFlag === "missing") {
+          console.error(`--incident requires an incident id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.incident ?? []).length > 0) {
+          console.error(`--incident takes one exact id on record.\n${usage}`);
+          return 1;
+        }
+        const actionKey = optionalFlagText(flags["action-key"]);
+        if (actionKey === "missing") {
+          console.error(`--action-key requires a token.\n${usage}`);
+          return 1;
+        }
+        const proposal = optionalFlagText(flags.proposal);
+        if (proposal === "missing") {
+          console.error(`--proposal requires text.\n${usage}`);
+          return 1;
+        }
+        const rationale = optionalFlagText(flags.rationale);
+        if (rationale === "missing") {
+          console.error(`--rationale requires text.\n${usage}`);
+          return 1;
+        }
+        const evidenceParts = [
+          ...(repeated.evidence ?? []),
+          ...(typeof flags.evidence === "string" ? [flags.evidence] : []),
+        ];
+        if (flags.evidence === true || evidenceParts.some((id) => id.trim().length === 0)) {
+          console.error(`--evidence requires an evidence id.\n${usage}`);
+          return 1;
+        }
+        const hasAnchor =
+          investigationFlag !== undefined ||
+          resourceFlag !== undefined ||
+          incidentFlag !== undefined;
+        if (hasAnchor) {
+          if (positionals[0]) {
+            console.error(`${usage}\nShow: ${BINARY_NAME} recommendation <recommendation-id>`);
+            return 1;
+          }
+          if (!actionKey) {
+            console.error(`--action-key requires a token.\n${usage}`);
+            return 1;
+          }
+          if (!proposal) {
+            console.error(`--proposal requires text.\n${usage}`);
+            return 1;
+          }
+          const recorded = recordRecommendation({
+            baseDir,
+            ...(investigationFlag ? { investigationId: investigationFlag } : {}),
+            ...(resourceFlag ? { subjectResourceId: resourceFlag } : {}),
+            ...(incidentFlag ? { incidentId: incidentFlag } : {}),
+            actionKey,
+            proposal,
+            ...(rationale ? { rationale } : {}),
+            ...(evidenceParts.length > 0 ? { evidenceIds: evidenceParts } : {}),
+          });
+          console.log(formatRecommendationConfirmation(recorded));
+          return 0;
+        }
+        const recommendationId = positionals[0];
+        if (!recommendationId) {
+          console.error(
+            `${usage}\nShow: ${BINARY_NAME} recommendation <recommendation-id>\nList ids: ${BINARY_NAME} recommendations`,
+          );
+          return 1;
+        }
+        if (actionKey || proposal || rationale || evidenceParts.length > 0) {
+          console.error(
+            `Recording a recommendation requires --investigation, --resource, or --incident.\n${usage}`,
+          );
+          return 1;
+        }
+        const record = getRecommendation(baseDir, recommendationId);
+        console.log(formatRecommendation(record));
+        return 0;
+      }
+      case "recommendations": {
+        const usage = `Usage: ${BINARY_NAME} recommendations [--resource <resource-id>] [--investigation <investigation-id>] [--incident <incident-id>]`;
+        const investigationFlag = optionalFlagId(flags.investigation);
+        if (investigationFlag === "missing") {
+          console.error(`--investigation requires an investigation id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.investigation ?? []).length > 0) {
+          console.error(
+            `--investigation takes one exact id on the recommendations list.\n${usage}`,
+          );
+          return 1;
+        }
+        const resourceFlag = optionalFlagId(flags.resource);
+        if (resourceFlag === "missing") {
+          console.error(`--resource requires a resource id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.resource ?? []).length > 0) {
+          console.error(
+            `--resource takes one exact id on the recommendations list.\n${usage}`,
+          );
+          return 1;
+        }
+        const incidentFlag = optionalFlagId(flags.incident);
+        if (incidentFlag === "missing") {
+          console.error(`--incident requires an incident id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.incident ?? []).length > 0) {
+          console.error(
+            `--incident takes one exact id on the recommendations list.\n${usage}`,
+          );
+          return 1;
+        }
+        const filter = {
+          ...(resourceFlag ? { subjectResourceId: resourceFlag } : {}),
+          ...(investigationFlag ? { investigationId: investigationFlag } : {}),
+          ...(incidentFlag ? { incidentId: incidentFlag } : {}),
+        };
+        const listFilter =
+          resourceFlag || investigationFlag || incidentFlag ? filter : undefined;
+        const records = listRecommendations(baseDir, listFilter);
+        console.log(formatRecommendationList(records, listFilter));
+        return 0;
+      }
+      case "decision": {
+        const usage = `Usage: ${BINARY_NAME} decision --recommendation <recommendation-id> --disposition approved|rejected|deferred|modified [--note <text>]`;
+        const recommendationFlag = optionalFlagId(flags.recommendation);
+        if (recommendationFlag === "missing") {
+          console.error(`--recommendation requires a recommendation id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.recommendation ?? []).length > 0) {
+          console.error(`--recommendation takes one exact id on record.\n${usage}`);
+          return 1;
+        }
+        const disposition = optionalFlagText(flags.disposition);
+        if (disposition === "missing") {
+          console.error(`--disposition requires a value.\n${usage}`);
+          return 1;
+        }
+        const note = optionalFlagText(flags.note);
+        if (note === "missing") {
+          console.error(`--note requires text.\n${usage}`);
+          return 1;
+        }
+        if (recommendationFlag && disposition) {
+          if (positionals[0]) {
+            console.error(`${usage}\nShow: ${BINARY_NAME} decision <decision-id>`);
+            return 1;
+          }
+          const recorded = recordDecision({
+            baseDir,
+            recommendationId: recommendationFlag,
+            disposition: disposition as DecisionDisposition,
+            ...(note ? { note } : {}),
+          });
+          console.log(formatDecisionConfirmation(recorded));
+          return 0;
+        }
+        const decisionId = positionals[0];
+        if (!decisionId) {
+          console.error(
+            `${usage}\nShow: ${BINARY_NAME} decision <decision-id>\nList ids: ${BINARY_NAME} decisions`,
+          );
+          return 1;
+        }
+        if (recommendationFlag || disposition || note) {
+          console.error(
+            `Recording a decision requires --recommendation and --disposition.\n${usage}`,
+          );
+          return 1;
+        }
+        const record = getDecision(baseDir, decisionId);
+        console.log(formatDecision(record));
+        return 0;
+      }
+      case "decisions": {
+        const usage = `Usage: ${BINARY_NAME} decisions [--recommendation <recommendation-id>]`;
+        const recommendationFlag = optionalFlagId(flags.recommendation);
+        if (recommendationFlag === "missing") {
+          console.error(`--recommendation requires a recommendation id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.recommendation ?? []).length > 0) {
+          console.error(
+            `--recommendation takes one exact id on the decisions list.\n${usage}`,
+          );
+          return 1;
+        }
+        const filter = recommendationFlag
+          ? { recommendationId: recommendationFlag }
+          : undefined;
+        const records = listDecisions(baseDir, filter);
+        console.log(formatDecisionList(records, filter));
+        return 0;
+      }
+      case "action": {
+        const usage = `Usage: ${BINARY_NAME} action --decision <decision-id> --action-key <token> --summary <text> [--performed-at <iso>]`;
+        const decisionFlag = optionalFlagId(flags.decision);
+        if (decisionFlag === "missing") {
+          console.error(`--decision requires a decision id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.decision ?? []).length > 0) {
+          console.error(`--decision takes one exact id on record.\n${usage}`);
+          return 1;
+        }
+        const actionKey = optionalFlagText(flags["action-key"]);
+        if (actionKey === "missing") {
+          console.error(`--action-key requires a token.\n${usage}`);
+          return 1;
+        }
+        const summary = optionalFlagText(flags.summary);
+        if (summary === "missing") {
+          console.error(`--summary requires text.\n${usage}`);
+          return 1;
+        }
+        const performedAt = optionalFlagText(flags["performed-at"]);
+        if (performedAt === "missing") {
+          console.error(`--performed-at requires an ISO timestamp.\n${usage}`);
+          return 1;
+        }
+        if (decisionFlag && actionKey && summary) {
+          if (positionals[0]) {
+            console.error(`${usage}\nShow: ${BINARY_NAME} action <action-id>`);
+            return 1;
+          }
+          const recorded = recordAction({
+            baseDir,
+            decisionId: decisionFlag,
+            actionKey,
+            summary,
+            ...(performedAt ? { performedAt } : {}),
+          });
+          console.log(formatActionConfirmation(recorded));
+          return 0;
+        }
+        const actionId = positionals[0];
+        if (!actionId) {
+          console.error(
+            `${usage}\nShow: ${BINARY_NAME} action <action-id>\nList ids: ${BINARY_NAME} actions`,
+          );
+          return 1;
+        }
+        if (decisionFlag || actionKey || summary || performedAt) {
+          console.error(
+            `Recording an action requires --decision, --action-key, and --summary.\n${usage}`,
+          );
+          return 1;
+        }
+        const record = getAction(baseDir, actionId);
+        console.log(formatAction(record));
+        return 0;
+      }
+      case "actions": {
+        const usage = `Usage: ${BINARY_NAME} actions [--decision <decision-id>]`;
+        const decisionFlag = optionalFlagId(flags.decision);
+        if (decisionFlag === "missing") {
+          console.error(`--decision requires a decision id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.decision ?? []).length > 0) {
+          console.error(`--decision takes one exact id on the actions list.\n${usage}`);
+          return 1;
+        }
+        const filter = decisionFlag ? { decisionId: decisionFlag } : undefined;
+        const records = listActions(baseDir, filter);
+        console.log(formatActionList(records, filter));
+        return 0;
+      }
+      case "outcome": {
+        const usage =
+          `Usage: ${BINARY_NAME} outcome --action <action-id> --assessment positive|negative|mixed|neutral|inconclusive --summary <text> [--observed-at <iso>] [--evidence <id>]\n` +
+          `Usage: ${BINARY_NAME} outcome --action <action-id> --assessment <assessment> --summary <text> --metric <name> --before <number> --after <number> --unit <unit>`;
+        const measurementUsage = `Usage: ${BINARY_NAME} outcome --action <action-id> --assessment <assessment> --summary <text> --metric <name> --before <number> --after <number> --unit <unit>`;
+        const actionFlag = optionalFlagId(flags.action);
+        if (actionFlag === "missing") {
+          console.error(`--action requires an action id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.action ?? []).length > 0) {
+          console.error(`--action takes one exact id on record.\n${usage}`);
+          return 1;
+        }
+        const assessment = optionalFlagText(flags.assessment);
+        if (assessment === "missing") {
+          console.error(`--assessment requires a value.\n${usage}`);
+          return 1;
+        }
+        const summary = optionalFlagText(flags.summary);
+        if (summary === "missing") {
+          console.error(`--summary requires text.\n${usage}`);
+          return 1;
+        }
+        const observedAt = optionalFlagText(flags["observed-at"]);
+        if (observedAt === "missing") {
+          console.error(`--observed-at requires an ISO timestamp.\n${usage}`);
+          return 1;
+        }
+        const evidenceParts = [
+          ...(repeated.evidence ?? []),
+          ...(typeof flags.evidence === "string" ? [flags.evidence] : []),
+        ];
+        if (flags.evidence === true || evidenceParts.some((id) => id.trim().length === 0)) {
+          console.error(`--evidence requires an evidence id.\n${usage}`);
+          return 1;
+        }
+        const metricRaw = flags.metric;
+        const beforeRaw = flags.before;
+        const afterRaw = flags.after;
+        const unitRaw = flags.unit;
+        const anyMeasurement =
+          metricRaw !== undefined ||
+          beforeRaw !== undefined ||
+          afterRaw !== undefined ||
+          unitRaw !== undefined;
+        const allMeasurement =
+          typeof metricRaw === "string" &&
+          typeof beforeRaw === "string" &&
+          typeof afterRaw === "string" &&
+          typeof unitRaw === "string";
+        if (anyMeasurement && !allMeasurement) {
+          console.error(
+            `A measurement requires a non-blank --metric, finite numeric --before and --after, and a non-blank --unit supplied together.\n${measurementUsage}`,
+          );
+          return 1;
+        }
+        if (actionFlag && assessment && summary) {
+          if (positionals[0]) {
+            console.error(`${usage}\nShow: ${BINARY_NAME} outcome <outcome-id>`);
+            return 1;
+          }
+          const recorded = recordOutcome({
+            baseDir,
+            actionId: actionFlag,
+            assessment: assessment as OutcomeAssessment,
+            summary,
+            ...(observedAt ? { observedAt } : {}),
+            ...(allMeasurement
+              ? {
+                  measurement: {
+                    metric: metricRaw,
+                    before: Number(beforeRaw),
+                    after: Number(afterRaw),
+                    unit: unitRaw,
+                  },
+                }
+              : {}),
+            ...(evidenceParts.length > 0 ? { evidenceIds: evidenceParts } : {}),
+          });
+          console.log(formatOutcomeConfirmation(recorded));
+          return 0;
+        }
+        const outcomeId = positionals[0];
+        if (!outcomeId) {
+          console.error(
+            `${usage}\nShow: ${BINARY_NAME} outcome <outcome-id>\nList ids: ${BINARY_NAME} outcomes`,
+          );
+          return 1;
+        }
+        if (
+          actionFlag ||
+          assessment ||
+          summary ||
+          observedAt ||
+          evidenceParts.length > 0 ||
+          anyMeasurement
+        ) {
+          console.error(
+            `Recording an outcome requires --action, --assessment, and --summary.\n${usage}`,
+          );
+          return 1;
+        }
+        const record = getOutcome(baseDir, outcomeId);
+        console.log(formatOutcome(record));
+        return 0;
+      }
+      case "outcomes": {
+        const usage = `Usage: ${BINARY_NAME} outcomes [--action <action-id>]`;
+        const actionFlag = optionalFlagId(flags.action);
+        if (actionFlag === "missing") {
+          console.error(`--action requires an action id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.action ?? []).length > 0) {
+          console.error(`--action takes one exact id on the outcomes list.\n${usage}`);
+          return 1;
+        }
+        const filter = actionFlag ? { actionId: actionFlag } : undefined;
+        const records = listOutcomes(baseDir, filter);
+        console.log(formatOutcomeList(records, filter));
         return 0;
       }
       case "mcp": {
