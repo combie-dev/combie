@@ -319,17 +319,18 @@ Per `skills/build-combie/SKILL.md` (the canonical Engineering Constitution), rea
 - Update only the canonical doc whose *material* content changed; otherwise leave docs untouched.
 - `.history/` contains editor backups — never treat as canonical or edit.
 
-## Current baseline: Sprints 001–111 complete
+## Current baseline: Sprints 001–113 complete
 
 Launch MVP was validated and concluded on released `v0.4.0`; its conditional
 two-hop projection repair was distributed as `v0.4.1`. Task-Aware Context MVP
-Waves 1–2 are complete and currently distributed as `v0.5.0`. On 2026-08-26
-the founder authorized the Operational Learning MVP, explicitly deferring the
-external v0.5 task-loop validation pass until Combie has more pre-beta
-developer utility. Sprint 111 (Wave 1: Structured Response Memory) is
-complete. This is a named founder override, not leftover-order thaw. Wave 2
-(incident links + precedents) and Wave 3 (transparent learning + release)
-are not authorized. No version bump or Sprint 112.
+Waves 1–2 are complete and distributed as `v0.5.0`. On 2026-08-26 the founder
+authorized the Operational Learning MVP, explicitly deferring the external
+v0.5 task-loop validation pass until Combie has more pre-beta developer
+utility. Sprint 111 (Wave 1: Structured Response Memory), Sprint 112 (Wave 2:
+exact Incident links and deterministic precedents), and Sprint 113 (Wave 3:
+transparent response experience + gated `v0.6.0` release) are complete and
+distributed as `v0.6.0`. This is a named founder override, not leftover-order
+thaw. No policy, execution, hosted platform, or Sprint 114.
 
 Multi-provider connection loop:
 
@@ -1164,7 +1165,57 @@ Providers: Cloudflare, GitHub, Vercel, Sentry, Neon, PlanetScale.
   legacy promotion, inferred Action/Outcome, similarity, Incident linking,
   precedent retrieval, scoring, Learning Engine, policy, execution, MCP
   write/new tool, hosted platform, version bump, commit/tag/push/release, or
-  Sprint 112.
+  Sprint 112 inside that Sprint (112 was separately authorized afterward).
+- **Sprint 112 Complete (2026-08-26): Operational Learning MVP Wave 2 —
+  Incident Links and Deterministic Precedents.** Founder explicitly started
+  Wave 2 after Sprint 111 PASS. One append-only `IncidentLinkRecord`
+  (`ilink:`) for a canonical unordered pair of two exact existing Incidents
+  plus required authored reason. Explicit precedents are separate from
+  ephemeral candidates. Candidate inclusion is limited to a closed exact
+  union: same retained Resolution subject, directly related Incident subjects
+  through one stored proven Relationship, shared proven one-hop neighbor
+  through two exact Relationships, same exact Incident-anchored Recommendation
+  action key, or same exact attempted Action key. Graph reasons retain exact
+  Relationship evidence and verification/required-provider-attempt clocks;
+  candidates return exact Incident-anchored Sprint 111 chains but never infer
+  final Outcome or success. Direct `precedents --incident` supports human and
+  JSON output; existing `response-recall` gains additive
+  `incidentPrecedentMemory` through shared CLI/MCP projection. One additive
+  `incident_links` table only; computed candidates are never persisted. 1463
+  tests / typecheck green after the corrective closeout; P1–P7 dogfood PASS on isolated
+  `/tmp/combie-112-dogfood-20260826`. Corrective closeout the same day: precedents
+  require temporal prior (`effectiveAt = occurredAt ?? recordedAt`; peer
+  strictly before query) for both explicit and candidate rows. No text/fuzzy/
+  embedding similarity, hidden score/rank, pattern detection, recommendation
+  generation, Learning Engine, Incident membership/graph mutation, new MCP
+  input/write/tool, broad JSON thaw, policy, execution, hosted platform, Wave 3,
+  version bump, commit/tag/push/release, or Sprint 113 inside that Sprint. Wave
+  3 was separately authorized on 2026-08-27.
+- **Sprint 113 Complete (2026-08-27): Operational Learning MVP Wave 3 —
+  Transparent Response Experience + v0.6.0 Release.** Shipped one pure
+  read-time application summary (`src/app/incident-response-experience.ts`)
+  over Sprint 112's temporally prior precedent sets and exact Incident-
+  anchored Sprint 111 chains: groups exact `actionKey` history, keeps
+  PROPOSED Recommendations and literal Decision dispositions separate from
+  ATTEMPTED Actions and literal Outcome assessments, exposes every count as
+  exact retained ids (`count === ids.length`), and surfaces incomplete
+  Recommendation/Action branches. Existing `precedents` gains additive
+  `responseExperience` (JSON) plus a RECORDED RESPONSE EXPERIENCE human
+  section; existing `response-recall` gains additive always-present
+  `incidentResponseExperienceMemory` through the same five-tool read-only MCP
+  boundary. 1490 tests / typecheck green; L1–L7 dogfood PASS on an isolated
+  `/tmp` store (temporal containment incl. occurredAt precedence,
+  proposed/attempted separation, outcome completeness, incomplete branches,
+  explicit/candidate basis, `precedents`↔`response-recall` JSON parity, zero
+  `"[Circular]"`, DB bytes unchanged). No Experience/Learning persistence,
+  score, ranking, final Decision/Outcome, success rate, measurement
+  interpretation, recommendation generation, preference inference,
+  model/provider call, generic Learning Engine, new MCP tool/input/write,
+  policy, execution, or hosted platform. Released as `v0.6.0` (commit
+  `6e240d8`, tag `v0.6.0`, run `33089613798`, six assets, checksum
+  `0c9a3d30…`, isolated curl install `combie 0.6.0`, L8 state-continuity
+  PASS; known MCP stdio subprocess flake recurred once and passed on the
+  isolated rerun). No Sprint 114.
 - **ROADMAP v0.6 Investigation is closed at the deterministic
   milestone** (post-Sprint-050 architecture audit). Shipped minimum
   loop: compose → save retained composition (`investigate --save`) →
