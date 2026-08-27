@@ -4,7 +4,7 @@ set -eu
 # Combie installer — POSIX shell
 # curl -fsSL https://combie.dev/install | sh
 
-REPO="combie-dev/combie"
+REPO="BoringInfraCo/combie"
 DEFAULT_VERSION="v0.1.0"
 INSTALL_DIR="${HOME}/.local/bin"
 
@@ -184,4 +184,4 @@ printf "  combie init\n"
 printf "  combie connect github\n"
 printf "  combie sync\n"
 printf "  combie resources\n\n"
-printf "Docs: https://github.com/combie-dev/combie\n"
+printf "Docs: https://github.com/BoringInfraCo/combie\n"

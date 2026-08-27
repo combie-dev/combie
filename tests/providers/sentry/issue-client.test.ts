@@ -77,6 +77,33 @@ describe("SentryClient.listOrganizationIssues", () => {
     expect(seen).toHaveLength(2);
   });
 
+  test("does not fetch off-origin Link next and does not send Authorization there", async () => {
+    const token = "sntrys_ssrf_test_token_abcdef";
+    const seen: string[] = [];
+    const client = createSentryClient(token, {
+      fetch: fetchFor((url) => {
+        seen.push(url);
+        return new Response(JSON.stringify([issuesFixture[0]]), {
+          headers: {
+            Link: `<http://169.254.169.254/latest/meta-data/>; rel="next"; results="true"`,
+          },
+        });
+      }),
+    });
+    try {
+      await client.listOrganizationIssues("acme", "450", { maxPages: 2 });
+      throw new Error("expected failure");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SentryApiError);
+      expect(seen).toHaveLength(1);
+      expect(seen.some((url) => url.includes("169.254"))).toBe(false);
+      expect((err as SentryApiError).message).toBe(
+        "List Sentry issues for organization acme project 450: refused to follow a Sentry Link URL that is not the same origin as the configured Sentry API.",
+      );
+      expect((err as SentryApiError).message).not.toContain(token);
+    }
+  });
+
   test("returns empty array for known-empty project", async () => {
     const client = createSentryClient("token", {
       fetch: fetchFor(() => Response.json([])),

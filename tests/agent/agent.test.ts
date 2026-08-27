@@ -797,10 +797,10 @@ describe("resolveAgentCombieHome", () => {
 describe("skill install hint", () => {
   test("exports the pinned command and two-line hint format", () => {
     expect(SKILL_INSTALL_COMMAND).toBe(
-      "npx skills add combie-dev/combie --skill combie -a cursor -a claude-code -a codex",
+      "npx skills add BoringInfraCo/combie --skill combie -a cursor -a claude-code -a codex",
     );
     expect(formatSkillInstallHint()).toBe(
-      "Skill (optional):\n  npx skills add combie-dev/combie --skill combie -a cursor -a claude-code -a codex",
+      "Skill (optional):\n  npx skills add BoringInfraCo/combie --skill combie -a cursor -a claude-code -a codex",
     );
   });
 });

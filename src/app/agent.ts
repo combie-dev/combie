@@ -154,7 +154,7 @@ export function formatAgentStatusTable(statuses: AgentStatusInfo[]): string {
 }
 
 export const SKILL_INSTALL_COMMAND =
-  "npx skills add combie-dev/combie --skill combie -a cursor -a claude-code -a codex";
+  "npx skills add BoringInfraCo/combie --skill combie -a cursor -a claude-code -a codex";
 
 export function formatSkillInstallHint(): string {
   return `Skill (optional):\n  ${SKILL_INSTALL_COMMAND}`;

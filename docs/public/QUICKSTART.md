@@ -39,7 +39,7 @@ combie --version
 Expected output:
 
 ```bash
-combie 0.6.0
+combie 0.6.1
 ```
 
 The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
@@ -53,7 +53,7 @@ To make this permanent, add that line to `~/.bashrc`, `~/.zshrc`, or `~/.profile
 **Build from source (alternative):** Clone the repository and run with Bun:
 
 ```bash
-git clone https://github.com/combie-dev/combie
+git clone https://github.com/BoringInfraCo/combie
 cd combie
 bun install --frozen-lockfile
 bun run combie help

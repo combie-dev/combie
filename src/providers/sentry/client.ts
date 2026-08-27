@@ -61,6 +61,25 @@ export function parseSentryNextLink(linkHeader: string | null): string | null {
   return null;
 }
 
+export function resolveSentryRequestUrl(pathOrUrl: string, baseUrl: string): string {
+  if (!pathOrUrl.startsWith("http")) {
+    return `${baseUrl}${pathOrUrl}`;
+  }
+
+  let candidate: URL;
+  let base: URL;
+  try {
+    candidate = new URL(pathOrUrl);
+    base = new URL(baseUrl);
+  } catch {
+    throw new Error("invalid Sentry request URL");
+  }
+  if (candidate.origin !== base.origin) {
+    throw new Error("Sentry request URL is not the same origin as the configured API");
+  }
+  return pathOrUrl;
+}
+
 export class SentryClient {
   private readonly token: string;
   private readonly fetchImpl: FetchLike;
@@ -341,10 +360,17 @@ export class SentryClient {
     pathOrUrl: string,
     context: string,
   ): Promise<{ body: T; headers: Headers }> {
-    const url = pathOrUrl.startsWith("http")
-      ? pathOrUrl
-      : `${this.baseUrl}${pathOrUrl}`;
     const endpoint = this.endpointLabel(pathOrUrl);
+    let url: string;
+    try {
+      url = resolveSentryRequestUrl(pathOrUrl, this.baseUrl);
+    } catch {
+      throw new SentryApiError({
+        message: `${context}: refused to follow a Sentry Link URL that is not the same origin as the configured Sentry API.`,
+        status: 0,
+        endpoint,
+      });
+    }
 
     let response: Response;
     try {

@@ -82,7 +82,7 @@ This removes only the executable — your Combie state (`.combie` directory) and
 Combie can also be built and run from the repository using Bun:
 
 ```bash
-git clone https://github.com/combie-dev/combie
+git clone https://github.com/BoringInfraCo/combie
 cd combie
 bun install
 bun run combie init

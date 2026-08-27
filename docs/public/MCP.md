@@ -58,7 +58,7 @@ refresh → local `--json` filtering → deeper evidence on demand → cite exac
 evidence) can install it as a skill:
 
 ```bash
-npx skills add combie-dev/combie --skill combie -a cursor -a claude-code -a codex
+npx skills add BoringInfraCo/combie --skill combie -a cursor -a claude-code -a codex
 ```
 
 Installation is optional; Combie MCP and the CLI work without it. If you are
