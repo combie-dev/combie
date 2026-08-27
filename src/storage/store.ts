@@ -24,6 +24,7 @@ import type {
   OutcomeMeasurement,
   OutcomeRecord,
 } from "../domain/outcome.ts";
+import type { IncidentLinkRecord } from "../domain/incident-link.ts";
 import type { RecommendationRecord } from "../domain/recommendation.ts";
 import type {
   GitHubIssueEvidence,
@@ -396,6 +397,25 @@ CREATE INDEX IF NOT EXISTS outcomes_recorded_at_id_idx
 
 CREATE INDEX IF NOT EXISTS outcomes_action_recorded_id_idx
   ON outcomes(action_id, recorded_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS incident_links (
+  id TEXT PRIMARY KEY,
+  incident_a_id TEXT NOT NULL,
+  incident_b_id TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  CHECK (incident_a_id < incident_b_id),
+  UNIQUE(incident_a_id, incident_b_id)
+);
+
+CREATE INDEX IF NOT EXISTS incident_links_a_idx
+  ON incident_links(incident_a_id);
+
+CREATE INDEX IF NOT EXISTS incident_links_b_idx
+  ON incident_links(incident_b_id);
+
+CREATE INDEX IF NOT EXISTS incident_links_recorded_at_id_idx
+  ON incident_links(recorded_at DESC, id DESC);
 `;
 
 export interface ApplyResourceObservation extends ChangeObservation {
@@ -2463,6 +2483,70 @@ export class Store {
     return row ? mapOutcomeRow(row) : null;
   }
 
+  insertIncidentLink(row: IncidentLinkRecord): void {
+    try {
+      this.getWritableDb()
+        .query(
+          `INSERT INTO incident_links (
+             id, incident_a_id, incident_b_id, recorded_at, reason
+           ) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(
+          row.id,
+          row.incidentIds[0],
+          row.incidentIds[1],
+          row.recordedAt,
+          row.reason,
+        );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
+      ) {
+        throw new Error(
+          `INCIDENT_LINK_EXISTS: a link already exists for ${row.incidentIds[0]} and ${row.incidentIds[1]}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  listIncidentLinkRows(filter?: {
+    incidentId?: string;
+  }): IncidentLinkRecord[] {
+    const db = this.getDb();
+    if (!this.hasTable(db, "incident_links")) return [];
+    const where =
+      filter?.incidentId !== undefined
+        ? "WHERE incident_a_id = ? OR incident_b_id = ?"
+        : "";
+    const params =
+      filter?.incidentId !== undefined
+        ? [filter.incidentId, filter.incidentId]
+        : [];
+    const rows = db
+      .query(
+        `SELECT id, incident_a_id, incident_b_id, recorded_at, reason
+         FROM incident_links ${where}
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all(...params) as IncidentLinkSqlRow[];
+    return rows.map(mapIncidentLinkRow);
+  }
+
+  getIncidentLinkRow(id: string): IncidentLinkRecord | null {
+    const db = this.getDb();
+    if (!this.hasTable(db, "incident_links")) return null;
+    const row = db
+      .query(
+        `SELECT id, incident_a_id, incident_b_id, recorded_at, reason
+         FROM incident_links WHERE id = ?`,
+      )
+      .get(id) as IncidentLinkSqlRow | null;
+    return row ? mapIncidentLinkRow(row) : null;
+  }
+
   close(): void {
     if (this.db) {
       if (!this.dbReadOnly) {
@@ -2629,6 +2713,14 @@ type OutcomeSqlRow = {
   evidence_ids: string | null;
 };
 
+type IncidentLinkSqlRow = {
+  id: string;
+  incident_a_id: string;
+  incident_b_id: string;
+  recorded_at: string;
+  reason: string;
+};
+
 /**
  * Stored evidence_ids is a JSON array of exact ids. Corrupt or non-array
  * payloads are untrusted and omitted — never surfaced as invented evidence.
@@ -2738,6 +2830,15 @@ function mapOutcomeRow(row: OutcomeSqlRow): OutcomeRecord {
     summary: row.summary,
     ...(measurement ? { measurement } : {}),
     ...(evidenceIds ? { evidenceIds } : {}),
+  };
+}
+
+function mapIncidentLinkRow(row: IncidentLinkSqlRow): IncidentLinkRecord {
+  return {
+    id: row.id,
+    incidentIds: [row.incident_a_id, row.incident_b_id],
+    recordedAt: row.recorded_at,
+    reason: row.reason,
   };
 }
 

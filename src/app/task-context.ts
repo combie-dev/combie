@@ -24,6 +24,7 @@ import {
   type GitCommitEvidenceGroup,
   type SharedCommitCorrespondence,
 } from "./shared-commit-context.ts";
+import type { IncidentPrecedentSet } from "./incident-precedents.ts";
 import type { StructuredResponseChain } from "./structured-response-memory.ts";
 import {
   composeInvestigationTimeline,
@@ -92,6 +93,12 @@ export interface ComposeTaskContextInput {
   incidentRows: IncidentRecord[];
   investigationRows: InvestigationRecord[];
   structuredResponseChains: StructuredResponseChain[];
+  /**
+   * Precedent sets for exact Incidents already in `incidentRows`, preserving
+   * that order. Always present on response-recall; callers pass `[]` when the
+   * subject has no Incidents or when composing other profiles.
+   */
+  incidentPrecedentSets: IncidentPrecedentSet[];
 }
 
 /**
@@ -186,6 +193,8 @@ export interface ResponseRecallTaskContext
   resolutionMemory: ResolutionRecord[];
   incidentMemory: IncidentRecord[];
   structuredResponseMemory: StructuredResponseChain[];
+  /** Always present; `[]` is known-empty when the subject has no Incidents. */
+  incidentPrecedentMemory: IncidentPrecedentSet[];
 }
 
 export type TaskScopedContext =
@@ -206,6 +215,7 @@ export function composeTaskContext(input: ComposeTaskContextInput): TaskScopedCo
     incidentRows,
     investigationRows,
     structuredResponseChains,
+    incidentPrecedentSets,
   } = input;
   const taskEnvelope = {
     task: {
@@ -302,6 +312,7 @@ export function composeTaskContext(input: ComposeTaskContextInput): TaskScopedCo
         resolutionMemory: resolutionRows,
         incidentMemory: incidentRows,
         structuredResponseMemory: structuredResponseChains,
+        incidentPrecedentMemory: incidentPrecedentSets,
       };
     }
   }

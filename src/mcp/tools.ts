@@ -9,6 +9,7 @@ import {
 import { listInvestigations, getSavedInvestigation, getInvestigationArtifact } from "../app/investigations.ts";
 import { listProviders, listResources } from "../app/list.ts";
 import { listResolutions } from "../app/resolutions.ts";
+import { composeIncidentPrecedentMemory } from "../app/incident-precedents.ts";
 import { composeStructuredResponseMemory } from "../app/structured-response-memory.ts";
 import { composeTaskContext, normalizeTaskProfile } from "../app/task-context.ts";
 import {
@@ -156,7 +157,10 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
         "When task is response-recall, also returns additive structuredResponseMemory: exact " +
         "Recommendation → Decision → Action → Outcome chains for that subject (retained " +
         "organizational memory, not current provider truth, not inferred Action). Always " +
-        "present; [] is known-empty. " +
+        "present; [] is known-empty. Also returns additive incidentPrecedentMemory: one " +
+        "inspectable precedent set per exact Incident already in incidentMemory (explicit " +
+        "human/agent links and deterministic exact-match candidates; not recommendations; " +
+        "not similarity). Always present; [] is known-empty. " +
         "Omitted task returns the full investigation context unchanged. " +
         "Does not call providers, mutate state, or perform inference.",
       annotations: READ_ONLY_ANNOTATIONS,
@@ -177,7 +181,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
           .enum(["change-review", "dependency-impact", "response-recall"])
           .optional()
           .describe(
-            "Optional explicit task profile for a task-scoped deterministic view of the same live compose. change-review: subject authority, changes, one-hop evidence, provider activity, timeline, shared commits, relationships/paths, evidence gaps. dependency-impact: direct Relationships, directions, neighbors, two-hop paths, relationship clocks, graph/discovery gaps (connectivity, not blast radius). response-recall: retained investigation history, resolution decision/action/outcome, incident groupings (exact prior records, not recommendations), and additive structuredResponseMemory (exact Recommendation → Decision → Action → Outcome chains for that subject; retained organizational memory, not current provider truth, not inferred Action; always present, [] is known-empty). Requires resourceId. Cannot be combined with investigationId. Omit for the full investigation context.",
+            "Optional explicit task profile for a task-scoped deterministic view of the same live compose. change-review: subject authority, changes, one-hop evidence, provider activity, timeline, shared commits, relationships/paths, evidence gaps. dependency-impact: direct Relationships, directions, neighbors, two-hop paths, relationship clocks, graph/discovery gaps (connectivity, not blast radius). response-recall: retained investigation history, resolution decision/action/outcome, incident groupings (exact prior records, not recommendations), additive structuredResponseMemory (exact Recommendation → Decision → Action → Outcome chains for that subject; retained organizational memory, not current provider truth, not inferred Action; always present, [] is known-empty), and additive incidentPrecedentMemory (one inspectable precedent set per exact Incident in incidentMemory — explicit links and deterministic exact-match candidates, not recommendations; always present, [] is known-empty). Requires resourceId. Cannot be combined with investigationId. Omit for the full investigation context.",
           ),
       }),
     },
@@ -215,6 +219,13 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
             baseDir,
             ctx.subject.id,
           );
+          const incidentPrecedentSets =
+            profile === "response-recall"
+              ? composeIncidentPrecedentMemory(
+                  baseDir,
+                  incidentRows.map((row) => row.id),
+                )
+              : [];
           const projection = projectTaskContext(
             composeTaskContext({
               task: profile,
@@ -223,6 +234,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
               incidentRows,
               investigationRows,
               structuredResponseChains,
+              incidentPrecedentSets,
             }),
           );
           return {

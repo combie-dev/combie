@@ -83,6 +83,19 @@ import {
   formatIncidentClearOccurredAtConfirmation,
 } from "../app/incidents.ts";
 import {
+  formatIncidentLink,
+  formatIncidentLinkConfirmation,
+  formatIncidentLinks,
+  getIncidentLink,
+  listIncidentLinks,
+  recordIncidentLink,
+} from "../app/incident-links.ts";
+import {
+  composeIncidentPrecedentMemory,
+  composeIncidentPrecedents,
+  formatIncidentPrecedents,
+} from "../app/incident-precedents.ts";
+import {
   compareInvestigationToCurrent,
   formatInvestigationCompare,
 } from "../app/compare-investigation.ts";
@@ -117,6 +130,7 @@ import type { DecisionDisposition } from "../domain/decision.ts";
 import type { OutcomeAssessment } from "../domain/outcome.ts";
 import {
   projectInvestigateResourceLive,
+  projectIncidentPrecedentSet,
   projectInvestigationRetrieve,
   projectListInvestigations,
   projectListProviders,
@@ -137,9 +151,10 @@ const JSON_COMMANDS = [
   "context",
   "investigations",
   "investigation",
+  "precedents",
 ] as const;
 const JSON_USAGE =
-  "--json is only available for: providers, resources, related, investigate, context, investigations, investigation.";
+  "--json is only available for: providers, resources, related, investigate, context, investigations, investigation, precedents.";
 
 const HELP = `combie — engineering context layer
 
@@ -166,6 +181,9 @@ Commands:
   resolutions                  List retained resolution records
   incident                     Record, show, add, or remove members of an explicit incident grouping of resolutions
   incidents                    List retained incident groupings
+  incident-link                Record or show an explicit organizational link between two incidents
+  incident-links               List retained incident links
+  precedents                   Retrieve explicit and candidate precedents for one incident
   recommendation               Record or show an explicit recommendation
   recommendations              List retained recommendation records
   decision                     Record or show an explicit decision on a recommendation
@@ -201,7 +219,7 @@ Resources options:
 Read options:
   --json                       Emit structured JSON for providers, resources,
                                related, investigate, context, investigations,
-                               or investigation <id>
+                               investigation <id>, or precedents
 
 Investigate options:
   --save                       Persist a retained investigation snapshot
@@ -223,6 +241,10 @@ Investigate options:
                                against (subject copied from members, or named with --resource; one exact id)
                                With "recommendation": existing incident grouping to record against (requires --resource)
                                With "recommendations": list recommendations for one incident
+                               With "incident-link": exact Incident id to link (repeatable; exactly two distinct)
+                               With "incident-links": list links that name that exact Incident id
+                               With "precedents": exact query Incident id (one required)
+  --reason <text>              With "incident-link": required organizational claim for the link
   --decision <text>            Explicit decision (what you decided)
                                With "action": parent decision to record against
                                With "actions": list actions for one decision
@@ -320,6 +342,12 @@ Examples:
   ${BINARY_NAME} incidents --resource github:repository:1001
   ${BINARY_NAME} incidents --investigation inv:…
   ${BINARY_NAME} incident inc:…
+  ${BINARY_NAME} incident-link --incident inc:… --incident inc:… --reason "Same failure mode"
+  ${BINARY_NAME} incident-link ilink:…
+  ${BINARY_NAME} incident-links
+  ${BINARY_NAME} incident-links --incident inc:…
+  ${BINARY_NAME} precedents --incident inc:…
+  ${BINARY_NAME} precedents --incident inc:… --json
   ${BINARY_NAME} recommendation --resource vercel:project:prj_abc --action-key rollback-deployment --proposal "Rollback the latest deployment"
   ${BINARY_NAME} recommendation --investigation inv:… --action-key inspect-database --proposal "Inspect the primary"
   ${BINARY_NAME} recommendation --incident inc:… --resource github:repository:1001 --action-key hold-deploys --proposal "Hold deploys"
@@ -642,6 +670,13 @@ async function main(argv: string[]): Promise<number> {
           const investigationRows = listInvestigations(baseDir, {
             subjectResourceId: investigation.subject.id,
           });
+          const incidentPrecedentSets =
+            profile === "response-recall"
+              ? composeIncidentPrecedentMemory(
+                  baseDir,
+                  incidentRows.map((row) => row.id),
+                )
+              : [];
           console.log(
             JSON.stringify(
               safeJson(
@@ -656,6 +691,7 @@ async function main(argv: string[]): Promise<number> {
                       baseDir,
                       investigation.subject.id,
                     ),
+                    incidentPrecedentSets,
                   }),
                 ),
               ),
@@ -1785,6 +1821,121 @@ async function main(argv: string[]): Promise<number> {
         const filter = actionFlag ? { actionId: actionFlag } : undefined;
         const records = listOutcomes(baseDir, filter);
         console.log(formatOutcomeList(records, filter));
+        return 0;
+      }
+      case "incident-link": {
+        const usage =
+          `Usage: ${BINARY_NAME} incident-link --incident <incident-id> --incident <incident-id> --reason <text>\n` +
+          `Show: ${BINARY_NAME} incident-link <incident-link-id>`;
+        const incidentParts = [
+          ...(repeated.incident ?? []),
+          ...(typeof flags.incident === "string" ? [flags.incident] : []),
+        ];
+        if (
+          flags.incident === true ||
+          incidentParts.some((id) => id.trim().length === 0)
+        ) {
+          console.error(`--incident requires an incident id.\n${usage}`);
+          return 1;
+        }
+        const reason = optionalFlagText(flags.reason);
+        if (reason === "missing") {
+          console.error(`--reason requires text.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.reason ?? []).length > 0) {
+          console.error(`--reason takes one exact claim.\n${usage}`);
+          return 1;
+        }
+        if (incidentParts.length > 0 || reason) {
+          if (positionals[0]) {
+            console.error(`${usage}`);
+            return 1;
+          }
+          if (!reason) {
+            console.error(
+              `Recording an incident link requires --reason.\n${usage}`,
+            );
+            return 1;
+          }
+          if (incidentParts.length === 0) {
+            console.error(
+              `Recording an incident link requires --incident twice.\n${usage}`,
+            );
+            return 1;
+          }
+          const recorded = recordIncidentLink({
+            baseDir,
+            incidentIds: incidentParts,
+            reason,
+          });
+          console.log(formatIncidentLinkConfirmation(recorded));
+          return 0;
+        }
+        const linkId = positionals[0];
+        if (!linkId) {
+          console.error(
+            `${usage}\nList ids: ${BINARY_NAME} incident-links`,
+          );
+          return 1;
+        }
+        const record = getIncidentLink(baseDir, linkId);
+        console.log(formatIncidentLink(record));
+        return 0;
+      }
+      case "incident-links": {
+        const usage = `Usage: ${BINARY_NAME} incident-links [--incident <incident-id>]`;
+        const incidentFlag = optionalFlagId(flags.incident);
+        if (incidentFlag === "missing") {
+          console.error(`--incident requires an incident id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.incident ?? []).length > 0) {
+          console.error(
+            `--incident takes one exact id on the incident-links list.\n${usage}`,
+          );
+          return 1;
+        }
+        const filter = incidentFlag ? { incidentId: incidentFlag } : undefined;
+        const records = listIncidentLinks(baseDir, filter);
+        console.log(formatIncidentLinks(records, filter));
+        return 0;
+      }
+      case "precedents": {
+        const usage = `Usage: ${BINARY_NAME} precedents --incident <incident-id> [--json]`;
+        const incidentFlag = optionalFlagId(flags.incident);
+        if (incidentFlag === "missing") {
+          console.error(`--incident requires an incident id.\n${usage}`);
+          return 1;
+        }
+        if ((repeated.incident ?? []).length > 0) {
+          console.error(
+            `--incident takes one exact id on precedents.\n${usage}`,
+          );
+          return 1;
+        }
+        if (!incidentFlag) {
+          console.error(
+            `Precedents require --incident.\n${usage}`,
+          );
+          return 1;
+        }
+        if (positionals[0]) {
+          console.error(usage);
+          return 1;
+        }
+        const set = composeIncidentPrecedents(baseDir, incidentFlag);
+        if (flags.json === true) {
+          console.log(
+            JSON.stringify(
+              safeJson(projectIncidentPrecedentSet(set)),
+              null,
+              2,
+            ),
+          );
+        } else {
+          console.log(formatIncidentPrecedents(set));
+        }
         return 0;
       }
       case "mcp": {

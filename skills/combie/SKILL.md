@@ -46,8 +46,20 @@ of hand-filtering the full document:
   fields, evidence ids, Incident groupings, additive
   `structuredResponseMemory` (exact Recommendation→Decision→Action→Outcome
   chains for that subject; organizational memory, not current provider
-  truth, not inferred Action), explicit known-empty arrays. Exact prior
-  records, not similar incidents.
+  truth, not inferred Action), and additive `incidentPrecedentMemory` (one
+  inspectable precedent set per exact Incident already in `incidentMemory`:
+  explicit human/agent links plus deterministic exact-match candidates —
+  not recommendations, not similarity), and additive
+  `incidentResponseExperienceMemory` (always present; `[]` known-empty).
+  Explicit known-empty arrays. Exact temporally prior records only
+  (`effectiveAt = occurredAt ?? recordedAt`), not similar or later
+  incidents. `incidentResponseExperienceMemory` groups those exact prior
+  Recommendation→Decision→Action→Outcome rows by exact `actionKey`, keeping
+  PROPOSED (Recommendations and Decisions by literal disposition) separate
+  from ATTEMPTED (Actions and Outcomes by literal assessment). Assessments
+  are recorded, not computed success — no score, rank, or percentage — and
+  incomplete branches (Recommendation without Decision, Action without
+  Outcome) are named.
 
 Map a user's question to a profile explicitly; Combie itself never classifies
 free-text intent.
@@ -98,6 +110,48 @@ execute. Outcome is a retained assessment — not current provider truth and
 not a success score. Measurement is optional and atomic. This is optional
 organizational memory, not a seventh loop step.
 
+### Optional incident links and precedents (CLI-only)
+
+To record that two exact Incidents belong together for an authored reason:
+
+```bash
+combie incident-link --incident inc:a --incident inc:b --reason "Same failure mode"
+combie incident-link ilink:…
+combie incident-links [--incident inc:…]
+```
+
+An explicit link is a human/agent organizational claim — not provider proof,
+not graph Relationship truth, and not similarity.
+
+To retrieve precedents for one exact Incident:
+
+```bash
+combie precedents --incident inc:a
+combie precedents --incident inc:a --json
+```
+
+Output separates `EXPLICIT PRECEDENTS` (durable prior links) from
+`CANDIDATE PRECEDENTS` (ephemeral exact equality / proven one-hop graph /
+exact Incident-anchored action-key matches). A peer is a precedent only when
+it is temporally prior: `effectiveAt = occurredAt ?? recordedAt`, and
+`peer.effectiveAt < query.effectiveAt`. Equal or later Incidents are never
+precedents — including explicit link peers (those links remain on
+`incident-links`). Candidates are inspectable retrieval aids, not
+recommendations and not "similar Incidents."
+`response-recall` also returns additive `incidentPrecedentMemory` for the
+exact Incidents already in that subject's `incidentMemory` (`[]` known-empty).
+MCP cannot write links.
+
+`combie precedents --incident <inc>` also appends a `RECORDED RESPONSE EXPERIENCE` section (and additive `responseExperience` on `--json`): a
+per-`actionKey` summary of the exact prior Incident-anchored
+Recommendation/Decision/Action/Outcome rows, keeping PROPOSED separate from
+ATTEMPTED. `response-recall`'s `incidentResponseExperienceMemory` carries the
+same summary per Incident. Every count is backed by exact retained record
+ids; Outcome values are recorded assessments, not success — no score, rank,
+or recommendation; incomplete branches (Recommendation without Decision,
+Action without Outcome) are named; only temporally prior precedents
+contribute.
+
 ## 1. Run a compact investigation
 
 MCP: `investigate_resource { resourceId }`
@@ -140,7 +194,7 @@ Bare `combie sync` syncs all connected providers; prefer scoping to the authorit
 
 ## 4. Filter structured results locally
 
-`--json` is available on `providers`, `resources`, `related`, `context`, live `investigate`, and `investigations`. `combie investigation <id> --json` is the compact handle (`id`, `subjectResourceId`, `composedAt`, `subjectPreview`, `investigationArtifact`) — not the 048 body. Pipe to jq or rg to select the fields you need instead of dumping the whole compose:
+`--json` is available on `providers`, `resources`, `related`, `context`, live `investigate`, `investigations`, and `precedents`. `combie investigation <id> --json` is the compact handle (`id`, `subjectResourceId`, `composedAt`, `subjectPreview`, `investigationArtifact`) — not the 048 body. Pipe to jq or rg to select the fields you need instead of dumping the whole compose:
 
 ```bash
 combie investigate <id> --json | jq '.knownFacts'
@@ -149,6 +203,7 @@ combie investigate <id> --json | jq '.subjectGitHubIssues'
 combie investigate <id> --task change-review --json
 combie investigate <id> --task dependency-impact --json
 combie investigate <id> --task response-recall --json
+combie precedents --incident <inc-id> --json
 combie context <id> --json | jq '.related'
 combie providers --json | jq '.providers[] | {name, lastSyncAt, lastAttemptAt}'
 combie investigations --json
@@ -174,4 +229,8 @@ Cite exact local evidence ids and resource ids from the compose. Do not guess id
 
 GitHub repositories expose GitHub issues on `subjectGitHubIssues` (and CLI GITHUB ISSUES), not Sentry `subjectIssues` (`not_applicable` on a repository). A two-hop `paths` entry is two proven edges, not a new edge and not a causal claim.
 
-Resolution, Incident, and structured response recording (recommendation / decision / action / outcome) is optional CLI work and is not part of this loop; MCP cannot write.
+Resolution, Incident, structured response (recommendation / decision / action /
+outcome), and incident-link recording is optional CLI work and is not part of
+this loop; MCP cannot write. Precedent retrieval (`combie precedents`) is
+read-only CLI (and additive on `response-recall`); candidates are exact matches,
+not recommendations.

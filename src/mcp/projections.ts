@@ -9,6 +9,15 @@ import type {
 } from "../app/investigate.ts";
 import type { StructuredResponseChain } from "../app/structured-response-memory.ts";
 import type {
+  CandidateIncidentPrecedent,
+  ExplicitIncidentPrecedent,
+  IncidentPrecedentSet,
+} from "../app/incident-precedents.ts";
+import {
+  composeIncidentResponseExperience,
+  type IncidentResponseExperience,
+} from "../app/incident-response-experience.ts";
+import type {
   DependencyImpactNeighbor,
   OnDemandTarget,
   TaskScopedContext,
@@ -157,6 +166,58 @@ function toStructuredResponseMemoryRow(
 
 export function toStructuredResponseMemory(chains: StructuredResponseChain[]) {
   return chains.map(toStructuredResponseMemoryRow);
+}
+
+function projectExplicitIncidentPrecedent(
+  precedent: ExplicitIncidentPrecedent,
+): Record<string, unknown> {
+  return {
+    link: deepCopyProjectionValue(precedent.link),
+    incident: deepCopyProjectionValue(precedent.incident),
+    structuredResponseMemory: toStructuredResponseMemory(
+      precedent.structuredResponseMemory,
+    ),
+  };
+}
+
+function projectCandidateIncidentPrecedent(
+  precedent: CandidateIncidentPrecedent,
+): Record<string, unknown> {
+  return {
+    incident: deepCopyProjectionValue(precedent.incident),
+    matchReasons: deepCopyProjectionValue(precedent.matchReasons),
+    structuredResponseMemory: toStructuredResponseMemory(
+      precedent.structuredResponseMemory,
+    ),
+  };
+}
+
+function projectIncidentResponseExperience(
+  experience: IncidentResponseExperience,
+): Record<string, unknown> {
+  return deepCopyProjectionValue(experience) as Record<string, unknown>;
+}
+
+/** Shared by-value projector for one Incident precedent set (CLI + MCP). */
+export function projectIncidentPrecedentSet(
+  set: IncidentPrecedentSet,
+): Record<string, unknown> {
+  return {
+    queryIncident: deepCopyProjectionValue(set.queryIncident),
+    explicitPrecedents: set.explicitPrecedents.map(
+      projectExplicitIncidentPrecedent,
+    ),
+    candidatePrecedents: set.candidatePrecedents.map(
+      projectCandidateIncidentPrecedent,
+    ),
+    responseExperience: projectIncidentResponseExperience(
+      composeIncidentResponseExperience(set),
+    ),
+  };
+}
+
+export function toIncidentPrecedentMemory(sets: IncidentPrecedentSet[]) {
+  return sets.map(projectIncidentPrecedentSet);
 }
 
 export function toIncidentMemory(records: IncidentRecord[]) {
@@ -632,6 +693,13 @@ export function projectTaskContext(tc: TaskScopedContext) {
     result.incidentMemory = toIncidentMemory(tc.incidentMemory);
     result.structuredResponseMemory = toStructuredResponseMemory(
       tc.structuredResponseMemory,
+    );
+    result.incidentPrecedentMemory = toIncidentPrecedentMemory(
+      tc.incidentPrecedentMemory,
+    );
+    result.incidentResponseExperienceMemory = tc.incidentPrecedentMemory.map(
+      (set) =>
+        projectIncidentResponseExperience(composeIncidentResponseExperience(set)),
     );
   }
 

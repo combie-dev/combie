@@ -190,6 +190,31 @@ describe("skills/combie content contract (Sprint 083)", () => {
     expect(skillText.includes("combie outcome")).toBe(true);
   });
 
+  test("allowlist: incidentPrecedentMemory (Sprint 112)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("incidentPrecedentMemory")).toBe(true);
+  });
+
+  test("allowlist: incident-link and precedents CLI (Sprint 112)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("combie incident-link")).toBe(true);
+    expect(skillText.includes("combie precedents")).toBe(true);
+    expect(skillText.includes("effectiveAt")).toBe(true);
+    expect(skillText.includes("temporally prior")).toBe(true);
+  });
+
+  test("allowlist: responseExperience and incidentResponseExperienceMemory (Sprint 113)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("responseExperience")).toBe(true);
+    expect(skillText.includes("incidentResponseExperienceMemory")).toBe(true);
+    expect(skillText.includes("RECORDED RESPONSE EXPERIENCE")).toBe(true);
+  });
+
+  test("allowlist: response experience is not a success claim (Sprint 113)", () => {
+    if (skillText === null) return;
+    expect(skillText.includes("success rate")).toBe(false);
+  });
+
   const DENYLIST = [
     "combie timeline",
     "combie memory",

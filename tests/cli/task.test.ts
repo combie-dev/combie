@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listIncidentsForSubject } from "../../src/app/incidents.ts";
+import { composeIncidentPrecedentMemory } from "../../src/app/incident-precedents.ts";
 import { getInvestigationContext } from "../../src/app/investigate.ts";
 import { listInvestigations } from "../../src/app/investigations.ts";
 import { listResolutions } from "../../src/app/resolutions.ts";
@@ -106,13 +107,14 @@ describe("CLI investigate --task", () => {
 
   function expectedTaskProjection(profile: "change-review" | "dependency-impact" | "response-recall") {
     const ctx = getInvestigationContext({ baseDir: dir, resourceRef: subjectId });
+    const incidentRows = listIncidentsForSubject(dir, subjectId);
     return safeJson(
       projectTaskContext(
         composeTaskContext({
           task: profile,
           ctx,
           resolutionRows: listResolutions(dir, { subjectResourceId: subjectId }),
-          incidentRows: listIncidentsForSubject(dir, subjectId),
+          incidentRows,
           investigationRows: listInvestigations(dir, {
             subjectResourceId: subjectId,
           }),
@@ -120,6 +122,13 @@ describe("CLI investigate --task", () => {
             dir,
             ctx.subject.id,
           ),
+          incidentPrecedentSets:
+            profile === "response-recall"
+              ? composeIncidentPrecedentMemory(
+                  dir,
+                  incidentRows.map((row) => row.id),
+                )
+              : [],
         }),
       ),
     );
@@ -161,6 +170,8 @@ describe("CLI investigate --task", () => {
     expect(parsed.resolutionMemory).toEqual([]);
     expect(parsed.incidentMemory).toEqual([]);
     expect(parsed.structuredResponseMemory).toEqual([]);
+    expect(parsed.incidentPrecedentMemory).toEqual([]);
+    expect(parsed.incidentResponseExperienceMemory).toEqual([]);
   });
 
   test("response-recall CLI JSON includes nested structuredResponseMemory for a seeded chain", async () => {

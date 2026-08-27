@@ -24,6 +24,7 @@ import {
   type TaskScopedContext,
 } from "../../src/app/task-context.ts";
 import { listIncidentsForSubject, recordIncident } from "../../src/app/incidents.ts";
+import { composeIncidentPrecedentMemory } from "../../src/app/incident-precedents.ts";
 import {
   listInvestigations,
   saveInvestigation,
@@ -145,6 +146,13 @@ describe("task-scoped deterministic composition", () => {
         dir,
         ctx.subject.id,
       ),
+      incidentPrecedentSets:
+        profile === "response-recall"
+          ? composeIncidentPrecedentMemory(
+              dir,
+              listIncidentsForSubject(dir, ctx.subject.id).map((row) => row.id),
+            )
+          : [],
     });
   }
 
@@ -179,6 +187,7 @@ describe("task-scoped deterministic composition", () => {
     expect("resolutionMemory" in tc).toBe(false);
     expect("incidentMemory" in tc).toBe(false);
     expect("structuredResponseMemory" in tc).toBe(false);
+    expect("incidentPrecedentMemory" in tc).toBe(false);
   });
 
   test("dependency-impact selects only restricted Missing Context", () => {
@@ -202,6 +211,7 @@ describe("task-scoped deterministic composition", () => {
     expect("resolutionMemory" in tc).toBe(false);
     expect("incidentMemory" in tc).toBe(false);
     expect("structuredResponseMemory" in tc).toBe(false);
+    expect("incidentPrecedentMemory" in tc).toBe(false);
   });
 
   test("response-recall selects memory arrays and excludes live sections", () => {
@@ -214,6 +224,8 @@ describe("task-scoped deterministic composition", () => {
     expect(tc.resolutionMemory).toBeDefined();
     expect(tc.incidentMemory).toBeDefined();
     expect(tc.structuredResponseMemory).toBeDefined();
+    expect(tc.incidentPrecedentMemory).toBeDefined();
+    expect(tc.incidentPrecedentMemory).toEqual([]);
     expect("subjectChanges" in tc).toBe(false);
     expect("knownFacts" in tc).toBe(false);
     expect("missingContext" in tc).toBe(false);
@@ -434,6 +446,13 @@ describe("task-scoped projection", () => {
         dir,
         ctx.subject.id,
       ),
+      incidentPrecedentSets:
+        profile === "response-recall"
+          ? composeIncidentPrecedentMemory(
+              dir,
+              listIncidentsForSubject(dir, ctx.subject.id).map((row) => row.id),
+            )
+          : [],
     });
     return projectTaskContext(tc);
   }
@@ -464,6 +483,7 @@ describe("task-scoped projection", () => {
     expect(projected).not.toHaveProperty("resolutionMemory");
     expect(projected).not.toHaveProperty("incidentMemory");
     expect(projected).not.toHaveProperty("structuredResponseMemory");
+    expect(projected).not.toHaveProperty("incidentPrecedentMemory");
 
     const related = projected.related as Array<Record<string, unknown>>;
     expect(related.length).toBe(1);
@@ -482,6 +502,7 @@ describe("task-scoped projection", () => {
     expect(projected).not.toHaveProperty("timeline");
     expect(projected).not.toHaveProperty("sharedCommitContext");
     expect(projected).not.toHaveProperty("structuredResponseMemory");
+    expect(projected).not.toHaveProperty("incidentPrecedentMemory");
 
     const related = projected.related as Array<Record<string, unknown>>;
     expect(related.length).toBe(1);
@@ -500,6 +521,8 @@ describe("task-scoped projection", () => {
     expect(projected.resolutionMemory).toEqual([]);
     expect(projected.incidentMemory).toEqual([]);
     expect(projected.structuredResponseMemory).toEqual([]);
+    expect(projected.incidentPrecedentMemory).toEqual([]);
+    expect(projected.incidentResponseExperienceMemory).toEqual([]);
     expect(projected).not.toHaveProperty("related");
     expect(projected).not.toHaveProperty("subjectChanges");
     expect(projected).not.toHaveProperty("knownFacts");
@@ -531,13 +554,18 @@ describe("task-scoped projection", () => {
     });
 
     const ctx = getInvestigationContext({ baseDir: dir, resourceRef: subjectId });
+    const incidentRows = listIncidentsForSubject(dir, subjectId);
     const tc = composeTaskContext({
       task: "response-recall",
       ctx,
       resolutionRows: listResolutions(dir, { subjectResourceId: subjectId }),
-      incidentRows: listIncidentsForSubject(dir, subjectId),
+      incidentRows,
       investigationRows: listInvestigations(dir, { subjectResourceId: subjectId }),
       structuredResponseChains: composeStructuredResponseMemory(dir, subjectId),
+      incidentPrecedentSets: composeIncidentPrecedentMemory(
+        dir,
+        incidentRows.map((row) => row.id),
+      ),
     });
     const projected = projectTaskContext(tc);
 
@@ -555,6 +583,105 @@ describe("task-scoped projection", () => {
       title: "API error spike",
       resolutionIds: [r1.id, r2.id],
     });
+    expect(projected.incidentPrecedentMemory).toHaveLength(1);
+    const precedentSets = projected.incidentPrecedentMemory as Array<
+      Record<string, unknown>
+    >;
+    expect(precedentSets[0]).toMatchObject({
+      queryIncident: { id: incident.id },
+      explicitPrecedents: [],
+      candidatePrecedents: [],
+    });
+    expect(JSON.stringify(projected)).not.toContain("[Circular]");
+  });
+
+  test("response-recall incidentPrecedentMemory excludes future peers (temporal prior)", () => {
+    seedGraphWithChanges();
+    const subjectId = "github:repository:repo-proj";
+    const q1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "q1",
+      recordedAt: "2026-01-01T10:00:00.000Z",
+    });
+    const q2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "q2",
+      recordedAt: "2026-01-01T10:01:00.000Z",
+    });
+    const f1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "f1",
+      recordedAt: "2026-01-02T10:00:00.000Z",
+    });
+    const f2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "f2",
+      recordedAt: "2026-01-02T10:01:00.000Z",
+    });
+    const p1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "p1",
+      recordedAt: "2025-12-31T10:00:00.000Z",
+    });
+    const p2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "p2",
+      recordedAt: "2025-12-31T10:01:00.000Z",
+    });
+    const query = recordIncident({
+      baseDir: dir,
+      resolutionIds: [q1.id, q2.id],
+      recordedAt: "2026-01-01T12:00:00.000Z",
+      title: "Jan 1 query",
+    });
+    const future = recordIncident({
+      baseDir: dir,
+      resolutionIds: [f1.id, f2.id],
+      recordedAt: "2026-01-02T12:00:00.000Z",
+      title: "Jan 2 future",
+    });
+    const prior = recordIncident({
+      baseDir: dir,
+      resolutionIds: [p1.id, p2.id],
+      recordedAt: "2025-12-31T12:00:00.000Z",
+      title: "Prior",
+    });
+
+    const ctx = getInvestigationContext({ baseDir: dir, resourceRef: subjectId });
+    const incidentRows = listIncidentsForSubject(dir, subjectId);
+    const tc = composeTaskContext({
+      task: "response-recall",
+      ctx,
+      resolutionRows: listResolutions(dir, { subjectResourceId: subjectId }),
+      incidentRows,
+      investigationRows: listInvestigations(dir, { subjectResourceId: subjectId }),
+      structuredResponseChains: composeStructuredResponseMemory(dir, subjectId),
+      incidentPrecedentSets: composeIncidentPrecedentMemory(
+        dir,
+        incidentRows.map((row) => row.id),
+      ),
+    });
+    const projected = projectTaskContext(tc);
+    const sets = projected.incidentPrecedentMemory as Array<{
+      queryIncident: { id: string };
+      candidatePrecedents: Array<{ incident: { id: string } }>;
+      explicitPrecedents: unknown[];
+    }>;
+    const querySet = sets.find((s) => s.queryIncident.id === query.id);
+    expect(querySet).toBeDefined();
+    expect(querySet!.candidatePrecedents.map((c) => c.incident.id)).toEqual([
+      prior.id,
+    ]);
+    expect(
+      querySet!.candidatePrecedents.some((c) => c.incident.id === future.id),
+    ).toBe(false);
+    expect(JSON.stringify(projected)).not.toContain("[Circular]");
   });
 
   test("response-recall projects structured Recommendation → Decision → Action → Outcome independently of Resolution", () => {
@@ -601,13 +728,18 @@ describe("task-scoped projection", () => {
     });
 
     const ctx = getInvestigationContext({ baseDir: dir, resourceRef: subjectId });
+    const incidentRows = listIncidentsForSubject(dir, subjectId);
     const tc = composeTaskContext({
       task: "response-recall",
       ctx,
       resolutionRows: listResolutions(dir, { subjectResourceId: subjectId }),
-      incidentRows: listIncidentsForSubject(dir, subjectId),
+      incidentRows,
       investigationRows: listInvestigations(dir, { subjectResourceId: subjectId }),
       structuredResponseChains: composeStructuredResponseMemory(dir, subjectId),
+      incidentPrecedentSets: composeIncidentPrecedentMemory(
+        dir,
+        incidentRows.map((row) => row.id),
+      ),
     });
     const projected = projectTaskContext(tc);
 
@@ -659,6 +791,62 @@ describe("task-scoped projection", () => {
       const serialized = JSON.stringify(safeJson(projectFor(profile)));
       expect(serialized).not.toContain("Circular");
     }
+  });
+
+  test("response-recall incidentResponseExperienceMemory aligns with incidentPrecedentMemory per query Incident", () => {
+    seedGraphWithChanges();
+    const subjectId = "github:repository:repo-proj";
+    const a1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "a1",
+      recordedAt: "2026-01-01T10:00:00.000Z",
+    });
+    const a2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "a2",
+      recordedAt: "2026-01-01T10:01:00.000Z",
+    });
+    const b1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "b1",
+      recordedAt: "2026-01-02T10:00:00.000Z",
+    });
+    const b2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "b2",
+      recordedAt: "2026-01-02T10:01:00.000Z",
+    });
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: [a1.id, a2.id],
+      recordedAt: "2026-01-03T12:00:00.000Z",
+      title: "First",
+    });
+    recordIncident({
+      baseDir: dir,
+      resolutionIds: [b1.id, b2.id],
+      recordedAt: "2026-01-04T12:00:00.000Z",
+      title: "Second",
+    });
+
+    const projected = projectFor("response-recall");
+    const precedentMemory = projected.incidentPrecedentMemory as Array<{
+      queryIncident: { id: string };
+    }>;
+    const experience = projected.incidentResponseExperienceMemory as Array<{
+      queryIncidentId: string;
+    }>;
+    expect(Array.isArray(experience)).toBe(true);
+    expect(experience).toHaveLength(precedentMemory.length);
+    expect(experience.length).toBeGreaterThanOrEqual(2);
+    precedentMemory.forEach((set, i) => {
+      expect(experience[i]!.queryIncidentId).toBe(set.queryIncident.id);
+    });
+    expect(JSON.stringify(projected)).not.toContain("[Circular]");
   });
 
   test("task composition is read-only (database bytes unchanged)", () => {

@@ -39,7 +39,7 @@ combie --version
 Expected output:
 
 ```bash
-combie 0.5.0
+combie 0.6.0
 ```
 
 The installer places Combie at `~/.local/bin/combie`. If you see `combie: command not found`, add it to your PATH:
@@ -257,9 +257,12 @@ combie investigate vercel:project:prj_abc123 --task response-recall --json
 `change-review` returns what changed and the evidence chronology;
 `dependency-impact` returns proven connectivity and paths (connectivity, not
 blast radius); `response-recall` returns retained investigations, resolutions,
-incident groupings, and additive `structuredResponseMemory` (exact
-Recommendation→Decision→Action→Outcome chains for that subject). Each is
-read-only and deterministic; omit `--task` for the full investigation document.
+incident groupings, additive `structuredResponseMemory` (exact
+Recommendation→Decision→Action→Outcome chains for that subject), and additive
+`incidentPrecedentMemory` (one inspectable precedent set per exact Incident in
+`incidentMemory`; temporally prior peers only —
+`effectiveAt = occurredAt ?? recordedAt`; `[]` when empty). Each is read-only
+and deterministic; omit `--task` for the full investigation document.
 
 Every `--task` result also carries a top-level `availableOnDemand` array —
 inert descriptors for deeper context on demand. Follow one only when the task
@@ -295,6 +298,25 @@ combie decision --recommendation rec:01h... --disposition approved
 combie action --decision dec:01h... --action-key rollback --summary "Rolled back production"
 combie outcome --action act:01h... --assessment positive --summary "Error rate returned to baseline"
 ```
+
+### Optional incident links and precedents (CLI-only)
+
+Link two exact Incidents with an authored reason (human claim, not provider
+proof). Retrieve precedents separately — explicit prior links vs exact-match
+candidates (not recommendations). A peer is a precedent only when temporally
+prior: `effectiveAt = occurredAt ?? recordedAt`, and
+`peer.effectiveAt < query.effectiveAt`. Equal or later Incidents are never
+precedents (non-prior links remain on `incident-links`):
+
+```bash
+combie incident-link --incident inc:… --incident inc:… --reason "Same failure mode"
+combie incident-links [--incident inc:…]
+combie precedents --incident inc:…
+combie precedents --incident inc:… --json
+```
+
+`precedents --json` is the only new JSON allowlist entry; link commands stay
+human text. `response-recall` also surfaces `incidentPrecedentMemory`.
 
 **Troubleshooting:** `Unknown resource` -> the ID is not in the store;
 re-check the exact string from `resources`, or re-run `sync` — state is only

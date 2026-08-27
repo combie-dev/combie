@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { saveInvestigation } from "../../src/app/investigations.ts";
+import { recordIncident } from "../../src/app/incidents.ts";
+import { recordResolution } from "../../src/app/resolutions.ts";
 import {
   recordAction,
   recordDecision,
@@ -112,6 +114,7 @@ describe("MCP investigate_resource task mode", () => {
       expect(result.structuredContent).not.toHaveProperty("timeline");
       expect(result.structuredContent).not.toHaveProperty("resolutionMemory");
       expect(result.structuredContent).not.toHaveProperty("structuredResponseMemory");
+      expect(result.structuredContent).not.toHaveProperty("incidentPrecedentMemory");
     } finally {
       await client.close();
     }
@@ -138,9 +141,12 @@ describe("MCP investigate_resource task mode", () => {
         resolutionMemory: [],
         incidentMemory: [],
         structuredResponseMemory: [],
+        incidentPrecedentMemory: [],
+        incidentResponseExperienceMemory: [],
       });
       expect(result.structuredContent).not.toHaveProperty("related");
       expect(result.structuredContent).not.toHaveProperty("knownFacts");
+      expect(JSON.stringify(result.structuredContent)).not.toContain("[Circular]");
     } finally {
       await client.close();
     }
@@ -381,6 +387,196 @@ describe("MCP investigate_resource task mode", () => {
       expect(change.structuredContent).not.toHaveProperty(
         "structuredResponseMemory",
       );
+      expect(change.structuredContent).not.toHaveProperty(
+        "incidentPrecedentMemory",
+      );
+
+      const listed = await client.listTools();
+      expect(listed.tools).toHaveLength(5);
+    } finally {
+      await client.close();
+    }
+  }, 15_000);
+
+  test("response-recall incidentPrecedentMemory excludes future peers (temporal prior)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-task-temporal-"));
+    dirs.push(dir);
+    const subjectId = seedTaskStore(dir);
+    const q1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "q1",
+      recordedAt: "2026-01-01T10:00:00.000Z",
+    });
+    const q2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "q2",
+      recordedAt: "2026-01-01T10:01:00.000Z",
+    });
+    const f1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "f1",
+      recordedAt: "2026-01-02T10:00:00.000Z",
+    });
+    const f2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "f2",
+      recordedAt: "2026-01-02T10:01:00.000Z",
+    });
+    const p1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "p1",
+      recordedAt: "2025-12-31T10:00:00.000Z",
+    });
+    const p2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "p2",
+      recordedAt: "2025-12-31T10:01:00.000Z",
+    });
+    const query = recordIncident({
+      baseDir: dir,
+      resolutionIds: [q1.id, q2.id],
+      recordedAt: "2026-01-01T12:00:00.000Z",
+    });
+    const future = recordIncident({
+      baseDir: dir,
+      resolutionIds: [f1.id, f2.id],
+      recordedAt: "2026-01-02T12:00:00.000Z",
+    });
+    const prior = recordIncident({
+      baseDir: dir,
+      resolutionIds: [p1.id, p2.id],
+      recordedAt: "2025-12-31T12:00:00.000Z",
+    });
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subjectId, task: "response-recall" },
+      });
+      expect(result.isError).not.toBe(true);
+      const sets = (
+        result.structuredContent as {
+          incidentPrecedentMemory: Array<{
+            queryIncident: { id: string };
+            candidatePrecedents: Array<{ incident: { id: string } }>;
+          }>;
+        }
+      ).incidentPrecedentMemory;
+      const querySet = sets.find((s) => s.queryIncident.id === query.id);
+      expect(querySet).toBeDefined();
+      expect(querySet!.candidatePrecedents.map((c) => c.incident.id)).toEqual([
+        prior.id,
+      ]);
+      expect(
+        querySet!.candidatePrecedents.some((c) => c.incident.id === future.id),
+      ).toBe(false);
+      expect(JSON.stringify(result.structuredContent)).not.toContain("[Circular]");
+      const listed = await client.listTools();
+      expect(listed.tools).toHaveLength(5);
+    } finally {
+      await client.close();
+    }
+  }, 15_000);
+
+  test("response-recall includes incidentResponseExperienceMemory aligned with precedent memory and no Circular", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "combie-mcp-task-exp-"));
+    dirs.push(dir);
+    const subjectId = seedTaskStore(dir);
+    const a1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "a1",
+      recordedAt: "2026-01-01T10:00:00.000Z",
+    });
+    const a2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "a2",
+      recordedAt: "2026-01-01T10:01:00.000Z",
+    });
+    const b1 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "b1",
+      recordedAt: "2026-01-02T10:00:00.000Z",
+    });
+    const b2 = recordResolution({
+      baseDir: dir,
+      subjectResourceId: subjectId,
+      decision: "b2",
+      recordedAt: "2026-01-02T10:01:00.000Z",
+    });
+    const prior = recordIncident({
+      baseDir: dir,
+      resolutionIds: [a1.id, a2.id],
+      recordedAt: "2025-12-31T12:00:00.000Z",
+    });
+    const query = recordIncident({
+      baseDir: dir,
+      resolutionIds: [b1.id, b2.id],
+      recordedAt: "2026-01-03T12:00:00.000Z",
+    });
+    const rec = recordRecommendation({
+      baseDir: dir,
+      incidentId: prior.id,
+      subjectResourceId: subjectId,
+      actionKey: "rollback-deployment",
+      proposal: "Roll back",
+      recordedAt: "2025-12-31T13:00:00.000Z",
+    });
+    const dec = recordDecision({
+      baseDir: dir,
+      recommendationId: rec.id,
+      disposition: "approved",
+      recordedAt: "2025-12-31T13:05:00.000Z",
+    });
+    const act = recordAction({
+      baseDir: dir,
+      decisionId: dec.id,
+      actionKey: "rollback-deployment",
+      summary: "Rolled back",
+      recordedAt: "2025-12-31T13:10:00.000Z",
+    });
+    recordOutcome({
+      baseDir: dir,
+      actionId: act.id,
+      assessment: "positive",
+      summary: "Recovered",
+      recordedAt: "2025-12-31T13:20:00.000Z",
+    });
+
+    const { client, transport } = spawnClient(dir);
+    try {
+      await client.connect(transport);
+      const result = await client.callTool({
+        name: "investigate_resource",
+        arguments: { resourceId: subjectId, task: "response-recall" },
+      });
+      expect(result.isError).not.toBe(true);
+      const content = result.structuredContent as {
+        incidentPrecedentMemory: Array<{ queryIncident: { id: string } }>;
+        incidentResponseExperienceMemory: Array<{ queryIncidentId: string }>;
+      };
+      expect(Array.isArray(content.incidentResponseExperienceMemory)).toBe(true);
+      expect(content.incidentResponseExperienceMemory).toHaveLength(
+        content.incidentPrecedentMemory.length,
+      );
+      content.incidentPrecedentMemory.forEach((set, i) => {
+        expect(content.incidentResponseExperienceMemory[i]!.queryIncidentId).toBe(
+          set.queryIncident.id,
+        );
+      });
+      expect(JSON.stringify(result.structuredContent)).not.toContain("[Circular]");
+      const listed = await client.listTools();
+      expect(listed.tools).toHaveLength(5);
     } finally {
       await client.close();
     }
